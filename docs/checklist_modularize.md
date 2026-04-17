@@ -1,0 +1,21 @@
+# Modularization Checklist — v0.4.1
+- [ ] Backup v0.4.0 flat structure
+- [ ] Create directory skeleton (ui/, net/, storage/, crypto/, media/, platform/, engine/)
+- [ ] Move Pillar 7 — engine/ (tabs, adblocker, extensions, permissions, devtools)
+- [ ] Move Pillar 3 — storage/ (bookmarks, history, session, downloads, config, profiles)
+- [ ] Move Pillar 4 — crypto/ (vault, autofill)
+- [ ] Move Pillar 2 — net/ (ipc, dns)
+- [ ] Move Pillar 1 — ui/ (chrome, webview_ui, theme, reader)
+- [ ] Move Pillar 6 — platform/ (webview launcher, servo launcher)
+- [ ] Create Pillar 5 — media/ (placeholder mod.rs)
+- [ ] Update main.rs module declarations
+- [ ] Update app.rs imports (all 18 cross-module refs)
+- [ ] Update platform/webview.rs imports
+- [ ] Update platform/servo.rs imports
+- [ ] Update ui/chrome.rs imports
+- [ ] cargo check (webview backend)
+- [ ] cargo check --features servo-engine
+- [ ] Strip any comments that crept in
+- [ ] Update ARCHITECTURE.md
+- [ ] Update CHANGELOG.md
+- [ ] Update README.md

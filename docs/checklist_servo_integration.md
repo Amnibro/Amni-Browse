@@ -1,0 +1,17 @@
+# Servo Integration Checklist — v0.4.0
+- [x] Backup v0.3.0 source files
+- [x] Update Cargo.toml: feature flags (webview default, servo-engine), new deps
+- [x] Create src/app.rs: extract BrowserState + handle_command from browser.rs
+- [x] Create src/chrome.rs: native egui browser chrome (tab bar, nav bar, panels, status bar)
+- [x] Create src/servo_backend.rs: Servo embedding + winit + wgpu + egui compositor
+- [x] Refactor src/browser.rs: webview-only backend, feature-gated, uses app.rs
+- [x] Update src/main.rs: feature-gated entry point selecting backend
+- [x] Update README with dual-backend build instructions
+- [x] cargo check --features webview (default, compiles clean)
+- [x] cargo check --features servo-engine (compiles clean — forget_lifetime fix)
+- [x] Strip comments from all new/modified files
+- [x] Update ARCHITECTURE.md with dual-backend diagram
+- [x] Update CHANGELOG.md with v0.4.0 entry
+- [x] Backup v0.4.0 files
+- [x] Create GUARDIAN_COUNCIL_v0.5.md (AmniShunt proposals)
+- [x] Create AMNISHUNT_DESIGN.md (technical spec)

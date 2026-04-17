@@ -1,0 +1,50 @@
+# Build artifacts
+/target/
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment & secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Runtime logs / crash dumps
+*.log
+*.dmp
+
+# Dev-only scratch
+/backups/
+*.bak
+tmp_*.py
+tmp_*.txt
+/docs/*.log
+/docs/*.txt
+/docs/amni_run*.log
+/docs/browser_err.log
+/docs/servo_errors.txt
+
+# Test binaries
+/test/test.exe
+/test/test.pdb
+/test/*.exe
+/test/*.pdb
+
+# Browser user data (must never ship)
+amni-browse-data/
+*.session
+profiles.json
+bookmarks.json
+history.json
+vault.json
+downloads.json
+autofill.json
+permissions.json

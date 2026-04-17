@@ -1,0 +1,6 @@
+- [x] Identify internal engine endpoints in rust pipeline
+- [x] Reroute Act::Nav behavior away from wiping webview
+- [x] Wire up js fetch_page dispatcher for external links
+- [x] Tie page_rendered DOM hydration code back in
+- [x] Provide a link click interceptor in engine viewer
+- [x] Verify compile
