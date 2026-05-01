@@ -387,9 +387,19 @@ impl BrowserChrome {
     fn render_themes_panel(&mut self, ui: &mut egui::Ui) {
         ui.label("Select a theme:");
         ui.separator();
-        let themes = ["Midnight Nebula", "Cyber Sunset", "Deep Ocean", "Void Black", "Arctic White"];
-        for (i, name) in themes.iter().enumerate() {
-            if ui.button(*name).clicked() { self.cmd(IpcMessage::ThemeSet { theme_id: format!("theme_{}", i) }); }
+        let themes: &[(&str, &str)] = &[
+            ("amni-dark", "Amni Dark"),
+            ("amni-cosmos", "Amni Cosmos"),
+            ("amni-emerald", "Amni Emerald"),
+            ("amni-light", "Amni Light"),
+            ("amni-crimson", "Amni Crimson"),
+            ("amni-solarflare", "Solar Flare"),
+            ("amni-mint-matrix", "Mint Matrix"),
+            ("amni-paper-sunset", "Paper Sunset"),
+            ("amni-deep-space", "Deep Space"),
+        ];
+        for (id, name) in themes {
+            if ui.button(*name).clicked() { self.cmd(IpcMessage::ThemeSet { theme_id: id.to_string() }); }
         }
     }
     pub fn handle_keyboard(&mut self, ctx: &egui::Context) {

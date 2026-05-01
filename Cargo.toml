@@ -10,6 +10,7 @@ license-file = "LICENSE"
 default = ["webview"]
 webview = ["dep:wry", "dep:tao"]
 servo-engine = ["dep:winit", "dep:wgpu", "dep:egui", "dep:egui-winit", "dep:egui-wgpu", "dep:raw-window-handle", "dep:pollster", "dep:fontdue"]
+servo-real = ["dep:servo", "dep:winit", "dep:raw-window-handle", "dep:surfman", "dep:euclid", "dep:keyboard-types", "dep:wry"]
 js-engine = ["dep:boa_engine"]
 media-playback = ["dep:symphonia", "dep:cpal"]
 full = ["servo-engine", "js-engine", "media-playback"]
@@ -43,6 +44,7 @@ hmac = "0.12"
 rand = "0.8"
 base64 = "0.22"
 generic-array = "0.14"
+http = "1"
 hyper = { version = "1", features = ["client", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2", "tokio"] }
 hyper-rustls = { version = "0.27", features = ["http1", "http2", "ring", "webpki-tokio"] }
@@ -61,6 +63,10 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 boa_engine = { version = "0.19", optional = true }
 symphonia = { version = "0.5", optional = true, default-features = false, features = ["mp3", "aac", "vorbis", "flac", "wav", "pcm"] }
 cpal = { version = "0.15", optional = true }
+servo = { git = "https://github.com/servo/servo.git", rev = "68ca280", features = ["no-wgl", "media-gstreamer"], optional = true }
+surfman = { version = "0.9", optional = true }
+euclid = { version = "0.22", optional = true }
+keyboard-types = { version = "0.7", optional = true }
 
 [profile.release]
 opt-level = 3

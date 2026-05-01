@@ -4,7 +4,7 @@ use crate::net::cors::CorsEnforcer;
 use crate::net::csp::{CspEnforcer, CspDirective};
 use crate::engine::dom::AmniDom;
 use crate::engine::style::{StyleSheet, ComputedStyle};
-use crate::engine::layout::{LayoutEngine, LayoutRect};
+use crate::engine::layout::{LayoutEngine, LayoutRect, TextInfo};
 use crate::engine::paint::{RenderTree, DisplayList, SoftwareRenderer, build_display_list};
 use crate::engine::image_decode::ImageCache;
 use crate::engine::events::{EventDispatcher, FocusManager, HitTester, DomEvent, EventType};
@@ -140,7 +140,7 @@ impl RenderPipeline {
         let mut engine = LayoutEngine::new();
         let mut styles: HashMap<usize, ComputedStyle> = HashMap::new();
         let mut id_counter = 0usize;
-        Self::build_tree(&dom.dom.document, &sheets, &mut engine, &mut styles, &mut id_counter);
+        Self::build_tree(&dom.dom.document, &sheets, &mut engine, &mut styles, &mut id_counter, None);
         if id_counter > 0 { engine.compute(0, vw, vh); }
         let ids: Vec<usize> = (0..id_counter).collect();
         engine.collect_all(&ids);
@@ -150,16 +150,21 @@ impl RenderPipeline {
         }
         LayoutResult { rects, node_count: id_counter, viewport_w: vw, viewport_h: vh }
     }
-    fn build_tree(handle: &Handle, sheets: &[StyleSheet], engine: &mut LayoutEngine, styles: &mut HashMap<usize, ComputedStyle>, counter: &mut usize) {
+    fn build_tree(handle: &Handle, sheets: &[StyleSheet], engine: &mut LayoutEngine, styles: &mut HashMap<usize, ComputedStyle>, counter: &mut usize, parent_cs: Option<&ComputedStyle>) {
         let my_id = *counter;
         *counter += 1;
         let mut cs = ComputedStyle::default();
-        cs.font_size = 16.0;
-        cs.line_height = 1.2;
+        cs.font_size = parent_cs.map(|p| p.font_size).unwrap_or(16.0);
+        cs.line_height = parent_cs.map(|p| p.line_height).unwrap_or(1.2);
+        cs.color = parent_cs.map(|p| p.color.clone()).unwrap_or(crate::engine::style::Color { r: 0, g: 0, b: 0, a: 1.0 });
         cs.opacity = 1.0;
         cs.flex_shrink = 1.0;
+        let mut leaf_text = String::new();
         if let NodeData::Element { name, attrs, .. } = &handle.data {
             let tag = name.local.to_string();
+            if matches!(tag.as_str(), "head" | "style" | "script" | "meta" | "link" | "title" | "noscript" | "template" | "base") {
+                cs.display = crate::engine::style::Display::None;
+            }
             let attrs_map: HashMap<String, String> = attrs.borrow().iter()
                 .map(|a| (a.name.local.to_string(), a.value.to_string())).collect();
             let id_attr = attrs_map.get("id").cloned().unwrap_or_default();
@@ -178,18 +183,37 @@ impl RenderPipeline {
                     cs.apply_declarations(&rule.declarations);
                 }
             }
+            Self::apply_tag_font_defaults(&tag, &mut cs);
+        } else if let NodeData::Text { contents } = &handle.data {
+            leaf_text = contents.borrow().trim().to_string();
         }
         let mut child_ids = Vec::new();
         for child in handle.children.borrow().iter() {
             let child_id = *counter;
-            Self::build_tree(child, sheets, engine, styles, counter);
+            Self::build_tree(child, sheets, engine, styles, counter, Some(&cs));
             child_ids.push(child_id);
         }
         styles.insert(my_id, cs.clone());
         if child_ids.is_empty() {
-            engine.add_leaf(my_id, &cs);
+            if !leaf_text.is_empty() {
+                engine.add_leaf_with_text(my_id, &cs, TextInfo { text: leaf_text, font_size: cs.font_size, line_height: cs.line_height });
+            } else {
+                engine.add_leaf(my_id, &cs);
+            }
         } else {
             engine.add_node(my_id, &cs, &child_ids);
+        }
+    }
+    fn apply_tag_font_defaults(tag: &str, cs: &mut ComputedStyle) {
+        match tag {
+            "h1" => { cs.font_size = 32.0; cs.font_weight = 700; }
+            "h2" => { cs.font_size = 24.0; cs.font_weight = 700; }
+            "h3" => { cs.font_size = 20.0; cs.font_weight = 700; }
+            "h4" => { cs.font_size = 16.0; cs.font_weight = 700; }
+            "h5" => { cs.font_size = 14.0; cs.font_weight = 700; }
+            "h6" => { cs.font_size = 12.0; cs.font_weight = 700; }
+            "strong" | "b" => { cs.font_weight = 700; }
+            _ => {}
         }
     }
     fn selector_matches(selectors: &[String], tag: &str, id: &str, classes: &[&str]) -> bool {
@@ -296,7 +320,7 @@ impl RenderPipeline {
         let mut engine = LayoutEngine::new();
         let mut styles: HashMap<usize, ComputedStyle> = HashMap::new();
         let mut id_counter = 0usize;
-        Self::build_tree(&dom.dom.document, &sheets, &mut engine, &mut styles, &mut id_counter);
+        Self::build_tree(&dom.dom.document, &sheets, &mut engine, &mut styles, &mut id_counter, None);
         if id_counter > 0 { engine.compute(0, vw, vh); }
         let ids: Vec<usize> = (0..id_counter).collect();
         engine.collect_all(&ids);
@@ -306,8 +330,9 @@ impl RenderPipeline {
         }
         let mut rt_counter = 0usize;
         let render_tree = RenderTree::build_from_dom(&dom.dom.document, &sheets, &mut rt_counter);
+        let content_h = rects.values().map(|r| r.y + r.h).fold(vh, f32::max).min(16384.0).max(vh);
         let w = vw as u32;
-        let h = vh as u32;
+        let h = content_h as u32;
         let mut dl = DisplayList::new(w, h);
         build_display_list(&render_tree, &rects, &self.image_cache, render_tree.root_id, 0.0, 0.0, &mut dl);
         let mut renderer = SoftwareRenderer::new(w, h);

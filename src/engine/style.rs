@@ -456,17 +456,98 @@ impl ComputedStyle {
         }
     }
     fn parse_color(s: &str) -> Color {
-        let s = s.trim();
-        if s.starts_with('#') {
-            let hex = &s[1..];
-            let (r, g, b) = match hex.len() {
-                3 => (u8::from_str_radix(&hex[0..1].repeat(2), 16).unwrap_or(0), u8::from_str_radix(&hex[1..2].repeat(2), 16).unwrap_or(0), u8::from_str_radix(&hex[2..3].repeat(2), 16).unwrap_or(0)),
-                6 | 8 => (u8::from_str_radix(&hex[0..2], 16).unwrap_or(0), u8::from_str_radix(&hex[2..4], 16).unwrap_or(0), u8::from_str_radix(&hex[4..6], 16).unwrap_or(0)),
-                _ => (0, 0, 0),
+        let lower = s.trim().to_ascii_lowercase();
+        let none = Color { r: 0, g: 0, b: 0, a: 0.0 };
+        if lower.is_empty() || matches!(lower.as_str(), "transparent" | "inherit" | "initial" | "unset" | "currentcolor" | "none") { return none; }
+        let has_ws = lower.chars().any(|c| c.is_whitespace());
+        if has_ws && !lower.starts_with("rgb") && !lower.starts_with("hsl") {
+            for tok in lower.split_whitespace() { let c = Self::parse_color_one(tok); if c.a > 0.0 { return c; } }
+            return none;
+        }
+        Self::parse_color_one(&lower)
+    }
+    fn parse_color_one(s: &str) -> Color {
+        let none = Color { r: 0, g: 0, b: 0, a: 0.0 };
+        if let Some(c) = Self::parse_named_color(s) { return c; }
+        if let Some(hex) = s.strip_prefix('#') {
+            let h2 = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).unwrap_or(0);
+            let h1x2 = |i: usize| u8::from_str_radix(&hex[i..i + 1].repeat(2), 16).unwrap_or(0);
+            return match hex.len() {
+                3 => Color { r: h1x2(0), g: h1x2(1), b: h1x2(2), a: 1.0 },
+                4 => Color { r: h1x2(0), g: h1x2(1), b: h1x2(2), a: h1x2(3) as f32 / 255.0 },
+                6 => Color { r: h2(0), g: h2(2), b: h2(4), a: 1.0 },
+                8 => Color { r: h2(0), g: h2(2), b: h2(4), a: h2(6) as f32 / 255.0 },
+                _ => none,
             };
-            let a = if hex.len() == 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) as f32 / 255.0 } else { 1.0 };
-            Color { r, g, b, a }
-        } else { Color { r: 0, g: 0, b: 0, a: 1.0 } }
+        }
+        if s.starts_with("rgb") {
+            let open = s.find('(').unwrap_or(s.len());
+            let close = s.rfind(')').unwrap_or(s.len());
+            if close > open + 1 {
+                let inner = &s[open + 1..close];
+                let parts: Vec<&str> = inner.split(|c: char| c == ',' || c == '/' || c.is_whitespace()).filter(|p| !p.is_empty()).collect();
+                if parts.len() >= 3 {
+                    let comp = |p: &str| -> u8 { let t = p.trim(); if t.ends_with('%') { (t.trim_end_matches('%').parse::<f32>().unwrap_or(0.0) * 2.55).clamp(0.0, 255.0) as u8 } else { t.parse::<f32>().unwrap_or(0.0).clamp(0.0, 255.0) as u8 } };
+                    let r = comp(parts[0]); let g = comp(parts[1]); let b = comp(parts[2]);
+                    let a = parts.get(3).map(|p| { let t = p.trim(); if t.ends_with('%') { t.trim_end_matches('%').parse::<f32>().unwrap_or(100.0) / 100.0 } else { t.parse::<f32>().unwrap_or(1.0) } }).unwrap_or(1.0);
+                    return Color { r, g, b, a: a.clamp(0.0, 1.0) };
+                }
+            }
+        }
+        none
+    }
+    fn parse_named_color(s: &str) -> Option<Color> {
+        let op = |r: u8, g: u8, b: u8| Color { r, g, b, a: 1.0 };
+        Some(match s {
+            "black" => op(0, 0, 0), "white" => op(255, 255, 255), "red" => op(255, 0, 0), "green" => op(0, 128, 0),
+            "lime" => op(0, 255, 0), "blue" => op(0, 0, 255), "yellow" => op(255, 255, 0),
+            "cyan" | "aqua" => op(0, 255, 255), "magenta" | "fuchsia" => op(255, 0, 255),
+            "gray" | "grey" => op(128, 128, 128), "silver" => op(192, 192, 192),
+            "maroon" => op(128, 0, 0), "purple" => op(128, 0, 128), "olive" => op(128, 128, 0),
+            "navy" => op(0, 0, 128), "teal" => op(0, 128, 128), "orange" => op(255, 165, 0),
+            "pink" => op(255, 192, 203), "brown" => op(165, 42, 42), "gold" => op(255, 215, 0),
+            "indigo" => op(75, 0, 130), "violet" => op(238, 130, 238), "crimson" => op(220, 20, 60),
+            "salmon" => op(250, 128, 114), "khaki" => op(240, 230, 140), "coral" => op(255, 127, 80),
+            "tomato" => op(255, 99, 71), "turquoise" => op(64, 224, 208), "lavender" => op(230, 230, 250),
+            "beige" => op(245, 245, 220), "ivory" => op(255, 255, 240), "snow" => op(255, 250, 250),
+            "azure" => op(240, 255, 255), "whitesmoke" => op(245, 245, 245), "gainsboro" => op(220, 220, 220),
+            "aliceblue" => op(240, 248, 255), "lightblue" => op(173, 216, 230), "lightgreen" => op(144, 238, 144),
+            "lightgray" | "lightgrey" => op(211, 211, 211), "darkgray" | "darkgrey" => op(169, 169, 169),
+            "darkred" => op(139, 0, 0), "darkgreen" => op(0, 100, 0), "darkblue" => op(0, 0, 139),
+            "darkorange" => op(255, 140, 0), "dodgerblue" => op(30, 144, 255), "deepskyblue" => op(0, 191, 255),
+            "steelblue" => op(70, 130, 180), "royalblue" => op(65, 105, 225),
+            "slategray" | "slategrey" => op(112, 128, 144), "dimgray" | "dimgrey" => op(105, 105, 105),
+            "firebrick" => op(178, 34, 34), "forestgreen" => op(34, 139, 34), "chocolate" => op(210, 105, 30),
+            "sienna" => op(160, 82, 45), "tan" => op(210, 180, 140), "peru" => op(205, 133, 63),
+            "wheat" => op(245, 222, 179), "plum" => op(221, 160, 221), "orchid" => op(218, 112, 214),
+            "hotpink" => op(255, 105, 180), "deeppink" => op(255, 20, 147), "skyblue" => op(135, 206, 235),
+            "lightskyblue" => op(135, 206, 250), "powderblue" => op(176, 224, 230),
+            "aquamarine" => op(127, 255, 212), "seagreen" => op(46, 139, 87), "palegreen" => op(152, 251, 152),
+            "springgreen" => op(0, 255, 127), "yellowgreen" => op(154, 205, 50),
+            "chartreuse" => op(127, 255, 0), "lawngreen" => op(124, 252, 0), "goldenrod" => op(218, 165, 32),
+            "darkgoldenrod" => op(184, 134, 11), "rosybrown" => op(188, 143, 143), "indianred" => op(205, 92, 92),
+            "lightcoral" => op(240, 128, 128), "mistyrose" => op(255, 228, 225), "peachpuff" => op(255, 218, 185),
+            "lemonchiffon" => op(255, 250, 205), "lightyellow" => op(255, 255, 224),
+            "cornsilk" => op(255, 248, 220), "linen" => op(250, 240, 230), "seashell" => op(255, 245, 238),
+            "honeydew" => op(240, 255, 240), "lightcyan" => op(224, 255, 255), "mediumblue" => op(0, 0, 205),
+            "midnightblue" => op(25, 25, 112), "mediumseagreen" => op(60, 179, 113),
+            "darkseagreen" => op(143, 188, 143), "greenyellow" => op(173, 255, 47),
+            "palegoldenrod" => op(238, 232, 170), "paleturquoise" => op(175, 238, 238),
+            "mediumaquamarine" => op(102, 205, 170), "darkkhaki" => op(189, 183, 107),
+            "lightsteelblue" => op(176, 196, 222), "cadetblue" => op(95, 158, 160),
+            "mediumslateblue" => op(123, 104, 238), "slateblue" => op(106, 90, 205),
+            "darkslateblue" => op(72, 61, 139), "darkslategray" | "darkslategrey" => op(47, 79, 79),
+            "mediumpurple" => op(147, 112, 219), "mediumorchid" => op(186, 85, 211),
+            "darkmagenta" => op(139, 0, 139), "darkviolet" => op(148, 0, 211),
+            "darkorchid" => op(153, 50, 204), "mediumvioletred" => op(199, 21, 133),
+            "palevioletred" => op(219, 112, 147), "lavenderblush" => op(255, 240, 245),
+            "thistle" => op(216, 191, 216), "moccasin" => op(255, 228, 181),
+            "papayawhip" => op(255, 239, 213), "blanchedalmond" => op(255, 235, 205),
+            "bisque" => op(255, 228, 196), "antiquewhite" => op(250, 235, 215),
+            "navajowhite" => op(255, 222, 173), "floralwhite" => op(255, 250, 240),
+            "ghostwhite" => op(248, 248, 255), "mintcream" => op(245, 255, 250),
+            "oldlace" => op(253, 245, 230), _ => return None,
+        })
     }
     fn parse_px(s: &str, default: f32) -> f32 {
         let s = s.trim().trim_end_matches("px").trim_end_matches("em").trim_end_matches("rem");

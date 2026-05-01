@@ -3,6 +3,9 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SplitViewMode { None, Horizontal, Vertical }
 impl Default for SplitViewMode { fn default() -> Self { Self::None } }
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum TabEngine { Servo, Media }
+impl Default for TabEngine { fn default() -> Self { Self::Servo } }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Tab {
     pub id: String,
@@ -18,6 +21,8 @@ pub struct Tab {
     pub panel_group: Option<String>,
     pub is_private: bool,
     pub zoom_level: f64,
+    #[serde(default)]
+    pub engine: TabEngine,
 }
 impl Tab {
     pub fn new(url: &str) -> Self {
@@ -35,6 +40,7 @@ impl Tab {
             panel_group: None,
             is_private: false,
             zoom_level: 1.0,
+            engine: TabEngine::Servo,
         }
     }
     pub fn new_private(url: &str) -> Self {

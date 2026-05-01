@@ -1,7 +1,7 @@
 #[cfg(feature = "servo-engine")]
 use winit::{application::ApplicationHandler, event::WindowEvent, event_loop::{ActiveEventLoop, EventLoop}, window::{Window, WindowId}};
 #[cfg(feature = "servo-engine")]
-use winit::event::{ElementState, MouseButton, KeyEvent};
+use winit::event::{ElementState, KeyEvent};
 #[cfg(feature = "servo-engine")]
 use winit::keyboard::{Key, NamedKey};
 #[cfg(feature = "servo-engine")]
@@ -20,6 +20,8 @@ use crate::engine::layout::LayoutRect;
 use crate::engine::pipeline::{extract_scripts, extract_external_script_urls};
 #[cfg(feature = "servo-engine")]
 use crate::engine::paint::RenderTree;
+#[cfg(feature = "servo-engine")]
+use crate::ui::theme::Theme;
 #[cfg(feature = "servo-engine")]
 struct GpuState {
     surface: wgpu::Surface<'static>,
@@ -43,6 +45,11 @@ struct AmniApp {
     async_rx: Option<std::sync::mpsc::Receiver<String>>,
     cursor_pos: (f64, f64),
     page_html: String,
+    rendered_css: Vec<String>,
+    rendered_vw: f32,
+    pending_reflow: bool,
+    applied_theme_id: String,
+    last_tab_url: String,
 }
 #[cfg(feature = "servo-engine")]
 impl ApplicationHandler for AmniApp {
@@ -87,21 +94,11 @@ impl ApplicationHandler for AmniApp {
                     gpu.config.height = size.height.max(1);
                     gpu.surface.configure(&gpu.device, &gpu.config);
                 }
+                self.pending_reflow = true;
                 window.request_redraw();
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_pos = (position.x, position.y);
-            }
-            WindowEvent::MouseInput { state: ElementState::Pressed, button: MouseButton::Left, .. } => {
-                if !self.state.interactor.current_layouts.is_empty() {
-                    let (cx, cy) = self.cursor_pos;
-                    let scale = window.scale_factor();
-                    let x = (cx / scale) as f32;
-                    let y = (cy / scale) as f32;
-                    if let Some(node_id) = self.state.interactor.dispatch_click(x, y) {
-                        self.state.interactor.focus_node(node_id);
-                    }
-                }
             }
             WindowEvent::KeyboardInput { event: KeyEvent { logical_key, state: ElementState::Pressed, .. }, .. } => {
                 if self.state.interactor.focus_manager.current_focus.is_some() {
@@ -191,6 +188,11 @@ fn apply_to_chrome(chrome: &mut BrowserChrome, resp: Option<IpcResponse>) {
 impl AmniApp {
     fn render(&mut self) {
         if self.window.is_none() || self.gpu.is_none() || self.egui_state.is_none() || self.egui_renderer.is_none() { return; }
+        let active_theme = self.state.themes.active_theme();
+        if self.applied_theme_id != active_theme.id {
+            apply_theme_to_egui(&self.egui_ctx, &active_theme);
+            self.applied_theme_id = active_theme.id.clone();
+        }
         if self.needs_initial_data {
             self.needs_initial_data = false;
             let r1 = self.state.handle_command(crate::net::ipc::IpcMessage::GetTabs);
@@ -201,15 +203,17 @@ impl AmniApp {
             apply_to_chrome(&mut self.chrome, r3);
         }
         self.check_rendered_pages();
+        let active_url = self.state.tabs.active_tab().map(|t| t.url.clone()).unwrap_or_default();
+        if self.last_tab_url != active_url { self.chrome.url_input = active_url.clone(); self.last_tab_url = active_url.clone(); }
         let raw_input = self.egui_state.as_mut().unwrap().take_egui_input(self.window.as_ref().unwrap());
         self.egui_ctx.begin_pass(raw_input);
         self.chrome.handle_keyboard(&self.egui_ctx);
         self.chrome.render(&self.egui_ctx);
-        let active_url = self.state.tabs.active_tab().map(|t| t.url.clone()).unwrap_or_default();
         let stats = self.chrome.stats.clone();
         let bmarks_json = self.chrome.bookmarks_json.clone();
         let mut new_search = self.chrome.search_input.clone();
         let mut content_cmds: Vec<crate::net::ipc::IpcMessage> = Vec::new();
+        let mut pending_click: Option<(f32, f32)> = None;
         let ctx = self.egui_ctx.clone();
         egui::CentralPanel::default().show(&ctx, |ui| {
             if active_url.is_empty() || active_url.starts_with("amnibrowse://newtab") {
@@ -249,9 +253,11 @@ impl AmniApp {
                     let url_clone = active_url.clone();
                     let tx = self.state.async_tx.clone();
                     let notify = self.state.async_notify.clone();
+                    let vw = ui.available_width().max(640.0);
+                    let vh = ui.available_height().max(400.0);
                     tokio::spawn(async move {
                         let mut p = pipe.lock().await;
-                        match p.fetch_and_render(&url_clone, 1280.0, 2048.0).await {
+                        match p.fetch_and_render(&url_clone, vw, vh).await {
                             Ok((page, rendered)) => {
                                 let script_urls = extract_external_script_urls(&page.html);
                                 let base = url::Url::parse(&url_clone).ok();
@@ -273,9 +279,11 @@ impl AmniApp {
                                     .collect();
                                 let resp = serde_json::json!({
                                     "type": "page_painted",
+                                    "reflow": false,
                                     "url": page.url,
                                     "title": page.title,
                                     "html": page.html,
+                                    "css_sources": page.css_sources,
                                     "width": rendered.width,
                                     "height": rendered.height,
                                     "nodes": rendered.node_count,
@@ -294,13 +302,64 @@ impl AmniApp {
                         }
                     });
                 }
+                let cur_vw = ui.available_width().max(640.0);
+                let cur_vh = ui.available_height().max(400.0);
+                let needs_reflow = self.pending_reflow
+                    && self.rendered_url == active_url
+                    && !self.render_pending
+                    && !self.page_html.is_empty()
+                    && self.rendered_vw > 0.0;
+                if needs_reflow {
+                    self.pending_reflow = false;
+                    self.render_pending = true;
+                    let pipe = std::sync::Arc::clone(&self.state.pipeline);
+                    let tx = self.state.async_tx.clone();
+                    let notify = self.state.async_notify.clone();
+                    let html = self.page_html.clone();
+                    let css = self.rendered_css.clone();
+                    let url = self.rendered_url.clone();
+                    tokio::spawn(async move {
+                        let mut p = pipe.lock().await;
+                        let css_refs: Vec<&str> = css.iter().map(|s| s.as_str()).collect();
+                        let rendered = p.render_to_pixels(&html, &css_refs, cur_vw, cur_vh);
+                        let layouts_json: HashMap<String, serde_json::Value> = rendered.layouts.iter()
+                            .map(|(k, r)| (k.to_string(), serde_json::json!({"x": r.x, "y": r.y, "w": r.w, "h": r.h})))
+                            .collect();
+                        let resp = serde_json::json!({
+                            "type": "page_painted",
+                            "reflow": true,
+                            "url": url,
+                            "title": "",
+                            "html": html,
+                            "css_sources": css,
+                            "width": rendered.width,
+                            "height": rendered.height,
+                            "nodes": rendered.node_count,
+                            "commands": rendered.command_count,
+                            "pixels_b64": base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &rendered.pixels
+                            ),
+                            "layouts": layouts_json,
+                        });
+                        if let Some(tx) = tx { tx.send(resp.to_string()).ok(); }
+                        if let Some(n) = notify { n(); }
+                    });
+                }
                 if let Some(tex) = &self.page_texture {
                     let size = tex.size_vec2();
                     let available = ui.available_size();
                     let scale = (available.x / size.x).min(1.0);
                     let display_size = egui::vec2(size.x * scale, size.y * scale);
                     egui::ScrollArea::both().show(ui, |ui| {
-                        ui.image(egui::load::SizedTexture::new(tex.id(), display_size));
+                        let img = egui::Image::from_texture(egui::load::SizedTexture::new(tex.id(), display_size)).sense(egui::Sense::click());
+                        let resp = ui.add(img);
+                        if resp.clicked() {
+                            if let Some(pos) = resp.interact_pointer_pos() {
+                                let rel = pos - resp.rect.min;
+                                pending_click = Some((rel.x / scale, rel.y / scale));
+                            }
+                        }
                     });
                 } else {
                     ui.vertical_centered(|ui| {
@@ -315,6 +374,13 @@ impl AmniApp {
         });
         self.chrome.search_input = new_search;
         for cmd in content_cmds { self.chrome.cmd(cmd); }
+        if let Some((x, y)) = pending_click {
+            if !self.state.interactor.current_layouts.is_empty() {
+                if let Some(node_id) = self.state.interactor.dispatch_click(x, y) {
+                    self.state.interactor.focus_node(node_id);
+                }
+            }
+        }
         let full_output = self.egui_ctx.end_pass();
         let cmds: Vec<crate::net::ipc::IpcMessage> = self.chrome.drain_commands();
         for cmd in cmds {
@@ -340,11 +406,13 @@ impl AmniApp {
         let mut renderer = self.egui_renderer.take().unwrap();
         for (id, delta) in &full_output.textures_delta.set { renderer.update_texture(&gpu.device, &gpu.queue, *id, delta); }
         renderer.update_buffers(&gpu.device, &gpu.queue, &mut encoder, &clipped, &screen_desc);
+        let clear_c = hex_to_color32(&active_theme.bg_primary);
+        let (cr, cg, cb) = (clear_c.r() as f64 / 255.0, clear_c.g() as f64 / 255.0, clear_c.b() as f64 / 255.0);
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("egui_pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &view, resolve_target: None,
-                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.06, g: 0.06, b: 0.09, a: 1.0 }), store: wgpu::StoreOp::Store },
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color { r: cr, g: cg, b: cb, a: 1.0 }), store: wgpu::StoreOp::Store },
             })],
             depth_stencil_attachment: None,
             ..Default::default()
@@ -355,6 +423,7 @@ impl AmniApp {
         self.egui_renderer = Some(renderer);
         gpu.queue.submit([encoder.finish()]);
         frame.present();
+        gpu.device.poll(wgpu::Maintain::Poll);
         window.request_redraw();
     }
 
@@ -377,8 +446,15 @@ impl AmniApp {
             if pixels.len() != (w * h * 4) as usize || w == 0 || h == 0 { continue; }
             let img = egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &pixels);
             self.page_texture = Some(self.egui_ctx.load_texture("page_content", img, egui::TextureOptions::LINEAR));
+            let is_reflow = val["reflow"].as_bool().unwrap_or(false);
             self.rendered_url = url.clone();
+            self.rendered_vw = w as f32;
             self.render_pending = false;
+            if let Some(css_val) = val.get("css_sources") {
+                if let Ok(css) = serde_json::from_value::<Vec<String>>(css_val.clone()) {
+                    self.rendered_css = css;
+                }
+            }
             if !title.is_empty() {
                 self.state.handle_command(crate::net::ipc::IpcMessage::UpdateTitle { title });
             }
@@ -400,11 +476,13 @@ impl AmniApp {
             }
             self.state.interactor.set_page_origin(&url);
             self.page_html = html.clone();
-            let ext_scripts: Vec<String> = val.get("external_scripts")
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .unwrap_or_default();
-            self.run_page_scripts(&html, &ext_scripts);
-            log::info!("Page painted: {}x{} ({})", w, h, url);
+            if !is_reflow {
+                let ext_scripts: Vec<String> = val.get("external_scripts")
+                    .and_then(|v| serde_json::from_value(v.clone()).ok())
+                    .unwrap_or_default();
+                self.run_page_scripts(&html, &ext_scripts);
+            }
+            log::info!("Page painted{}: {}x{} ({})", if is_reflow { " (reflow)" } else { "" }, w, h, url);
         }
     }
 
@@ -431,6 +509,67 @@ impl AmniApp {
     }
 }
 #[cfg(feature = "servo-engine")]
+fn hex_to_color32(hex: &str) -> egui::Color32 {
+    let h = hex.trim().trim_start_matches('#');
+    if h.len() == 6 {
+        let r = u8::from_str_radix(&h[0..2], 16).unwrap_or(0);
+        let g = u8::from_str_radix(&h[2..4], 16).unwrap_or(0);
+        let b = u8::from_str_radix(&h[4..6], 16).unwrap_or(0);
+        egui::Color32::from_rgb(r, g, b)
+    } else if h.len() == 8 {
+        let r = u8::from_str_radix(&h[0..2], 16).unwrap_or(0);
+        let g = u8::from_str_radix(&h[2..4], 16).unwrap_or(0);
+        let b = u8::from_str_radix(&h[4..6], 16).unwrap_or(0);
+        let a = u8::from_str_radix(&h[6..8], 16).unwrap_or(255);
+        egui::Color32::from_rgba_unmultiplied(r, g, b, a)
+    } else {
+        egui::Color32::BLACK
+    }
+}
+#[cfg(feature = "servo-engine")]
+fn apply_theme_to_egui(ctx: &egui::Context, t: &Theme) {
+    let bg_primary = hex_to_color32(&t.bg_primary);
+    let bg_secondary = hex_to_color32(&t.bg_secondary);
+    let bg_tertiary = hex_to_color32(&t.bg_tertiary);
+    let bg_hover = hex_to_color32(&t.bg_hover);
+    let border = hex_to_color32(&t.border);
+    let text_primary = hex_to_color32(&t.text_primary);
+    let text_secondary = hex_to_color32(&t.text_secondary);
+    let accent = hex_to_color32(&t.accent);
+    let is_light = {
+        let luma = 0.2126 * bg_primary.r() as f32 + 0.7152 * bg_primary.g() as f32 + 0.0722 * bg_primary.b() as f32;
+        luma > 150.0
+    };
+    let mut v = if is_light { egui::Visuals::light() } else { egui::Visuals::dark() };
+    v.panel_fill = bg_primary;
+    v.window_fill = bg_secondary;
+    v.window_stroke = egui::Stroke::new(1.0, border);
+    v.extreme_bg_color = bg_secondary;
+    v.faint_bg_color = bg_tertiary;
+    v.hyperlink_color = accent;
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, text_secondary);
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, border);
+    v.widgets.inactive.bg_fill = bg_tertiary;
+    v.widgets.inactive.weak_bg_fill = bg_tertiary;
+    v.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, text_primary);
+    v.widgets.inactive.bg_stroke = egui::Stroke::NONE;
+    v.widgets.hovered.bg_fill = bg_hover;
+    v.widgets.hovered.weak_bg_fill = bg_hover;
+    v.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, text_primary);
+    v.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, accent);
+    v.widgets.active.bg_fill = accent;
+    v.widgets.active.weak_bg_fill = accent;
+    v.widgets.active.fg_stroke = egui::Stroke::new(1.0, bg_primary);
+    v.widgets.active.bg_stroke = egui::Stroke::new(1.0, accent);
+    v.widgets.open.bg_fill = bg_hover;
+    v.widgets.open.weak_bg_fill = bg_hover;
+    v.widgets.open.fg_stroke = egui::Stroke::new(1.0, text_primary);
+    v.widgets.open.bg_stroke = egui::Stroke::new(1.0, border);
+    v.selection.bg_fill = accent.linear_multiply(0.35);
+    v.selection.stroke = egui::Stroke::new(1.0, accent);
+    ctx.set_visuals(v);
+}
+#[cfg(feature = "servo-engine")]
 fn truncate_str(s: &str, max: usize) -> String {
     if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max.min(s.len())]) }
 }
@@ -447,6 +586,11 @@ pub fn run(mut state: BrowserState) {
         async_rx: Some(rx),
         cursor_pos: (0.0, 0.0),
         page_html: String::new(),
+        rendered_css: Vec::new(),
+        rendered_vw: 0.0,
+        pending_reflow: false,
+        applied_theme_id: String::new(),
+        last_tab_url: String::new(),
     };
     log::info!("Amni Browse Servo backend starting...");
     event_loop.run_app(&mut app).expect("event loop failed");

@@ -101,13 +101,12 @@ impl Browser {
                                         error!("Failed to navigate to '{}': {}", nav_url, e);
                                     }
                                 } else {
-                                    let target = if nav_url.starts_with("amnibrowse://") {
-                                        nav_url.clone()
-                                    } else {
-                                        "amnibrowse://newtab/".to_string()
-                                    };
+                                    let raw = if nav_url.starts_with("amnibrowse://") { nav_url.clone() } else { "amnibrowse://newtab/".to_string() };
+                                    let rest = &raw["amnibrowse://".len()..];
+                                    let (host, path) = match rest.find('/') { Some(i) => (&rest[..i], &rest[i..]), None => (rest, "/") };
+                                    let target = format!("http://amnibrowse.{}{}", host, path);
                                     if let Err(e) = webview.load_url(&target) {
-                                        error!("Failed to load internal page '{}': {}", target, e);
+                                        error!("Failed to load internal page '{}' (from '{}'): {}", target, raw, e);
                                     }
                                 }
                                 if nav_url.starts_with("amnibrowse://") {
@@ -136,6 +135,7 @@ fn chrome_init_js() -> String {
         r#"(function(){
 try { if (window.self !== window.top) return; } catch(_) { return; }
 if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+if ((location.hostname || '').indexOf('amnibrowse.') === 0) return;
 function ipc(o){ try { window.ipc && window.ipc.postMessage(JSON.stringify(o)); } catch(_) {} }
 function wireHandlers(host){
     const root = host && host.shadowRoot;

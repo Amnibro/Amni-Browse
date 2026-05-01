@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Amni Chrome</title>
+<style>
+:root{--bg:#0a0e1a;--bg-elev:#141a2a;--bg-active:#1e2538;--stroke:#222a3d;--text:#d6dbe8;--text-dim:#8a92a6;--accent:#00d4ff;--accent-dim:#0089a8;--danger:#ff5577;--radius:10px;--tab-radius:10px 10px 0 0}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text);background:transparent;user-select:none;-webkit-user-select:none;pointer-events:none}
+#shell{height:74px;display:flex;flex-direction:column;background:var(--bg);pointer-events:auto}
+/* ── TAB STRIP ─────────────────────────────── */
+#tabs{display:flex;align-items:flex-end;height:36px;padding:4px 6px 0;gap:2px;background:linear-gradient(to bottom,#06090f 0%,var(--bg) 100%);border-bottom:1px solid var(--stroke)}
+#tab-list{display:flex;align-items:flex-end;gap:2px;flex:1;min-width:0;overflow:hidden}
+.tab{display:flex;align-items:center;gap:6px;min-width:90px;max-width:220px;height:30px;padding:0 10px;border-radius:var(--tab-radius);background:var(--bg-elev);color:var(--text-dim);cursor:default;position:relative;font-size:12px;transition:background .12s,color .12s}
+.tab:hover{background:#1a2132;color:var(--text)}
+.tab.active{background:var(--bg-active);color:var(--text);box-shadow:0 -2px 0 var(--accent) inset}
+.tab .favicon{width:14px;height:14px;flex:0 0 14px;border-radius:3px;background:var(--accent-dim);display:inline-block}
+.tab .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab .close{opacity:0;width:16px;height:16px;line-height:14px;text-align:center;border-radius:50%;font-size:14px;color:var(--text-dim);transition:opacity .12s,background .12s}
+.tab:hover .close,.tab.active .close{opacity:1}
+.tab .close:hover{background:var(--danger);color:#fff}
+.tab .engine-badge{position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:var(--accent);display:none}
+.tab.media .engine-badge{display:block;background:#ff9a3c}
+#new-tab{width:28px;height:28px;border-radius:50%;background:transparent;color:var(--text-dim);border:none;cursor:default;font-size:18px;line-height:26px;text-align:center;margin-left:2px;transition:background .12s,color .12s}
+#new-tab:hover{background:var(--bg-elev);color:var(--text)}
+/* ── NAV BAR ───────────────────────────────── */
+#nav{display:flex;align-items:center;height:36px;padding:0 8px;gap:4px;background:var(--bg);border-bottom:1px solid var(--stroke)}
+.nav-btn{width:28px;height:28px;border-radius:6px;background:transparent;border:none;color:var(--text-dim);cursor:default;font-size:15px;display:inline-flex;align-items:center;justify-content:center;transition:background .12s,color .12s}
+.nav-btn:hover{background:var(--bg-elev);color:var(--text)}
+.nav-btn:active{background:var(--bg-active)}
+.nav-btn.disabled{opacity:.35;pointer-events:none}
+#url-wrap{flex:1;display:flex;align-items:center;height:28px;margin:0 6px;padding:0 10px;background:var(--bg-elev);border:1px solid var(--stroke);border-radius:14px;transition:border-color .12s,background .12s}
+#url-wrap:hover{background:#1a2132}
+#url-wrap.focused{border-color:var(--accent);background:#10172b}
+#lock{color:#3ccf8e;font-size:11px;margin-right:8px}
+#url{flex:1;background:transparent;border:none;outline:none;color:var(--text);font:13px inherit;letter-spacing:.1px}
+#url::placeholder{color:var(--text-dim)}
+#url-actions{display:flex;gap:2px}
+#zoom-level{min-width:40px;text-align:center;font-size:11px;color:var(--text-dim);cursor:default;padding:0 4px}
+#zoom-level:hover{color:var(--text)}
+/* ── PROGRESS ──────────────────────────────── */
+#progress{height:2px;background:transparent;position:relative;overflow:hidden}
+#progress-bar{position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));transition:width .2s ease-out,opacity .3s}
+#progress.loading #progress-bar{opacity:1}
+#progress:not(.loading) #progress-bar{opacity:0}
+/* ── ICONS (text glyphs — swap for SVG later) */
+.ico{font-family:"Segoe UI Symbol",-apple-system,sans-serif;font-weight:400}
+</style>
+</head>
+<body>
+<div id="shell">
+  <div id="tabs">
+    <div id="tab-list"><div class="tab active" data-id="t0"><span class="favicon"></span><span class="title">Amni Browse</span><span class="close ico">&#215;</span><span class="engine-badge"></span></div></div>
+    <button id="new-tab" class="ico" title="New tab">+</button>
+  </div>
+  <div id="nav">
+    <button class="nav-btn ico" id="back" title="Back">&#8592;</button>
+    <button class="nav-btn ico" id="forward" title="Forward">&#8594;</button>
+    <button class="nav-btn ico" id="reload" title="Reload">&#8635;</button>
+    <div id="url-wrap">
+      <span id="lock" class="ico">&#9673;</span>
+      <input id="url" type="text" spellcheck="false" autocomplete="off" placeholder="Search or enter URL&#8230;" value="https://duckduckgo.com/">
+      <div id="url-actions">
+        <button class="nav-btn ico" id="bookmark" title="Bookmark (Ctrl+D)">&#9734;</button>
+      </div>
+    </div>
+    <button class="nav-btn ico" id="zoom-out" title="Zoom out (Ctrl+-)">&#8722;</button>
+    <span id="zoom-level" title="Reset zoom (Ctrl+0)">100%</span>
+    <button class="nav-btn ico" id="zoom-in" title="Zoom in (Ctrl+=)">&#43;</button>
+    <button class="nav-btn ico" id="shield" title="Privacy shield">&#9960;</button>
+    <button class="nav-btn ico" id="menu" title="Menu">&#9776;</button>
+  </div>
+  <div id="progress"><div id="progress-bar"></div></div>
+</div>
+<script>
+(function(){
+  const $=s=>document.querySelector(s);
+  const url=$('#url'),wrap=$('#url-wrap'),bar=$('#progress-bar'),prog=$('#progress'),tabList=$('#tab-list'),back=$('#back'),forward=$('#forward'),zoomLevel=$('#zoom-level');
+  function cmd(name,args){const q=args?'?'+new URLSearchParams(args).toString():'';fetch('amnibrowse://cmd/'+name+q,{mode:'no-cors'}).catch(()=>{});}
+  function setProgress(loading){loading?prog.classList.add('loading'):prog.classList.remove('loading');loading?bar.style.width='70%':bar.style.width='0%';}
+  function setUrl(v){if(document.activeElement!==url&&url.value!==v)url.value=v;}
+  function setNavDisabled(b,f){back.classList.toggle('disabled',!b);forward.classList.toggle('disabled',!f);}
+  function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function renderTabs(tabs){const html=tabs.map(t=>`<div class="tab ${t.active?'active':''} ${t.engine==='media'?'media':''}" data-id="${esc(t.id)}"><span class="favicon"></span><span class="title">${esc(t.title||'New Tab')}</span><span class="close ico">&#215;</span><span class="engine-badge"></span></div>`).join('');if(tabList.innerHTML!==html)tabList.innerHTML=html;}
+  function setZoom(z){const pct=Math.round((z||1)*100);if(zoomLevel.textContent!==pct+'%')zoomLevel.textContent=pct+'%';zoomLevel.style.color=(pct===100)?'var(--text-dim)':'var(--accent)';}
+  function applyState(s){setUrl(s.url||'');setProgress(!!s.loading);setNavDisabled(!!s.canBack,!!s.canForward);renderTabs(s.tabs||[]);setZoom(s.zoom);}
+  async function poll(){try{const r=await fetch('amnibrowse://state',{cache:'no-store'});if(!r.ok)return;applyState(await r.json());}catch(e){}}
+  url.addEventListener('focus',()=>{wrap.classList.add('focused');url.select();});
+  url.addEventListener('blur',()=>wrap.classList.remove('focused'));
+  url.addEventListener('keydown',e=>{if(e.key==='Enter'){cmd('navigate',{url:url.value});url.blur();}if(e.key==='Escape')url.blur();});
+  const buttons={'back':'back','forward':'forward','reload':'reload','bookmark':'bookmark','shield':'shield','menu':'menu','new-tab':'new_tab','zoom-in':'zoom_in','zoom-out':'zoom_out'};
+  Object.entries(buttons).forEach(([id,c])=>{const el=$('#'+id);el&&el.addEventListener('click',()=>cmd(c));});
+  zoomLevel.addEventListener('click',()=>cmd('zoom_reset'));
+  tabList.addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;if(e.target.classList.contains('close')){cmd('close_tab',{id:t.dataset.id});e.stopPropagation();}else{cmd('switch_tab',{id:t.dataset.id});}});
+  tabList.addEventListener('auxclick',e=>{if(e.button!==1)return;const t=e.target.closest('.tab');if(t){cmd('close_tab',{id:t.dataset.id});e.preventDefault();}});
+  window.__amni={setProgress,setUrl};
+  poll();setInterval(poll,250);
+})();
+</script>
+</body>
+</html>

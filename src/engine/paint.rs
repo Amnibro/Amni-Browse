@@ -64,25 +64,31 @@ impl RenderTree {
     pub fn build_from_dom(handle: &Handle, sheets: &[super::style::StyleSheet], counter: &mut usize) -> Self {
         let mut tree = Self::new();
         tree.root_id = *counter;
-        Self::walk(handle, sheets, counter, &mut tree);
+        Self::walk(handle, sheets, counter, &mut tree, false, None);
         tree
     }
 
-    fn walk(handle: &Handle, sheets: &[super::style::StyleSheet], counter: &mut usize, tree: &mut RenderTree) {
+    fn walk(handle: &Handle, sheets: &[super::style::StyleSheet], counter: &mut usize, tree: &mut RenderTree, hidden: bool, parent_cs: Option<&ComputedStyle>) {
         let my_id = *counter;
         *counter += 1;
         let mut cs = ComputedStyle::default();
-        cs.font_size = 16.0;
-        cs.line_height = 1.2;
+        cs.font_size = parent_cs.map(|p| p.font_size).unwrap_or(16.0);
+        cs.line_height = parent_cs.map(|p| p.line_height).unwrap_or(1.2);
+        cs.color = parent_cs.map(|p| p.color.clone()).unwrap_or(super::style::Color { r: 0, g: 0, b: 0, a: 1.0 });
         cs.opacity = 1.0;
         cs.flex_shrink = 1.0;
         let mut tag = String::new();
         let mut text = String::new();
         let mut image_src = String::new();
         let mut iframe_src = String::new();
+        let mut child_hidden = hidden;
         match &handle.data {
             NodeData::Element { name, attrs, .. } => {
                 tag = name.local.to_string();
+                if is_non_renderable_tag(&tag) {
+                    child_hidden = true;
+                    cs.display = super::style::Display::None;
+                }
                 let attrs_map: HashMap<String, String> = attrs.borrow().iter()
                     .map(|a| (a.name.local.to_string(), a.value.to_string())).collect();
                 let id_attr = attrs_map.get("id").cloned().unwrap_or_default();
@@ -103,17 +109,23 @@ impl RenderTree {
                 if tag == "iframe" { iframe_src = attrs_map.get("src").cloned().unwrap_or_default(); }
                 apply_tag_defaults(&tag, &mut cs);
             }
-            NodeData::Text { contents } => { text = contents.borrow().trim().to_string(); }
+            NodeData::Text { contents } => {
+                if !hidden { text = contents.borrow().trim().to_string(); }
+            }
             _ => {}
         }
         let mut child_ids = Vec::new();
         for child in handle.children.borrow().iter() {
             let child_id = *counter;
-            Self::walk(child, sheets, counter, tree);
+            Self::walk(child, sheets, counter, tree, child_hidden, Some(&cs));
             child_ids.push(child_id);
         }
         tree.nodes.insert(my_id, RenderNode { id: my_id, tag, text, image_src, iframe_src, style: cs, children: child_ids });
     }
+}
+
+fn is_non_renderable_tag(tag: &str) -> bool {
+    matches!(tag, "head" | "style" | "script" | "meta" | "link" | "title" | "noscript" | "template" | "base")
 }
 
 fn apply_tag_defaults(tag: &str, cs: &mut ComputedStyle) {

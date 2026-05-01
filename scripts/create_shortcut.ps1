@@ -19,8 +19,8 @@ $sc.Arguments = "/c `"`"$runBat`"`""
 $sc.WorkingDirectory = $projDir
 $sc.Description = "Amni Browse - Privacy-First Web Browser (auto-rebuilds on launch)"
 if (Test-Path $iconPath) { $sc.IconLocation = "$iconPath,0" }
-$sc.WindowStyle = 7
+$sc.WindowStyle = 1
 $sc.Save()
 Write-Host "Desktop shortcut created: $shortcutPath"
 Write-Host "Launcher: $runBat (runs 'cargo build --release' then starts exe)"
-Write-Host "Window style: Minimized (build console hidden after launch)"
+Write-Host "Window style: Normal (visible build console so errors are legible)"
