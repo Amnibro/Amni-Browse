@@ -1,3 +1,5 @@
+****HEAVILY WORK IN PROGRESS****
+
 # Amni Browse v0.7.0
 
 **A privacy-first, zero-telemetry web browser built from the ground up in Rust.**
