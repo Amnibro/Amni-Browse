@@ -3,27 +3,32 @@ use serde::{Deserialize, Serialize};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 use wry::WebView;
+use crate::engine::drm_fallback::is_drm_required;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EngineKind { Servo, Media }
 impl Default for EngineKind { fn default() -> Self { Self::Servo } }
-pub const MEDIA_PATTERNS: &[&str] = &[
-    "youtube.com/watch", "youtu.be/", "youtube.com/embed", "m.youtube.com/watch", "music.youtube.com",
+pub const MSE_PATTERNS: &[&str] = &[
+    "youtube.com/watch", "youtu.be/", "youtube.com/embed", "m.youtube.com/watch", "music.youtube.com", "youtube.com/shorts", "www.youtube.com/",
     "twitch.tv/", "clips.twitch.tv/",
     "vimeo.com/", "player.vimeo.com/", "dailymotion.com/video",
-    "netflix.com/watch", "netflix.com/title",
-    "hulu.com/watch", "hbomax.com/", "max.com/video", "disneyplus.com/video", "peacocktv.com/watch",
-    "primevideo.com/", "amazon.com/gp/video", "paramountplus.com/video",
-    "crunchyroll.com/watch", "funimation.com/v/",
-    "appletv.apple.com/", "tv.apple.com/",
-    "open.spotify.com/embed", "tidal.com/browse", "soundcloud.com/",
-    "discoveryplus.com/video", "espnplus.com/",
+    "soundcloud.com/",
 ];
+pub const MEDIA_PATTERNS: &[&str] = MSE_PATTERNS;
+pub fn is_embed_url(url: &str) -> bool {
+    let lower = url.to_lowercase();
+    lower.contains("/embed/") || lower.contains("/embed?") || lower.contains("youtube.com/embed")
+}
 pub fn route(url: &str) -> EngineKind {
     let lower = url.to_lowercase();
-    MEDIA_PATTERNS.iter().any(|p| lower.contains(p)).then_some(EngineKind::Media).unwrap_or(EngineKind::Servo)
+    let mse = MSE_PATTERNS.iter().any(|p| lower.contains(p));
+    let drm = is_drm_required(url);
+    (mse || drm).then_some(EngineKind::Media).unwrap_or(EngineKind::Servo)
+}
+pub fn wants_media_window(url: &str) -> bool {
+    route(url) == EngineKind::Media && !is_embed_url(url)
 }
 pub struct MediaWindow { pub window: Window, pub webview: WebView, pub url: String }
-const MEDIA_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 AmniBrowse/0.9";
+const MEDIA_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 AmniBrowse/0.10";
 pub fn spawn_media_window(event_loop: &ActiveEventLoop, url: &str) -> Option<(WindowId, MediaWindow)> {
     configure_privacy_env();
     let attrs = Window::default_attributes()
@@ -40,7 +45,7 @@ pub fn spawn_media_window(event_loop: &ActiveEventLoop, url: &str) -> Option<(Wi
         Ok(w) => w,
         Err(e) => { warn!("media_engine: webview build failed: {}", e); return None; }
     };
-    info!("media_engine: spawned media window {:?} for {}", id, url);
+    info!("media_engine: spawned media window {:?} for {} via {}", id, url, platform_label());
     Some((id, MediaWindow { window, webview, url: url.into() }))
 }
 fn display_title(url: &str) -> String {
@@ -91,4 +96,36 @@ pub fn platform_label() -> &'static str {
     else if cfg!(target_os = "macos") { "WKWebView (Safari/WebKit)" }
     else if cfg!(target_os = "linux") { "WebKitGTK" }
     else { "wry (generic)" }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn servo_for_normal_sites() {
+        assert_eq!(route("https://duckduckgo.com/"), EngineKind::Servo);
+        assert_eq!(route("https://en.wikipedia.org/wiki/Rust"), EngineKind::Servo);
+        assert_eq!(route("https://github.com/servo/servo"), EngineKind::Servo);
+        assert_eq!(route("https://amni-scient.com/"), EngineKind::Servo);
+    }
+    #[test]
+    fn media_for_drm_domains() {
+        assert_eq!(route("https://www.netflix.com/"), EngineKind::Media);
+        assert_eq!(route("https://www.netflix.com/watch/80057281"), EngineKind::Media);
+        assert_eq!(route("https://www.disneyplus.com/video/abc"), EngineKind::Media);
+        assert_eq!(route("https://play.max.com/video/xyz"), EngineKind::Media);
+        assert_eq!(route("https://www.spotify.com/"), EngineKind::Media);
+    }
+    #[test]
+    fn media_for_mse_streams() {
+        assert_eq!(route("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), EngineKind::Media);
+        assert_eq!(route("https://youtu.be/dQw4w9WgXcQ"), EngineKind::Media);
+        assert_eq!(route("https://www.twitch.tv/somechannel"), EngineKind::Media);
+    }
+    #[test]
+    fn embed_urls_do_not_spawn_window() {
+        assert!(is_embed_url("https://www.youtube.com/embed/xyz"));
+        assert!(!wants_media_window("https://www.youtube.com/embed/xyz"));
+        assert!(wants_media_window("https://www.youtube.com/watch?v=xyz"));
+        assert!(wants_media_window("https://www.netflix.com/browse"));
+    }
 }

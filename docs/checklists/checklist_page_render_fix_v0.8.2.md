@@ -23,7 +23,7 @@
 - [x] Edit src/platform/servo.rs — `gpu.device.poll(wgpu::Maintain::Poll)` after `queue.submit` + `frame.present`
 - [x] Update ARCHITECTURE.md with v0.8.2 header
 - [x] Update CHANGELOG.md with v0.8.2 entry
-- [x] the maintainer: `cargo run --no-default-features --features servo-engine` — pastes result
+- [x] maintainer: `cargo run --no-default-features --features servo-engine` — pastes result
 - [x] Verify URL bar shows active tab URL after tab switch (WORKING)
 - [~] Verify page renders with content — page sized correctly but text invisible; root cause: default `Color.a = 0.0`. Fix shipped in v0.8.2.1.
 - [~] Verify terminal is quiet — `Maintain::Poll` alone insufficient; `wgpu_core` INFO log filter needed. Fix shipped in v0.8.2.1.
@@ -50,7 +50,7 @@
 - [x] Apply patch via Python script (Edit tool truncated on CRLF-heavy replacement); style.rs now 592 lines
 - [x] Update ARCHITECTURE.md with v0.8.2.2 header
 - [x] Update CHANGELOG.md with v0.8.2.2 entry
-- [ ] the maintainer: re-run `cargo run --no-default-features --features servo-engine`
+- [ ] maintainer: re-run `cargo run --no-default-features --features servo-engine`
 - [ ] Verify DuckDuckGo text is visible on rendered page
 - [ ] Verify terminal is quiet (no `Device::maintain` spam)
 

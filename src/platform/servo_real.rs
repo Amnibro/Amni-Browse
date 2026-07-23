@@ -104,13 +104,25 @@ impl AppState {
             "navigate" => {
                 let raw = args.get("url").cloned().unwrap_or_default();
                 match resolve_navigate_input(&raw) {
-                    Some(u) => { if let Some(c) = self.active_content() { info!("cmd navigate \u{2192} {}", u); c.load(u); } }
+                    Some(u) => {
+                        let us = u.as_str().to_string();
+                        match media_engine::wants_media_window(&us) {
+                            true => { info!("cmd navigate \u{2192} media engine: {}", us); self.pending_media_urls.borrow_mut().push(us); }
+                            false => { if let Some(c) = self.active_content() { info!("cmd navigate \u{2192} {}", u); c.load(u); } }
+                        }
+                    }
                     None => info!("cmd navigate: empty/invalid input"),
                 }
             }
             "new_tab" => {
                 let raw = args.get("url").cloned().unwrap_or_else(|| "https://duckduckgo.com".into());
                 let start = Url::parse(&raw).unwrap_or_else(|_| Url::parse("https://duckduckgo.com").unwrap());
+                let us = start.as_str().to_string();
+                if media_engine::wants_media_window(&us) {
+                    info!("cmd new_tab \u{2192} media engine: {}", us);
+                    self.pending_media_urls.borrow_mut().push(us);
+                    return;
+                }
                 let wv = self.spawn_content_webview(start);
                 let mut tabs = self.content_webviews.borrow_mut();
                 tabs.push(wv);
@@ -121,6 +133,12 @@ impl AppState {
             }
             "reopen_tab" => {
                 let Some(url) = self.closed_tabs.borrow_mut().pop() else { info!("cmd reopen_tab: stack empty"); return };
+                let us = url.as_str().to_string();
+                if media_engine::wants_media_window(&us) {
+                    info!("cmd reopen_tab \u{2192} media engine: {}", us);
+                    self.pending_media_urls.borrow_mut().push(us);
+                    return;
+                }
                 let wv = self.spawn_content_webview(url.clone());
                 let mut tabs = self.content_webviews.borrow_mut();
                 tabs.push(wv);
@@ -148,12 +166,29 @@ impl AppState {
             "stop" => { if let Some(c) = self.active_content() { c.reload(); info!("cmd stop (reload as proxy)"); } }
             "switch_tab" => {
                 let Some(id) = args.get("id") else { return };
+                if let Some(midx) = id.strip_prefix('m').and_then(|s| s.parse::<usize>().ok()) {
+                    let media = self.media_windows.borrow();
+                    if let Some((_wid, mw)) = media.iter().nth(midx) {
+                        mw.window.focus_window();
+                        info!("cmd switch_tab \u{2192} media m{}", midx);
+                    }
+                    return;
+                }
                 let Some(idx) = Self::parse_tab_index(id) else { return };
                 let len = self.content_webviews.borrow().len();
                 if idx < len { self.active_content_index.set(idx); info!("cmd switch_tab \u{2192} idx {}", idx); self.window.request_redraw(); }
             }
             "close_tab" => {
                 let Some(id) = args.get("id") else { return };
+                if let Some(midx) = id.strip_prefix('m').and_then(|s| s.parse::<usize>().ok()) {
+                    let mut media = self.media_windows.borrow_mut();
+                    let key = media.keys().nth(midx).copied();
+                    if let Some(wid) = key {
+                        media.remove(&wid);
+                        info!("cmd close_tab \u{2192} media m{}", midx);
+                    }
+                    return;
+                }
                 let Some(idx) = Self::parse_tab_index(id) else { return };
                 let mut tabs = self.content_webviews.borrow_mut();
                 if idx >= tabs.len() || tabs.len() <= 1 { info!("cmd close_tab: refusing (idx {} of {})", idx, tabs.len()); return; }
@@ -173,7 +208,14 @@ impl AppState {
                 self.window.request_redraw();
             }
             "bookmark" => info!("cmd bookmark (stub)"),
-            "menu" => info!("cmd menu (stub)"),
+            "menu" => {
+                let about_html = concat!("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Amni Browse \u{2014} About</title><style>body{font:15px/1.55 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:#1c2434;background:#f7f9fc}h1{color:#0a0e1a;margin:0 0 4px}.tag{color:#5b6b80;font-size:13px;margin:0 0 24px}h2{color:#0089a8;font-size:14px;text-transform:uppercase;letter-spacing:1.5px;margin:28px 0 10px}kbd{background:#eef2f8;border:1px solid #cdd6e4;border-radius:4px;padding:2px 6px;font-family:'JetBrains Mono','Cascadia Code',monospace;font-size:13px;color:#1c2434}ul{padding-left:20px;margin:0 0 12px}li{margin:4px 0}.k{color:#5b6b80}a{color:#00708d}.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e1e7f0}.row:last-child{border-bottom:0}.row b{color:#0a0e1a}</style></head><body><h1>Amni Browse v", env!("CARGO_PKG_VERSION"), "</h1><p class='tag'>By <a href='https://amni-scient.com'>Amni-Scient</a> \u{2014} Privacy-first browser. Zero telemetry. Solo-built.</p><h2>Backend</h2><div class='row'><span>Engine</span><b>Real Servo (libservo)</b></div><div class='row'><span>Compositor</span><b>Offscreen-FB content blit</b></div><div class='row'><span>Privacy</span><b>Ad-block + tracker-block ON</b></div><div class='row'><span>Telemetry</span><b>Disabled</b></div><h2>Keyboard shortcuts</h2><ul><li><kbd>Ctrl</kbd>+<kbd>=</kbd> / <kbd>-</kbd> / <kbd>0</kbd> \u{2014} <span class='k'>Zoom in / out / reset</span></li><li><kbd>Ctrl</kbd>+<kbd>1</kbd>\u{2026}<kbd>8</kbd> \u{2014} <span class='k'>Switch to tab N</span> ; <kbd>Ctrl</kbd>+<kbd>9</kbd> \u{2014} <span class='k'>last tab</span></li><li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> \u{2014} <span class='k'>Reopen closed tab</span></li><li><kbd>F11</kbd> \u{2014} <span class='k'>Toggle fullscreen</span> ; <kbd>Esc</kbd> \u{2014} <span class='k'>Exit fullscreen</span></li></ul><h2>About</h2><p>This is the placeholder menu page \u{2014} a settings panel UI is on the roadmap. For now this confirms the menu button is wired through to the embedder.</p></body></html>");
+                let url_str = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(about_html));
+                match Url::parse(&url_str) {
+                    Ok(parsed) => { if let Some(c) = self.active_content() { c.load(parsed); info!("cmd menu \u{2192} about page"); } }
+                    Err(e) => info!("cmd menu: failed to build about-data-url ({})", e),
+                }
+            }
             other => info!("cmd unknown: {}", other),
         }
     }
@@ -209,11 +251,12 @@ impl AppState {
                 "engine": "servo",
             })
         }).collect();
-        let media_tabs: Vec<serde_json::Value> = self.media_windows.borrow().iter().enumerate().map(|(i, (_wid, _mw))| {
+        let media_tabs: Vec<serde_json::Value> = self.media_windows.borrow().iter().enumerate().map(|(i, (_wid, mw))| {
+            let host = url::Url::parse(&mw.url).ok().and_then(|u| u.host_str().map(|h| h.to_string())).unwrap_or_else(|| "Media".into());
             serde_json::json!({
                 "id": format!("m{}", i),
-                "url": "",
-                "title": "Media",
+                "url": mw.url,
+                "title": format!("\u{25B6} {}", host),
                 "active": false,
                 "loading": false,
                 "engine": "media",
@@ -343,10 +386,7 @@ impl WebViewDelegate for AppState {
     }
     fn request_navigation(&self, _webview: WebView, req: NavigationRequest) {
         let url = req.url.as_str().to_string();
-        let lower = url.to_lowercase();
-        let is_embed = lower.contains("/embed/") || lower.contains("/embed?") || lower.contains("player.") || lower.contains("/player/");
-        let is_media = media_engine::route(&url) == EngineKind::Media && !is_embed;
-        match is_media {
+        match media_engine::wants_media_window(&url) {
             true => { info!("nav \u{2192} media engine: {}", url); self.pending_media_urls.borrow_mut().push(url); req.deny(); }
             false => req.allow(),
         }
@@ -360,7 +400,14 @@ fn drain_pending_media(event_loop: &winit::event_loop::ActiveEventLoop, state: &
         }
     }
 }
+static LAST_MISMATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn paint_and_present(state: &AppState) {
+    let win_now = state.window_size();
+    let ctx_now = state.rendering_context.size();
+    let key = ((win_now.width as u64) << 32) | win_now.height as u64;
+    if (ctx_now.width, ctx_now.height) != (win_now.width, win_now.height) && LAST_MISMATCH.swap(key, std::sync::atomic::Ordering::Relaxed) != key {
+        info!("paint mismatch: ctx {}x{} vs win {}x{}", ctx_now.width, ctx_now.height, win_now.width, win_now.height);
+    }
     let chrome_opt = state.chrome_webview.borrow().clone();
     let content_opt = state.active_content();
     if let Some(chrome) = chrome_opt.as_ref() { chrome.paint(); }
@@ -380,12 +427,13 @@ fn paint_and_present(state: &AppState) {
     state.rendering_context.present();
 }
 fn resize_all(state: &AppState, new_size: PhysicalSize<u32>) {
-    state.rendering_context.resize(new_size);
+    info!("resize_all \u{2192} {}x{}", new_size.width, new_size.height);
+    let _ = state.rendering_context.make_current();
     let chrome_px = state.chrome_px();
     let content = content_size(new_size, chrome_px);
-    state.offscreen_context.resize(content);
     if let Some(chrome) = state.chrome_webview.borrow().as_ref() { chrome.resize(new_size); }
     for c in state.content_webviews.borrow().iter() { c.resize(content); }
+    state.window.request_redraw();
 }
 enum App { Initial(Waker, Arc<Mutex<AdBlocker>>, Vec<(String, EngineKind)>), Running(Rc<AppState>) }
 impl App {

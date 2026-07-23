@@ -1,4 +1,13 @@
 # Amni-Browse Architecture Map
+## v0.10.2 — Hybrid routing hardened (2026-07-21)
+Servo remains the **default** engine. Chromium (WebView2 via wry) is an escape hatch only:
+- **When Media:** `media_engine::route(url)` returns `Media` if URL matches MSE stream patterns (YouTube/Twitch/Vimeo/…) **or** `drm_fallback::is_drm_required` (Netflix, Disney+, Max, Spotify, …).
+- **When Servo:** everything else (search, docs, blogs, GitHub, Amni sites).
+- **Entry points that must agree:** `request_navigation` (link clicks), URL-bar `navigate`, `new_tab`, `reopen_tab`, session restore. All use `wants_media_window` (route ∧ ¬embed).
+- **Embed policy:** iframe-style `/embed/` URLs stay on Servo (no extra media window); top-level media URLs always spawn Media.
+- **Chrome strip:** media windows appear as `mN` tabs with host titles; switch focuses window; close removes it.
+- **Build path:** `run.bat` / `run-fast.bat` → `--features servo-real`. Default Cargo feature remains `webview` for light dependency trees without GStreamer.
+
 ## v0.10.0-pre — Servo-Rendered Chrome (2026-04-19)
 Browser chrome (tab strip, nav bar, URL input, progress) is now rendered *by Servo itself* via a second `WebView` loaded from `assets/chrome/toolbar.html`. The old egui chrome (referenced throughout this doc below) is superseded on the `servo-real` backend. Composition uses a child `OffscreenRenderingContext` for content; per-frame order: chrome.paint() → content.paint() → `offscreen.render_to_parent_callback()` (Servo-provided `glBlitFramebuffer`) onto the main `WindowRenderingContext` at `Rect(0, chrome_px, w, h - chrome_px)` → present. Input routes by pointer y: chrome strip (first 74 CSS px) → chrome webview; below → content webview with y translated. Sections below referring to `ui/chrome.rs` describe the v0.9.x-and-earlier egui chrome, which still compiles on the `servo-engine` (custom engine) backend but is bypassed on `servo-real`.
 ## v0.9.0 — Hybrid Media Engine (2026-04-18)

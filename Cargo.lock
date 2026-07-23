@@ -185,7 +185,7 @@ dependencies = [
 
 [[package]]
 name = "amni-browse"
-version = "0.7.0"
+version = "0.10.2"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

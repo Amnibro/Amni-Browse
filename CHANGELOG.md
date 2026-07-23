@@ -1,11 +1,34 @@
 # Changelog
 
+## v0.10.3 — 2026-07-22
+### Window resize finally works (never had, since v0.10.0)
+- **Bug:** stretching the window left chrome, content, and GL surface frozen at launch size with white void beyond — reproduced via Win32 `MoveWindow` probe + screenshots.
+- **Root cause:** Servo's `Painter::resize_rendering_context` (paint/painter.rs:1272, rev 68ca280) early-returns when `rendering_context.size() == new_size`. Our `resize_all` resized `rendering_context` + `offscreen_context` directly *before* calling `WebView::resize`, so the painter saw sizes already matching and skipped the entire viewport-rect/WebRender-document/relayout/repaint chain.
+- **Fix:** deleted the manual context resizes; `chrome.resize(window)` + `content.resize(content_area)` now drive Servo's full resize path, same as servoshell. Verified by probe: content reflows and fills 1560×980.
+- **Diagnostics kept:** `resize_all` entry log + paint-time ctx-vs-window mismatch detector (one log per size change).
+- **Known-limitation notes:** rendering glitches on complex sites (speedtest.net) and general speed are Servo-engine-level at rev 68ca280 (`position: fixed` falls back to static in the taffy path; perf gap vs Chromium is engine maturity, build already opt-level 3 + fat LTO). Next lever: bump the Servo pin to current main.
+
+## v0.10.2 — 2026-07-21
+### Servo-primary hybrid routing hardened (Chromium only when required)
+- **Bug:** URL-bar `navigate` / `new_tab` / `reopen_tab` always loaded into Servo via `WebView::load`, bypassing the media engine. Netflix/YouTube typed in the address bar never opened WebView2.
+- **Fix:** `execute_command` now uses `media_engine::wants_media_window(url)` and queues `pending_media_urls` (same path as link navigation).
+- **Bug:** `MEDIA_PATTERNS` only matched path suffixes like `netflix.com/watch`, so browse/login URLs stayed on Servo while `drm_fallback` already knew full DRM domains.
+- **Fix:** `route()` = MSE patterns ∪ `drm_fallback::is_drm_required()` so Netflix, Disney+, Max, Spotify, etc. always leave Servo; normal sites (DDG, Wikipedia, GitHub) stay Servo.
+- **Bug:** embed filter used `player.` / `/player/` and blocked legitimate top-level media hosts (e.g. `player.vimeo.com`).
+- **Fix:** `is_embed_url` only treats `/embed/` (and youtube embed) as non-window; avoids double-spawn for iframes without starving real media tabs.
+- **Bug:** chrome state listed media tabs as empty URL/`Media` title; `close_tab`/`switch_tab` ignored `mN` ids.
+- **Fix:** state JSON carries media URL + host title; switch focuses media window; close drops media window entry.
+- **Tests:** `media_engine` unit tests lock Servo-vs-Media classification.
+- **Docs:** checklist + guardian council under `docs/checklists|guardian_councils/*v0.10.2*`.
+- **Build env (2026-07-22):** release rebuild had been blocked because only the GStreamer *runtime* MSI was installed — no `lib\pkgconfig`, so `gobject-sys`/`gio-sys` failed. Fixed by administrative extract (`msiexec /a`, no elevation) of `gstreamer-1.0-devel-msvc-x86_64-1.26.11.msi` to `C:\gstreamer\1.0\msvc_x86_64` (a path `scripts/install_build_deps.ps1` already recognizes; `.pc` files are `pcfiledir`-relative so no prefix patching). Runtime DLLs still load from `C:\Program Files\gstreamer` (same 1.26.11). 131/131 tests pass; exe rebuilt + launch-verified (DDG on Servo, title sync OK).
+- **Version:** `Cargo.toml` bumped 0.7.0 → 0.10.2; About page now renders `env!("CARGO_PKG_VERSION")` instead of a hardcoded string.
+
 ## v0.10.1 — 2026-05-01
 ### Chrome strip no longer paints over content (the "big black section" bug)
 - **Root cause** — Servo's `OffscreenRenderingContext::render_to_parent_callback` (in `components/shared/paint/rendering_context.rs`) does a scissored `gl.clear()` *before* binding the target framebuffer. After `content.paint()` the offscreen FB is the currently-bound DRAW target, so the clear scissor corrupts pixels in the *source* FB at the same `target_rect` region. The subsequent `glBlitFramebuffer` then reads those just-cleared (black) pixels and writes them to the on-screen FB. Symptom on the maintainer's machine: a giant black band below the chrome strip regardless of which page was loaded; earlier attempts to shift `target_rect.y` only changed which slice of the source got corrupted (partial DDG visible at `y=chrome_px`, full wipe at `y=0`).
 - **Fix (Rust)** — `paint_and_present` now calls `state.rendering_context.prepare_for_rendering()` before invoking the blit callback. That re-binds the rendering-context FB as DRAW, so Servo's internal clear hits the target instead of trampling the source. With that in place, `target_rect = (0, 0, W, content_h)` puts the blit cleanly below the chrome strip in GL coords (= window y=chrome_px..H after WR's flip-projection).
 - **Fix (HTML/CSS)** — `assets/chrome/toolbar.html`: `body` is now `background: transparent; pointer-events: none`, and `#shell` is `height: 74px; pointer-events: auto`. Servo doesn't support `position: fixed` yet, so the static-flow fallback puts `#shell` at body top, which after WR's flip-projection lands at window-top — exactly where we want the chrome strip. Body's transparent fill + `pointer-events:none` lets the content blit show through below the strip and lets clicks fall through to the content webview, which also kills the `Empty hit test result for input event, ignoring` flood from prior versions.
-- **Verified** — DDG homepage and example.com both render fully (search box, headline, cards, CTAs); chrome strip stays at top across navigation; tab title and URL bar update correctly; no black band; hit-test warnings near zero.
+- **Verified** — DDG homepage and amni-scient.com both render fully (search box, headline, cards, CTAs); chrome strip stays at top across navigation; tab title and URL bar update correctly; no black band; hit-test warnings near zero.
 - **Build** — `cargo build --release --features servo-real` clean (483 pre-existing warnings, 0 errors).
 
 ## v0.10.0 — 2026-04-19
@@ -127,8 +150,8 @@
 | Amni Explore | Local | run.bat (Ursina 3D) |
 | Amni Miner | Local | run_dashboard.bat @ :8080 |
 | Amni Game | Local | cargo run --release |
-| Amni Coder | Web | example.com/coder |
-| Amni-Scient | Web | example.com |
+| Amni Coder | Web | amni-scient.com/coder |
+| Amni-Scient | Web | amni-scient.com |
 
 ### Fixes
 - **platform/webview.rs** — Corrected navigation handler to use the runtime ad-block toggle state (`state.ad_blocker.enabled`) so sites are not blocked when ad blocking is disabled.
