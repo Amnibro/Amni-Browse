@@ -104,7 +104,7 @@ pub fn browser_html(theme: &Theme) -> String {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }}
     .tab:hover {{ background: var(--bg-hover); color: var(--text-primary); }}
-    .tab.active {{ background: var(--tab-active); border-color: var(--border); color: var(--text-primary); border-bottom: 2px solid var(--accent); box-shadow: 0 1px 0 var(--tab-active), 0 -1px 4px rgba(0,0,0,.14); z-index: 2; }}
+    .tab.active {{ background: var(--tab-active); border-color: var(--border); color: var(--text-primary); box-shadow: 0 2px 0 var(--accent) inset, 0 -1px 4px rgba(0,0,0,.14); z-index: 2; }}
     .tab:focus-visible,.tab.kbd-focus {{ outline:2px solid var(--accent); outline-offset:-2px; z-index:3; box-shadow:0 0 0 1px var(--accent-glow); }}
     .tab .ttl {{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
     .tab-close {{
@@ -570,7 +570,7 @@ pub fn browser_html(theme: &Theme) -> String {
         <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
             <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Custom Theme</div>
             <div class="color-row"><label>Primary BG</label><input type="color" id="custom-bg-primary" value="#0a0e14"></div>
-            <div class="color-row"><label>Accent</label><input type="color" id="custom-accent" value="#00d4ff"></div>
+            <div class="color-row"><label>Accent</label><input type="color" id="custom-accent" value="#C89B4E"></div>
             <div class="color-row"><label>Text</label><input type="color" id="custom-text" value="#e0e6f0"></div>
             <div class="form-group" style="margin-top:8px;">
                 <label>Background Image URL</label>

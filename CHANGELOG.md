@@ -1,3 +1,11 @@
+## v0.11.6 - 2026-08-12 (WebView chrome parity + brand gold residual)
+- **Home SPA + injected shadow chrome** now kill active-tab reflow the same way as Servo toolbar: accent is inset box-shadow, not a 2px border-bottom that reflows the strip (was only fixed on toolbar.html in the prior 0.11.5 pass).
+- Injected URL focus ring matches toolbar: 3px accent_glow (was 2px).
+- **Brand residual:** media DRM bar, Developer page fallbacks, Servo settings/new-tab, custom-theme accent default, profile avatar default — cyan #00d4ff swapped for Amni Scient gold #C89B4E / shell tokens.
+- README H1 was still v0.11.2 after architecture header bump; now current. License badge color flipped to gold.
+- **App icon de-cyaned:** amni-browse.svg gradients moved to gold; amni-browse.ico recolored (cyan hues remapped to gold, shape untouched) so the exe/taskbar icon matches the shell.
+- Cargo -> 0.11.6 (v0.11.5 zip already shipped; behavior/brand changes get their own tag - no duplicate-version headings). Backups: backups/*v0.11.6-pre*.
+
 ## v0.11.5 - 2026-08-12 (chrome polish + changelog encoding repair)
 - **Active-tab 2px layout jiggle killed:** all tabs now carry a transparent 1px border; activation only recolors it (was: border added on .active, shifting every tab 2px on switch).
 - **URL bar Escape reverts instantly** to the live page URL (tracked lastUrl) instead of leaving typed text on screen until the next 250ms poll; Enter on empty/whitespace input no longer fires navigate.

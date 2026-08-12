@@ -18,18 +18,18 @@ header .ver{{color:var(--text-secondary,#6b7d99);font-size:12px}}
 .tabs{{display:flex;gap:4px;padding:12px 28px 0;background:var(--bg-secondary,#0f1419);border-bottom:1px solid var(--border,#1a2332);flex-wrap:wrap}}
 .tab{{background:transparent;border:none;color:var(--text-secondary,#6b7d99);padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;font-size:13px;font-family:inherit}}
 .tab:hover{{color:var(--text-primary);background:var(--bg-hover,#1a1f2e)}}
-.tab.on{{color:var(--accent,#00d4ff);border-bottom:2px solid var(--accent,#00d4ff)}}
+.tab.on{{color:var(--accent,#C89B4E);border-bottom:2px solid var(--accent,#C89B4E)}}
 main{{max-width:960px;margin:0 auto;padding:24px 28px 48px}}
 .panel{{display:none}}
 .panel.on{{display:block}}
-h2{{font-size:15px;margin:0 0 10px;color:var(--accent,#00d4ff);text-transform:uppercase;letter-spacing:1px}}
+h2{{font-size:15px;margin:0 0 10px;color:var(--accent,#C89B4E);text-transform:uppercase;letter-spacing:1px}}
 p.dim{{color:var(--text-secondary,#6b7d99);font-size:13px;margin-bottom:16px}}
 .card{{background:var(--bg-secondary,#0f1419);border:1px solid var(--border,#1a2332);border-radius:12px;padding:16px;margin-bottom:14px}}
 .row{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}}
 label{{font-size:12px;color:var(--text-secondary);min-width:90px}}
 input[type=text],input[type=search],textarea,select{{flex:1;min-width:180px;background:var(--bg-primary,#0a0e14);border:1px solid var(--border,#1a2332);color:var(--text-primary);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit}}
 textarea{{min-height:110px;width:100%;resize:vertical}}
-button.btn{{background:var(--accent,#00d4ff);color:#041018;border:none;border-radius:8px;padding:8px 14px;font-weight:600;font-size:12px;font-family:inherit;cursor:pointer}}
+button.btn{{background:var(--accent,#C89B4E);color:#08090B;border:none;border-radius:8px;padding:8px 14px;font-weight:600;font-size:12px;font-family:inherit;cursor:pointer}}
 button.btn:hover{{filter:brightness(1.08)}}
 button.btn.ghost{{background:transparent;color:var(--text-primary);border:1px solid var(--border,#1a2332)}}
 button.btn.danger{{background:var(--danger,#ff4757);color:#fff}}
@@ -75,7 +75,7 @@ pre{{background:var(--bg-primary);border:1px solid var(--border);border-radius:8
     <h2 style="margin-bottom:12px">Custom colors</h2>
     <div class="row"><label>Name</label><input type="text" id="th-name" value="My Theme"/></div>
     <div class="row"><label>Primary BG</label><input type="color" id="th-bg" value="#0a0e14"/><input type="text" id="th-bg-t" value="#0a0e14" style="max-width:110px"/></div>
-    <div class="row"><label>Accent</label><input type="color" id="th-ac" value="#00d4ff"/><input type="text" id="th-ac-t" value="#00d4ff" style="max-width:110px"/></div>
+    <div class="row"><label>Accent</label><input type="color" id="th-ac" value="#C89B4E"/><input type="text" id="th-ac-t" value="#C89B4E" style="max-width:110px"/></div>
     <div class="row"><label>Text</label><input type="color" id="th-tx" value="#e0e6f0"/><input type="text" id="th-tx-t" value="#e0e6f0" style="max-width:110px"/></div>
     <div class="row">
       <button class="btn" onclick="saveTheme()">Save &amp; apply</button>

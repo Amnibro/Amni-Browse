@@ -341,7 +341,7 @@ impl BrowserChrome {
         ui.horizontal(|ui| {
             ui.add(egui::TextEdit::singleline(&mut self.new_prof_name).hint_text("New profile name...").desired_width(180.0));
             if ui.button("Create").clicked() && !self.new_prof_name.is_empty() {
-                self.cmd(IpcMessage::ProfileCreate { name: self.new_prof_name.clone(), color: "#00d4ff".into() });
+                self.cmd(IpcMessage::ProfileCreate { name: self.new_prof_name.clone(), color: "#C89B4E".into() });
                 self.new_prof_name.clear();
             }
         });

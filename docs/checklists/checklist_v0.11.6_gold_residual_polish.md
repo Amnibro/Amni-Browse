@@ -1,0 +1,13 @@
+# Checklist v0.11.6 - brand gold residual + WebView tab reflow (Anthony's edits, polished + shipped)
+- [ ] Backup README/CHANGELOG/arch_map/Cargo.toml/svg/ico/toolbar.html to backups/*.v0.11.6-pre.bak
+- [ ] Retitle Anthony's drafted "v0.11.5 (WebView chrome parity...)" entries to v0.11.6 (0.11.5 zip already shipped; no duplicate-version headings)
+- [ ] Fix arch map typo "inset ox-shadow" -> "box-shadow"
+- [ ] README: H1 -> v0.11.6, license badge color 00d4ff -> C89B4E
+- [ ] App icon: amni-browse.svg cyan gradient -> Amni Scient gold; amni-browse.ico recolored via PIL hue map (shape preserved)
+- [ ] Cargo.toml -> 0.11.6; toolbar chromeRev -> 0.11.6-gold-residual
+- [ ] cargo build --release clean (embeds new ico + injected chrome)
+- [ ] Exe smoke launch, zero stray processes after kill
+- [ ] Package amni-browse-v0.11.6-win64.zip (same layout as v0.11.5 zip)
+- [ ] gh release v0.11.6 published as Latest; v0.11.5 demoted to Pre-release (keep exactly-one-non-prerelease invariant)
+- [ ] Site literals 0.11.5 -> 0.11.6 flipped AFTER asset live, curl 200 verified
+- [ ] CHANGELOG.md + architecture_map.md updated; commit + push (Amnibro identity, no co-sign)

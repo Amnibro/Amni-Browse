@@ -25,7 +25,7 @@ impl Profile {
         Self {
             id: "default".into(),
             name: "Default".into(),
-            avatar_color: "#00d4ff".into(),
+            avatar_color: "#C89B4E".into(),
             created_at: chrono::Utc::now().to_rfc3339(),
             is_default: true,
         }

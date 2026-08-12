@@ -49,16 +49,16 @@ function ensure(){
       host=d.createElement('div');
       host.id='__amni_media_bar';
       host.setAttribute('data-amni','media-chrome');
-      host.style.cssText='all:initial;position:fixed!important;top:0!important;left:0!important;right:0!important;height:44px!important;z-index:2147483647!important;display:flex!important;align-items:center!important;gap:8px!important;padding:0 12px!important;box-sizing:border-box!important;background:#0f1419!important;color:#e0e6f0!important;font:13px system-ui,sans-serif!important;border-bottom:1px solid #1a2332!important;box-shadow:0 2px 12px rgba(0,0,0,.45)!important;pointer-events:auto!important;';
+      host.style.cssText='all:initial;position:fixed!important;top:0!important;left:0!important;right:0!important;height:44px!important;z-index:2147483647!important;display:flex!important;align-items:center!important;gap:8px!important;padding:0 12px!important;box-sizing:border-box!important;background:#08090B!important;color:#EDEFF2!important;font:13px system-ui,"Segoe UI",sans-serif!important;border-bottom:1px solid #20242B!important;box-shadow:0 2px 12px rgba(0,0,0,.45)!important;pointer-events:auto!important;';
       var mk=function(tag,css,txt){var e=d.createElement(tag);e.style.cssText=css;if(txt!=null)e.textContent=txt;return e;};
-      var back=mk('button','all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;background:#1a1f2e;color:#00d4ff;font:600 12px system-ui,sans-serif;border:1px solid #1a2332;','← Back to Amni');
+      var back=mk('button','all:unset;cursor:pointer;padding:6px 12px;border-radius:4px;background:#111418;color:#C89B4E;font:600 12px system-ui,"Segoe UI",sans-serif;border:1px solid #20242B;','← Back to Amni');
       back.title='Close media window and return to browser tabs';
       back.onclick=function(e){e.preventDefault();e.stopPropagation();ipc('amni_media_close');};
-      var home=mk('button','all:unset;cursor:pointer;padding:6px 12px;border-radius:8px;background:transparent;color:#e0e6f0;font:12px system-ui,sans-serif;border:1px solid #1a2332;','Home');
+      var home=mk('button','all:unset;cursor:pointer;padding:6px 12px;border-radius:4px;background:transparent;color:#EDEFF2;font:12px system-ui,"Segoe UI",sans-serif;border:1px solid #20242B;','Home');
       home.onclick=function(e){e.preventDefault();e.stopPropagation();ipc('amni_media_close');};
-      var label=mk('span','flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#6b7d99;font:12px system-ui,sans-serif;','Amni Media · streaming/DRM · close this window to return to tabs');
+      var label=mk('span','flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#A7ADB6;font:12px system-ui,"Segoe UI",sans-serif;','Amni Media · streaming/DRM · close this window to return to tabs');
       try{label.textContent='Amni Media · '+(location.hostname||'stream')+' · close to return to tabs';}catch(_){}
-      var x=mk('button','all:unset;cursor:pointer;padding:6px 10px;border-radius:8px;background:transparent;color:#ff4757;font:14px system-ui,sans-serif;','✕');
+      var x=mk('button','all:unset;cursor:pointer;padding:6px 10px;border-radius:4px;background:transparent;color:#FF6B6B;font:14px system-ui,"Segoe UI",sans-serif;','✕');
       x.title='Close media window';
       x.onclick=function(e){e.preventDefault();e.stopPropagation();ipc('amni_media_close');};
       host.appendChild(back);host.appendChild(home);host.appendChild(label);host.appendChild(x);

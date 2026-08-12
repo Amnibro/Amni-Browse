@@ -1,4 +1,8 @@
-﻿# Amni-Browse Architecture Map
+# Amni-Browse Architecture Map
+## 2026-08-12 v0.11.6 WebView tab reflow + brand gold residual
+- Home SPA (ui/webview.rs) and injected chrome (platform/webview.rs) active tab: inset box-shadow 0 2px 0 accent (parity with toolbar.html); no border-bottom height change.
+- Injected URL focus: 3px glow. Media bar + Developer/Servo start/settings + profile/custom accent defaults: Amni Scient gold #C89B4E (kills leftover cyan chrome).
+- App icon (assets/amni-browse.svg + .ico via build.rs) recolored cyan -> gold; README badge gold. Public truth: Cargo 0.11.6 / GH Latest v0.11.6, v0.11.5 demoted to Pre-release.
 ## 2026-08-12 v0.11.5 chrome polish + changelog repair
 - `assets/chrome/toolbar.html`: all `.tab` chips carry `border:1px solid transparent` (active recolors via `border-color` — no more 2px strip reflow on tab switch); URL bar tracks `lastUrl`, Escape restores it instantly (no poll-lag ghost text) and empty Enter is a no-op; close glyph labeled (`title`+`aria-label`), menu `aria-haspopup`. Canary `0.11.5-chrome-polish`.
 - `changelog.md` had UTF-16LE blocks appended by PowerShell `>>` (read as binary); tail transcoded back to UTF-8, all entries recovered. Append to changelog with UTF-8 tools only (`Add-Content -Encoding utf8` or python).

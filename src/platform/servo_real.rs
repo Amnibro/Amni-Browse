@@ -55,7 +55,7 @@ fn chrome_data_url() -> Url {
     Url::parse(&format!("data:text/html;charset=utf-8,{}", encoded)).expect("chrome data url")
 }
 const SETTINGS_TPL: &str = r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Settings &#8212; Amni Browse</title><style>
-:root{--bg:#0a0e1a;--elev:#141a2a;--stroke:#222a3d;--text:#d6dbe8;--dim:#8a92a6;--accent:#00d4ff;--accent-dim:#0089a8}
+:root{--bg:#08090B;--elev:#111418;--stroke:#20242B;--text:#EDEFF2;--dim:#A7ADB6;--accent:#C89B4E;--accent-dim:#E2BC7C}
 body{font:15px/1.55 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:680px;margin:36px auto;padding:0 24px;color:var(--text);background:var(--bg)}
 h1{font-size:22px;margin:0 0 2px}.tag{color:var(--dim);font-size:13px;margin:0 0 26px}
 h2{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin:30px 0 12px}
@@ -85,15 +85,15 @@ function set(k,v){fetch('amnibrowse://cmd/setting_set?tok='+T+'&k='+encodeURICom
 function rmbm(id){fetch('amnibrowse://cmd/bookmark_remove?tok='+T+'&id='+encodeURIComponent(id),{mode:'no-cors'}).catch(function(){});var e=document.getElementById('bm-'+id);e&&e.remove()}
 </script></body></html>"##;
 const NEWTAB_TPL: &str = r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>New Tab</title><style>
-body{font:15px -apple-system,'Segoe UI',Roboto,Arial,sans-serif;background:#0a0e1a;color:#d6dbe8;display:flex;flex-direction:column;align-items:center;min-height:100vh;margin:0;padding-top:14vh}
-h1{font-size:34px;letter-spacing:.5px;margin:0 0 6px;color:#00d4ff}
-p{color:#8a92a6;margin:0 0 40px}
+body{font:15px -apple-system,'Segoe UI',Roboto,Arial,sans-serif;background:#08090B;color:#EDEFF2;display:flex;flex-direction:column;align-items:center;min-height:100vh;margin:0;padding-top:14vh}
+h1{font-size:34px;letter-spacing:.5px;margin:0 0 6px;color:#C89B4E}
+p{color:#A7ADB6;margin:0 0 40px}
 .grid{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;max-width:760px}
-.tile{display:flex;flex-direction:column;align-items:center;gap:8px;width:108px;padding:16px 6px;background:#141a2a;border:1px solid #222a3d;border-radius:14px;text-decoration:none;color:#d6dbe8;font-size:12px;transition:border-color .12s}
-.tile:hover{border-color:#00d4ff}
-.mono{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff}
+.tile{display:flex;flex-direction:column;align-items:center;gap:8px;width:108px;padding:16px 6px;background:#111418;border:1px solid #20242B;border-radius:4px;text-decoration:none;color:#EDEFF2;font-size:12px;transition:border-color .12s}
+.tile:hover{border-color:#C89B4E}
+.mono{width:40px;height:40px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff}
 .tile span{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dim{color:#8a92a6;font-size:13px}
+.dim{color:#A7ADB6;font-size:13px}
 </style></head><body><h1>Amni Browse</h1><p>No Amni telemetry &#183; local profile &#183; search from the bar above</p><div class='grid'>__TILES__</div></body></html>"##;
 fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
 fn chrome_height_px(scale: f32) -> u32 { (CHROME_HEIGHT_CSS * scale).round().max(1.0) as u32 }

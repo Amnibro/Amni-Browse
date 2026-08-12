@@ -1,12 +1,12 @@
 ****HEAVILY WORK IN PROGRESS****
 
-# Amni Browse v0.11.2
+# Amni Browse v0.11.6
 
 **A privacy-first web browser built from the ground up in Rust — no Amni product telemetry.**
 **Functional browsing: real URLs, injected chrome toolbar, navigation-level URL cleaning. DRM/media uses a separate system-WebView window with its own bar.**
 
 ![Rust](https://img.shields.io/badge/Built%20with-Rust-orange)
-![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-00d4ff)
+![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-C89B4E)
 ![Privacy](https://img.shields.io/badge/Telemetry-ZERO-green)
 ![Backends](https://img.shields.io/badge/Backends-WebView%20%7C%20Servo-purple)
 ![Source](https://img.shields.io/badge/Source-Available-lightgrey)
