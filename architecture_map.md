@@ -51,15 +51,15 @@
 - `src/ui/chrome.rs`: `truncate` now char-based (byte slice panicked on multibyte titles); Ctrl+Tab cycling via tabs_json in `handle_keyboard`.
 - Backups: `backups/{{webview,chrome}}.rs.v0.11.0-tabkeys.bak`. Checklist: `docs/checklists/checklist_tab_polish_v1.md`. cargo check clean both default + servo-engine; release binary launch-verified.
 
-## 2026-08-12 Release ship gate (0.11.2)
-- Public truth is **0.11.2**: crate version, README, chrome canary `0.11.2-settings`, GitHub Latest = `v0.11.2` asset `amni-browse-v0.11.2-win64.zip`, site tags. Severity chips/safebar are theme-native (`color-mix` over palette `p`; `warning` token threaded Rust->JS). Older tags stay as history.
+## 2026-08-12 Release ship gate (0.11.3)
+- Public truth is **0.11.3**: crate version, chrome canary `0.11.3-theme-tokens`, GitHub Latest = `v0.11.3` asset `amni-browse-v0.11.3-win64.zip` (zip carries fresh exe + hot-load toolbar.html — both must be freshened, exe alone is not enough), site tags. Severity chips/safebar are theme-native (`color-mix` over palette `p`; `warning` token threaded Rust->JS). Older tags stay as history.
 
 ## 2026-08-12 Release ship gate (0.11.1)
 - Public truth is **0.11.1** only: crate `CARGO_PKG_VERSION`, README, chrome canary `0.11.1-settings`, site tags (product/index/about/faq), GitHub Latest = `v0.11.1` asset `amni-browse-v0.11.1-win64.zip`. Leave `v0.11.0` / older tags as history (0.11.0 zip is pre-polish).
 - WebView chrome: `tokens` TAB38+NAV44+BOOK28 = TOTAL 110 / push 114; shadow DOM toolbar mounts on external http(s); SPA home keeps tab/nav/bookmarks bars; OS decorations on.
 - Amni Apps → `https://amni-scient.com` (IPC AmniAppList/LaunchApp navigate; list_apps_json empty).
 - Theme: `__AMNI_SYNC_THEME` + boot ThemeConfig seed. Tabs: host TabManager + `__AMNI_TAB_SEED` / get_tabs resync.
-- Package: `target/release/amni-browse-v0.11.1-win64.zip` (toolbar on disk hot-loads; chromeRev must match tag).
+- Package: `target/release/amni-browse-v0.11.3-win64.zip` (toolbar on disk hot-loads; chromeRev must match tag).
 ## Chrome UI
 - `assets/chrome/toolbar.html` — entire browser chrome (tab strip + nav bar + progress). CSS tokens in `:root`, 66px shell (32 tab + 32 nav + 2 progress). Interactive targets 28px (26px in-pill). Nav is a **left cluster**: `#nav-start` | `#url-wrap{flex:0 1 960px}` | `#nav-end` (no margin-left:auto). Free ultrawide space is after the menu. Tab strip: `#tab-list` horizontal scroll + `scrollIntoView` on active/roving. Keyboard: roving tabs; `:focus`/`:focus-visible`; URL via `#url-wrap:focus-within`. Lock via `setLock` + `.secure`/`.insecure`/`.local` (incl. `data:` local). Progress: loading → 72%, complete → 100% then fade (`finishing`). Canary: `window.__amni.chromeRev` (`0.11.3-theme-tokens`). Full theme fidelity: `applyTheme` maps all state tokens incl. `font_family`→`--font`, `accent_glow`→`--glow` (url-wrap focus ring), `tab_active`/`tab_inactive`→`.tab` fills (v0.11.3). Tab favicons are hue-hashed monograms; shield/bookmark buttons reflect live state (`state.shield`, `state.bookmarked`).
 - Menu opens the real Settings page (data URL from `settings_page_html()`): search engine, homepage, shield, default zoom, UA override, bookmarks. Mutations go through `amnibrowse://cmd/setting_set` gated by a per-boot `cmd_token`; persisted via `BrowserConfig::save()` (AppData/amni-browse). Blank homepage serves the built-in start page (`newtab_html()`, bookmark tiles).
