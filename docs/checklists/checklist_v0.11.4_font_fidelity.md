@@ -6,5 +6,5 @@
 - [x] cargo build --release clean
 - [x] Exe launches with window (smoke), zero stray processes after kill
 - [x] Package amni-browse-v0.11.4-win64.zip (exe + DLLs + assets/chrome/toolbar.html)
-- [ ] gh release v0.11.4 published as Latest
-- [ ] Site download links flipped AFTER asset live, curl 200 verified
+- [x] gh release v0.11.4 published as Latest
+- [x] Site download links flipped AFTER asset live, curl 200 verified
