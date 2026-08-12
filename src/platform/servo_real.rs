@@ -750,7 +750,10 @@ impl ApplicationHandler<WakerEvent> for App {
                 .hidpi_scale_factor(Scale::new(scale))
                 .delegate(app_state.clone())
                 .build();
-            content_webview.resize(app_state.offscreen_context.size());
+            // Explicit resize attaches the content WebView to the offscreen surface size.
+            // Without this, some boots leave a zero/stale viewport and blit an empty FB.
+            let off_sz = app_state.offscreen_context.size();
+            content_webview.resize(off_sz);
             if let Some(chrome) = app_state.chrome_webview.borrow().as_ref() {
                 chrome.resize(window_size);
             }
@@ -764,8 +767,12 @@ impl ApplicationHandler<WakerEvent> for App {
                     app_state.media_windows.borrow_mut().insert(id, mw);
                 }
             }
+            info!(
+                "Servo embedder ready: win={}x{} chrome_px={} offscreen={}x{} scale={} (blit GL y=0,h=content)",
+                window_size.width, window_size.height, chrome_px, off_sz.width, off_sz.height, scale
+            );
+            app_state.window.request_redraw();
             *self = Self::Running(app_state);
-            info!("Servo embedder ready (chrome + content compositing)");
         }
     }
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, _event: WakerEvent) {
