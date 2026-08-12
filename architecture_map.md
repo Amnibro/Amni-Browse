@@ -1,4 +1,10 @@
 ﻿# Amni-Browse Architecture Map
+## 2026-08-12 Home/external parity + brand theme + tab groups
+- SPA home tabs match external chrome: fixed **148×30** chips, host-derived labels (`Tab::title_from_url` — Home / host / Developer), not stuck on "New Tab".
+- Default theme **Amni Scient** tracks amni-scient.com: `#08090B` / `#0D0F12` panels, gold accent `#C89B4E`, soft text `#A7ADB6`, radius 4px.
+- Tab groups via `panel_group` + IPC `tab_set_group`; right-click tab (home or external) or context "Group active tab…".
+- Page titles: navigate sets host label; external load posts `update_title` → TabsUpdated.
+- Status: **WebView2 · Chromium** (default `webview` feature). Servo is opt-in (`servo-real` / `servo-engine`).
 ## 2026-08-12 Tab strip hit reliability (WebView chrome)
 - External injected chrome (`src/platform/webview.rs` / `f3eb1c8`): fixed 148×30 tab chips, title cap ~22 chars, fingerprint skip-repaint (`__AMNI_TABS_FP`).
 - Hit path: `pointerdown`+`click` via `bindHit` + `stopImmediatePropagation`; close control `.x`; chrome host uses `popover=manual` top-layer so DRM overlays cannot steal strip clicks; Ctrl+W/T/Tab escape hatches.

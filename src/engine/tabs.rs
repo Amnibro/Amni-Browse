@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SplitViewMode { None, Horizontal, Vertical }
@@ -25,10 +25,36 @@ pub struct Tab {
     pub engine: TabEngine,
 }
 impl Tab {
+    pub fn title_from_url(url: &str) -> String {
+        let u = url.trim();
+        if u.is_empty() || u == "about:blank" { return "New Tab".into(); }
+        if u.starts_with("amnibrowse://") {
+            let rest = u.trim_start_matches("amnibrowse://").trim_matches('/');
+            let host = rest.split('/').next().unwrap_or("home");
+            return match host {
+                "newtab" | "home" | "" => "Home".into(),
+                "developer" | "dev" => "Developer".into(),
+                other => {
+                    let mut c = other.chars();
+                    match c.next() {
+                        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                        None => "Home".into(),
+                    }
+                }
+            };
+        }
+        url::Url::parse(u).ok()
+            .and_then(|p| p.host_str().map(|h| h.trim_start_matches("www.").to_string()))
+            .filter(|h| !h.is_empty())
+            .unwrap_or_else(|| {
+                let t = u.chars().take(28).collect::<String>();
+                if t.is_empty() { "New Tab".into() } else { t }
+            })
+    }
     pub fn new(url: &str) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
-            title: "New Tab".into(),
+            title: Self::title_from_url(url),
             url: url.into(),
             is_active: false,
             history: vec![url.to_string()],
@@ -46,7 +72,8 @@ impl Tab {
     pub fn new_private(url: &str) -> Self {
         let mut tab = Self::new(url);
         tab.is_private = true;
-        tab.title = "Private Tab".into();
+        if tab.title == "Home" || tab.title == "New Tab" { tab.title = "Private".into(); }
+        else { tab.title = format!("🔒 {}", tab.title); }
         tab
     }
 
@@ -69,6 +96,7 @@ impl Tab {
         self.history.push(url.to_string());
         self.history_index = (self.history.len() - 1) as i32;
         self.url = url.to_string();
+        self.title = Self::title_from_url(url);
         self.is_loading = true;
     }
 
@@ -84,21 +112,23 @@ impl Tab {
         if self.can_go_back() {
             self.history_index -= 1;
             self.url = self.history[self.history_index as usize].clone();
+            self.title = Self::title_from_url(&self.url);
             Some(&self.url)
         } else {
             None
         }
     }
-
     pub fn go_forward(&mut self) -> Option<&str> {
         if self.can_go_forward() {
             self.history_index += 1;
             self.url = self.history[self.history_index as usize].clone();
+            self.title = Self::title_from_url(&self.url);
             Some(&self.url)
         } else {
             None
         }
     }
+    pub fn set_group(&mut self, group: Option<String>) { self.panel_group = group; }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,5 +203,17 @@ impl TabManager {
     }
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self.tabs).unwrap_or_else(|_| "[]".to_string())
+    }
+    pub fn set_tab_group(&mut self, id: &str, group: Option<&str>) -> bool {
+        if let Some(t) = self.tabs.iter_mut().find(|t| t.id == id) {
+            t.set_group(group.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()));
+            true
+        } else { false }
+    }
+    pub fn group_names(&self) -> Vec<String> {
+        let mut g: Vec<String> = self.tabs.iter().filter_map(|t| t.panel_group.clone()).collect();
+        g.sort();
+        g.dedup();
+        g
     }
 }

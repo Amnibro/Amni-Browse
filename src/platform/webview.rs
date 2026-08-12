@@ -89,7 +89,7 @@ impl Browser {
                 let theme = if th.is_empty() { "{}".to_string() } else { th };
                 let safety = crate::engine::page_safety::assess_json(&url);
                 a_load.borrow_mut().push(Act::Js(format!(
-                    "(function(){{try{{window.__AMNI_ENSURE&&window.__AMNI_ENSURE();var tabs={0};window.__AMNI_TAB_SEED=tabs;window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS(tabs);var th={1};window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME(th);window.__AMNI_SAFETY&&window.__AMNI_SAFETY({2});window.__AMNI_ENSURE&&window.__AMNI_ENSURE();}}catch(_){{}}}})()",
+                    "(function(){{try{{window.__AMNI_ENSURE&&window.__AMNI_ENSURE();var tabs={0};window.__AMNI_TAB_SEED=tabs;window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS(tabs);var th={1};window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME(th);window.__AMNI_SAFETY&&window.__AMNI_SAFETY({2});try{{var tt=document.title||location.hostname||location.href;if(tt&&window.ipc)window.ipc.postMessage(JSON.stringify({{type:'update_title',title:String(tt).slice(0,80)}}));}}catch(_t){{}}window.__AMNI_ENSURE&&window.__AMNI_ENSURE();}}catch(_){{}}}})()",
                     tabs, theme, safety
                 )));
                 px_load.send_event(()).ok();
@@ -274,21 +274,21 @@ function c(v, fb){{
 }}
 function palette(){{
   return {{
-    bg: c(T.bg_secondary, '#0f1419'),
-    bg2: c(T.bg_primary, '#0a0e14'),
-    bg3: c(T.bg_tertiary || T.bg_hover, '#1a1f2e'),
-    border: c(T.border, '#2a3548'),
-    text: c(T.text_primary, '#e8eef8'),
-    muted: c(T.text_secondary, '#b0bdd4'),
-    accent: c(T.accent, '#00d4ff'),
-    accentH: c(T.accent_hover, '#33ddff'),
-    glow: c(T.accent_glow, 'rgba(0,212,255,0.18)'),
-    ok: c(T.success, '#2ed573'),
-    danger: c(T.danger, '#ff4757'),
-    tabA: c(T.tab_active || T.bg_primary, '#0a0e14'),
-    tabI: c(T.tab_inactive || T.bg_secondary, '#121826'),
-    font: c(T.font_family, 'system-ui,Segoe UI,sans-serif'),
-    radius: c(T.border_radius, '8px')
+    bg: c(T.bg_secondary, '#0D0F12'),
+    bg2: c(T.bg_primary, '#08090B'),
+    bg3: c(T.bg_tertiary || T.bg_hover, '#111418'),
+    border: c(T.border, '#20242B'),
+    text: c(T.text_primary, '#EDEFF2'),
+    muted: c(T.text_secondary, '#A7ADB6'),
+    accent: c(T.accent, '#C89B4E'),
+    accentH: c(T.accent_hover, '#E2BC7C'),
+    glow: c(T.accent_glow, 'rgba(200,155,78,0.18)'),
+    ok: c(T.success, '#4ADE80'),
+    danger: c(T.danger, '#FF6B6B'),
+    tabA: c(T.tab_active || T.bg_primary, '#111418'),
+    tabI: c(T.tab_inactive || T.bg_secondary, '#0D0F12'),
+    font: c(T.font_family, 'Segoe UI Variable Display,Segoe UI,system-ui,sans-serif'),
+    radius: c(T.border_radius, '4px')
   }};
 }}
 function applyTheme(th){{
@@ -304,6 +304,7 @@ function chromeCss(){{
     + '*{{box-sizing:border-box !important;color:inherit}}'
     + '#__atb{{position:fixed !important;top:0 !important;left:0 !important;right:0 !important;height:{chrome_h}px !important;display:flex !important;flex-direction:column !important;background:' + p.bg + ' !important;color:' + p.text + ' !important;z-index:2147483647 !important;box-shadow:0 2px 16px rgba(0,0,0,0.55) !important;border-bottom:1px solid ' + p.border + ' !important}}'
     + '#_tabs{{height:{tab_h}px !important;display:flex !important;align-items:center !important;gap:4px !important;padding:0 8px !important;overflow-x:auto !important;overflow-y:hidden !important;scrollbar-width:thin !important;flex-wrap:nowrap !important;background:' + p.bg + ' !important;color:' + p.text + ' !important;border-bottom:1px solid ' + p.border + ' !important;pointer-events:auto !important}}'
+    + '.grp{{flex:0 0 auto !important;font-size:10px !important;font-weight:700 !important;letter-spacing:.4px !important;text-transform:uppercase !important;color:' + p.accent + ' !important;padding:0 6px !important;border-left:2px solid ' + p.accent + ' !important;margin-left:4px !important;opacity:.95 !important;white-space:nowrap !important}}'
     + '#_tabs::-webkit-scrollbar{{height:3px}}'
     + '.tab{{flex:0 0 148px !important;flex-grow:0 !important;flex-shrink:0 !important;width:148px !important;min-width:148px !important;max-width:148px !important;height:30px !important;display:flex !important;align-items:center !important;gap:6px !important;padding:0 8px !important;margin:0 !important;border:1px solid transparent !important;border-bottom:none !important;border-radius:' + p.radius + ' ' + p.radius + ' 0 0 !important;background:' + p.tabI + ' !important;color:' + p.muted + ' !important;font-size:12px !important;font-family:' + p.font + ' !important;cursor:pointer !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;pointer-events:auto !important;touch-action:manipulation !important}}'
     + '.tab:hover{{background:' + p.bg3 + ' !important;color:' + p.text + ' !important}}'
@@ -383,7 +384,7 @@ function bindHit(node, fn){{
 }}
 function tabsFingerprint(tabs){{
   try {{
-    return (tabs || []).map(function(t){{ return (t.id||'') + '|' + (t.is_active?1:0) + '|' + tabLabel(t) + '|' + (t.url||''); }}).join(';;');
+    return (tabs || []).map(function(t){{ return (t.id||'') + '|' + (t.is_active?1:0) + '|' + tabLabel(t) + '|' + (t.url||'') + '|' + (t.panel_group||''); }}).join(';;');
   }} catch(_) {{ return String(Math.random()); }}
 }}
 function paintTabs(list){{
@@ -397,15 +398,35 @@ function paintTabs(list){{
   if (window.__AMNI_TABS_FP === fp && strip.childNodes.length) return;
   window.__AMNI_TABS_FP = fp;
   clearKids(strip);
-  tabs.forEach(function(t){{
+  var ordered = tabs.slice().sort(function(a,b){{
+    var ga = (a && a.panel_group) ? a.panel_group : '~~~~';
+    var gb = (b && b.panel_group) ? b.panel_group : '~~~~';
+    if (ga < gb) return -1; if (ga > gb) return 1; return 0;
+  }});
+  var lastG = null;
+  ordered.forEach(function(t){{
+    var g = (t && t.panel_group) ? String(t.panel_group) : '';
+    if (g && g !== lastG) {{
+      lastG = g;
+      var gl = el('span', {{ className:'grp', text: g }});
+      gl.title = 'Group: ' + g;
+      strip.appendChild(gl);
+    }}
     var ttl = el('span', {{ className:'ttl', text: tabLabel(t) }});
     var x = el('span', {{ className:'x', role:'button', title:'Close tab', tabIndex:'0', text:'×' }});
     bindHit(x, function(){{ if (t.id) ipc({{ type:'close_tab', id:t.id }}); }});
-    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : ''), title: (t.title || t.url || 'Tab'), 'data-id': t.id || '' }}, [ttl, x]);
+    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : ''), title: (t.title || t.url || 'Tab') + (g ? (' · ' + g) : ''), 'data-id': t.id || '' }}, [ttl, x]);
     bindHit(node, function(e){{
       if (e && e.target && (e.target === x || (e.target.closest && e.target.closest('.x')))) return;
       if (t.id) ipc({{ type:'switch_tab', id:t.id }});
     }});
+    node.oncontextmenu = function(e){{
+      stopHit(e);
+      if (!t.id) return;
+      var name = prompt('Tab group name (empty to clear)', g || '');
+      if (name === null) return;
+      ipc({{ type:'tab_set_group', id:t.id, group: name.trim() ? name.trim() : null }});
+    }};
     strip.appendChild(node);
     if (t.is_active) try {{ node.scrollIntoView({{ inline:'nearest', block:'nearest' }}); }} catch(_){{}}
   }});

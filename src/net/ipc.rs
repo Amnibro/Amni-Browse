@@ -32,6 +32,8 @@ pub enum IpcMessage {
     Search { query: String },
     #[serde(rename = "update_title")]
     UpdateTitle { title: String },
+    #[serde(rename = "tab_set_group")]
+    TabSetGroup { id: String, group: Option<String> },
     #[serde(rename = "toggle_adblock")]
     ToggleAdBlock,
     #[serde(rename = "split_tab")]

@@ -142,6 +142,15 @@ impl BrowserState {
                 Some(IpcResponse::TabsUpdated { tabs: self.tabs.to_json() })
             }
             IpcMessage::SwitchTab { id } => { self.tabs.switch_tab(&id); info!("Switched to tab: {}", id); Some(IpcResponse::TabsUpdated { tabs: self.tabs.to_json() }) }
+            IpcMessage::TabSetGroup { id, group } => {
+                let g = group.as_deref();
+                if self.tabs.set_tab_group(&id, g) {
+                    info!("Tab {} group → {:?}", id, g);
+                    Some(IpcResponse::TabsUpdated { tabs: self.tabs.to_json() })
+                } else {
+                    Some(IpcResponse::Error { message: "Unknown tab".into() })
+                }
+            }
             IpcMessage::NewPrivateTab { url } => {
                 let target = url.as_deref().unwrap_or("amnibrowse://newtab");
                 let id = self.tabs.new_private_tab(target);
@@ -174,9 +183,13 @@ impl BrowserState {
             IpcMessage::UpdateTitle { title } => {
                 let priv_tab = self.tabs.active_tab().map_or(false, |t| t.is_private);
                 let url = self.tabs.active_tab().map(|t| t.url.clone()).unwrap_or_default();
-                if !priv_tab && !url.starts_with("amnibrowse://") { self.history.record_visit(&url, &title); }
-                self.tabs.active_tab_mut().map(|t| t.title = title);
-                None
+                let clean = title.trim();
+                let final_title = if clean.is_empty() || clean.eq_ignore_ascii_case("new tab") {
+                    crate::engine::tabs::Tab::title_from_url(&url)
+                } else { clean.chars().take(80).collect() };
+                if !priv_tab && !url.starts_with("amnibrowse://") { self.history.record_visit(&url, &final_title); }
+                self.tabs.active_tab_mut().map(|t| t.title = final_title);
+                Some(IpcResponse::TabsUpdated { tabs: self.tabs.to_json() })
             }
             IpcMessage::ToggleAdBlock => {
                 self.ad_blocker.enabled = !self.ad_blocker.enabled;

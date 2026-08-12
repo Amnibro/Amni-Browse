@@ -82,36 +82,45 @@ pub fn browser_html(theme: &Theme) -> String {
         border-bottom: 1px solid var(--border);
         height: 38px;
         padding: 0 8px;
+        gap: 4px;
+        overflow-x: auto;
         -webkit-app-region: drag;
         app-region: drag;
     }}
+    #tabs-container {{ display:flex; align-items:center; gap:4px; overflow-x:auto; flex:1; min-width:0; }}
+    .tab-group-label {{
+        flex:0 0 auto; font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
+        color:var(--accent); padding:0 6px; opacity:.9; -webkit-app-region:no-drag; app-region:no-drag;
+        border-left:2px solid var(--accent); margin-left:4px;
+    }}
     .tab {{
         display: flex; align-items: center; gap: 6px;
-        padding: 6px 12px;
+        flex: 0 0 148px; width: 148px; min-width: 148px; max-width: 148px; height: 30px;
+        padding: 0 8px;
         background: var(--tab-inactive);
         border: 1px solid transparent; border-bottom: none;
         border-radius: var(--radius) var(--radius) 0 0;
         color: var(--text-secondary); font-size: 12px; cursor: pointer;
-        max-width: 200px; min-width: 80px;
-        transition: all var(--transition);
+        transition: background var(--transition), color var(--transition);
         -webkit-app-region: no-drag; app-region: no-drag;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }}
     .tab:hover {{ background: var(--bg-hover); color: var(--text-primary); }}
     .tab.active {{ background: var(--tab-active); border-color: var(--border); color: var(--text-primary); border-bottom: 2px solid var(--accent); }}
+    .tab .ttl {{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
     .tab-close {{
         display: flex; align-items: center; justify-content: center;
-        width: 16px; height: 16px; border-radius: 50%; border: none;
+        width: 18px; height: 18px; min-width: 18px; border-radius: 50%; border: none;
         background: transparent; color: var(--text-secondary); font-size: 14px;
         cursor: pointer; flex-shrink: 0; transition: all var(--transition);
     }}
     .tab-close:hover {{ background: var(--danger); color: white; }}
     #new-tab-btn {{
         display: flex; align-items: center; justify-content: center;
-        width: 28px; height: 28px; border-radius: var(--radius); border: none;
+        width: 28px; height: 28px; min-width: 28px; border-radius: var(--radius); border: none;
         background: transparent; color: var(--text-secondary); font-size: 18px;
         cursor: pointer; margin-left: 4px; transition: all var(--transition);
-        -webkit-app-region: no-drag; app-region: no-drag;
+        -webkit-app-region: no-drag; app-region: no-drag; flex: 0 0 28px;
     }}
     #new-tab-btn:hover {{ background: var(--bg-hover); color: var(--accent); }}
 
@@ -491,6 +500,7 @@ pub fn browser_html(theme: &Theme) -> String {
         <span id="status-text">Ready</span>
     </div>
     <div class="status-right">
+        <span id="engine-badge" title="Active browser engine">WebView2 · Chromium</span>
         <span id="xr-status" title="WebXR Status">{e_xr} XR</span>
         <span>{e_shield} Local profile</span>
         <span id="status-url"></span>
@@ -685,6 +695,7 @@ pub fn browser_html(theme: &Theme) -> String {
 <div id="context-menu">
     <button class="ctx-item" onclick="newTab()">{e_new_doc} New Tab</button>
     <button class="ctx-item" onclick="newPrivateTab()">{e_private} Private Tab</button>
+    <button class="ctx-item" onclick="groupActiveTab()">{e_puzzle} Group active tab…</button>
     <button class="ctx-item" onclick="toggleBookmark()">{e_star_solid} Bookmark Page</button>
     <div class="ctx-divider"></div>
     <button class="ctx-item" onclick="toggleSplit()">{e_split} Split View</button>
@@ -917,30 +928,66 @@ pub fn browser_html(theme: &Theme) -> String {
     function goForward() {{ sendIpc({{ type: 'forward' }}); }}
     function refresh() {{ sendIpc({{ type: 'refresh' }}); }}
 
+    function tabDisplayLabel(tab) {{
+        var title = (tab && tab.title) ? String(tab.title) : '';
+        var url = (tab && tab.url) ? String(tab.url) : '';
+        if (!title || title === 'New Tab' || title === 'Private Tab' || title === 'Private') {{
+            if (url.indexOf('amnibrowse://developer') === 0) title = 'Developer';
+            else if (url.indexOf('amnibrowse://') === 0) title = 'Home';
+            else {{
+                try {{ title = new URL(url).hostname.replace(/^www\./,'') || url; }} catch(_) {{ title = url || 'Tab'; }}
+            }}
+        }}
+        title = title.replace(/\s+/g,' ').trim();
+        if (title.length > 22) title = title.slice(0, 20) + '…';
+        return title || 'Tab';
+    }}
     function updateTabs(tabs) {{
         if (!Array.isArray(tabs)) tabs = [];
         currentTabs = tabs;
         const container = document.getElementById('tabs-container');
         if (!container) return;
         container.innerHTML = '';
-        tabs.forEach(tab => {{
+        var ordered = tabs.slice().sort(function(a,b){{
+            var ga = (a.panel_group||'~~~~'); var gb = (b.panel_group||'~~~~');
+            if (ga < gb) return -1; if (ga > gb) return 1; return 0;
+        }});
+        var lastG = null;
+        ordered.forEach(tab => {{
             if (!tab || typeof tab !== 'object') return;
             const tabId = (tab.id || '').toString();
-            const tabTitle = (tab.title || 'New Tab').toString();
+            const tabTitle = tabDisplayLabel(tab);
             const tabUrl = (tab.url || 'amnibrowse://newtab').toString();
             const tabActive = !!tab.is_active;
             const tabPrivate = !!tab.is_private;
+            const g = (tab.panel_group || '').toString();
+            if (g && g !== lastG) {{
+                lastG = g;
+                const gl = document.createElement('div');
+                gl.className = 'tab-group-label';
+                gl.textContent = g;
+                gl.title = 'Tab group: ' + g;
+                container.appendChild(gl);
+            }}
             const el = document.createElement('div');
             el.className = 'tab' + (tabActive ? ' active' : '');
-            el.innerHTML = '<span style="flex:1;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(tabTitle) + (tabPrivate ? '<span class="priv-badge">{e_private}</span>' : '') + '</span>' +
+            el.title = tabUrl + (g ? (' · group: ' + g) : '') + String.fromCharCode(10) + 'Right-click to set group';
+            el.innerHTML = '<span class="ttl">' + escapeHtml(tabTitle) + (tabPrivate ? '<span class="priv-badge">{e_private}</span>' : '') + '</span>' +
                 '<button class="tab-close" onclick="event.stopPropagation();closeTab(\'' + tabId + '\')">{e_close}</button>';
             el.onclick = () => {{ if (tabId) switchTab(tabId); }};
+            el.oncontextmenu = (e) => {{
+                e.preventDefault(); e.stopPropagation();
+                if (!tabId) return;
+                var name = prompt('Tab group name (empty to clear)', g || '');
+                if (name === null) return;
+                sendIpc({{ type:'tab_set_group', id:tabId, group: name.trim() ? name.trim() : null }});
+            }};
             container.appendChild(el);
         }});
         const active = tabs.find(t => t && t.is_active);
         if (active) {{
             const activeUrl = (active.url || 'amnibrowse://newtab').toString();
-            document.getElementById('url-bar').value = activeUrl === 'amnibrowse://newtab' ? '' : activeUrl;
+            document.getElementById('url-bar').value = activeUrl === 'amnibrowse://newtab' || activeUrl.indexOf('amnibrowse://newtab') === 0 ? '' : activeUrl;
             if (activeUrl !== currentUrl) {{
                 /^https?:\/\//.test(activeUrl) ? sendIpc({{ type: 'navigate', url: activeUrl }}) : loadUrl(activeUrl);
             }}
@@ -948,7 +995,6 @@ pub fn browser_html(theme: &Theme) -> String {
         const st = document.getElementById('stat-tabs');
         if (st) st.textContent = tabs.length;
     }}
-
     function newTab() {{ sendIpc({{ type: 'new_tab', url: null }}); }}
     function closeTab(id) {{ sendIpc({{ type: 'close_tab', id: id }}); }}
     function switchTab(id) {{ sendIpc({{ type: 'switch_tab', id: id }}); }}
@@ -1287,6 +1333,13 @@ pub fn browser_html(theme: &Theme) -> String {
         const b=document.getElementById('reader-btn'); if(b) b.classList.toggle('active',readerActive);
     }}
     function newPrivateTab() {{ sendIpc({{type:'new_private_tab'}}); }}
+    function groupActiveTab() {{
+        var a = (currentTabs||[]).find(function(t){{ return t && t.is_active; }});
+        if (!a || !a.id) {{ setStatus('No active tab'); return; }}
+        var name = prompt('Tab group name (empty to clear)', a.panel_group || '');
+        if (name === null) return;
+        sendIpc({{ type:'tab_set_group', id:a.id, group: name.trim() ? name.trim() : null }});
+    }}
     function dtSwitch(tab,btn) {{
         dtActiveTab=tab; document.querySelectorAll('.dt-tab').forEach(t=>t.classList.remove('active')); if(btn) btn.classList.add('active');
         document.getElementById('dt-console').style.display=tab==='console'?'block':'none';
