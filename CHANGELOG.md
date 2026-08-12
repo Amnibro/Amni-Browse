@@ -1,3 +1,8 @@
+## v0.11.8 - 2026-08-12 (text_secondary parity: dev hub dim == home SPA dim)
+- **Last derivation mismatch killed:** hub built text_secondary via shade(tx,-40) (additive -102/channel, clamps to 0, hue-crushes saturated text) while home SPA uses dim(text,40) (multiplicative x0.6, hue-preserving). Identical only for pure-white text; e.g. gold #E8C55A -> hub #825f00 vs SPA #8b7636. Hub now carries the SPA's dim() verbatim.
+- Proven on the cold-pulled shipped v0.11.7 zip (not source): all other fields already parity (positive shade == lighten), glow ac+'26' both surfaces, cyan canary 0.
+- chromeRev 0.11.8-textsec-parity. Backups: backups/*.v0.11.8-pre.bak.
+
 ## v0.11.7 - 2026-08-12 (custom-theme parity: dev hub == home SPA)
 - **Cyan glow bug killed:** Developer hub "Save & apply" hardcoded accent_glow rgba(0,212,255,.15) plus navy secondaries into every custom theme (gold/green theme -> cyan focus rings). Now derives bg_secondary/tertiary/hover/border/tab fills from the chosen BG and glow from the chosen accent, byte-for-byte the same recipe as the home SPA editor.
 - Both editors now seed their color pickers from the ACTIVE theme (dev hub live via active_theme IPC; static defaults flipped from old navy #0a0e14/#e0e6f0 to shell tokens #08090B/#EDEFF2).

@@ -180,12 +180,13 @@ function renderThemes(list){{
   }});
 }}
 function shade(hex,pct){{hex=hex.replace('#','');var r=parseInt(hex.substring(0,2),16),g=parseInt(hex.substring(2,4),16),b=parseInt(hex.substring(4,6),16),d=Math.round(255*pct/100);r=Math.max(0,Math.min(255,r+d));g=Math.max(0,Math.min(255,g+d));b=Math.max(0,Math.min(255,b+d));return '#'+[r,g,b].map(function(v){{return v.toString(16).padStart(2,'0')}}).join('');}}
+function dim(hex,pct){{hex=hex.replace('#','');var k=(100-pct)/100;return '#'+[parseInt(hex.substring(0,2),16),parseInt(hex.substring(2,4),16),parseInt(hex.substring(4,6),16)].map(function(v){{return Math.round(v*k).toString(16).padStart(2,'0')}}).join('');}}
 function saveTheme(){{
   var bg=$('th-bg-t').value,ac=$('th-ac-t').value,tx=$('th-tx-t').value;
   var id='custom-'+Date.now().toString(36);
   var theme={{
     id:id,name:$('th-name').value||'Custom',bg_primary:bg,bg_secondary:shade(bg,5),bg_tertiary:shade(bg,12),bg_hover:shade(bg,18),
-    border:shade(bg,15),text_primary:tx,text_secondary:shade(tx,-40),accent:ac,accent_hover:shade(ac,15),accent_glow:ac+'26',
+    border:shade(bg,15),text_primary:tx,text_secondary:dim(tx,40),accent:ac,accent_hover:shade(ac,15),accent_glow:ac+'26',
     danger:'#ff4757',success:'#2ed573',warning:'#ffa502',gradient_start:ac,gradient_mid:tx,gradient_end:bg,
     tab_active:bg,tab_inactive:shade(bg,5),background_image:null,background_opacity:1,font_family:"-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Helvetica, Arial, sans-serif",
     border_radius:'8px',is_custom:true

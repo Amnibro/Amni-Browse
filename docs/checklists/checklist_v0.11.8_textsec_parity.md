@@ -1,0 +1,11 @@
+# Checklist v0.11.8 - text_secondary parity (dev hub dim == home SPA dim)
+- [x] Cold-pull shipped v0.11.7 zip from GH, verify FileVersion 0.11.7.0, cyan canary 0, glow derivation ac+'26' on both surfaces
+- [x] Found residual: hub text_secondary shade(tx,-40) additive/clamping vs SPA dim(text,40) multiplicative — diverges on any non-white text, hue-crushes saturated picks
+- [x] Backup developer.rs/Cargo.toml/toolbar.html to backups/*.v0.11.8-pre.bak
+- [x] developer.rs: add dim() (identical math to webview.rs), text_secondary:dim(tx,40)
+- [x] Cargo 0.11.8, chromeRev 0.11.8-textsec-parity, cargo build --release clean
+- [x] Binary verified: dim defs x2, dim(tx,40) x1, shade(tx,-40) x0, cyan canary x0, FileVersion 0.11.8.0
+- [x] Zip packaged from v0.11.7 payload + fresh exe/toolbar (170 entries)
+- [x] Smoke launch packaged payload: window mounts, loads amni-scient.com, 0 strays before/after
+- [x] gh release v0.11.8 Latest, v0.11.7 demoted to Pre-release
+- [x] Site literals flipped AFTER asset live, live pages verified

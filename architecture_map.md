@@ -1,4 +1,6 @@
 # Amni-Browse Architecture Map
+## 2026-08-12 v0.11.8 text_secondary parity (developer.rs dim == ui/webview.rs dim)
+- Hub saveTheme text_secondary shade(tx,-40) -> dim(tx,40); dim() ported verbatim from webview.rs. Public truth: Cargo 0.11.8 / GH Latest v0.11.8, v0.11.7 demoted to Pre-release.
 ## 2026-08-12 v0.11.7 custom-theme parity (developer.rs == ui/webview.rs)
 - developer.rs saveTheme derives all secondary colors via shade() from user BG/accent/text (was hardcoded navy + cyan accent_glow); glow = accent+'26'.
 - active_theme IPC seeds th-bg/th-ac/th-tx pickers; home SPA custom pickers default to shell tokens. Gradient stops + font stack identical across both editors.
