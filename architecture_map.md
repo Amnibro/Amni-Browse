@@ -29,6 +29,9 @@
 - Media/DRM `spawn_media_window` no longer bare: init-script bar + `amni_media_close` + decorations; `drain_close_requests` in servo_real.
 - WebView external chrome: remount watchdog (400ms), force fixed styles, re-prepend if host detached (streaming sites).
 - Home SPA + README + settings footer: drop false “3P cookies blocked by default”; state system WebView cookie policy + URL-bar stripping + no Amni telemetry.
+## 2026-08-12 Selected contrast lock (0.11.0)
+- Light themes (`amni-light`, `amni-paper-sunset`): strip `bg_secondary` darker than content; `tab_active` = `bg_primary` (content match); `tab_inactive` = strip. Dark themes already used content-match active.
+- Paint: `.tab.active` fill + bottom accent + elevation shadow; `.grp` left rail only. Home SPA (`ui/webview.rs`) and injected (`platform/webview.rs`) share the rule; `toolbar.html` ring is `:focus-visible`/`.kbd-focus` only.
 ## 2026-08-12 Close successor strip-order (0.11.0)
 - `TabManager::close_tab`: when closing the active tab, pick successor from `ordered_tabs()` (next strip index, else previous) — not raw `Vec` index after `remove`. Matches paint/cycle/jump. Unit tests in `tabs.rs`.
 - UI paint rule unchanged: `.tab.active` = fill + bottom accent; `.grp` / `.tab-group-label` = thin left rail + uppercase label only (selected always beats group hue).

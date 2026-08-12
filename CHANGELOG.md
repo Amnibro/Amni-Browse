@@ -1,3 +1,7 @@
+## v0.11.0 - 2026-08-12 (selected tab contrast lock)
+- **Light themes:** Amni Light + Paper Sunset strip was lighter/same as active (tab_active approx strip), so inactive chips read louder than selected. Classic hierarchy restored: strip darker (bg_secondary), active fill = content (tab_active = bg_primary), inactive = strip.
+- **Selected elevation:** home SPA + injected chrome .tab.active get lift shadow + z-index so selected always beats group rail and strip wash on dark and light; kbd ring still :focus-visible/.kbd-focus only.
+- **Servo toolbar.html:** bare .tab:focus permanent ring removed (mouse-click no longer double-encodes selected); close affordance matches.
 ﻿## v0.11.0 — 2026-08-12 (close successor = strip neighbor)
 - **Bug:** `TabManager::close_tab` activated the next raw-Vec sibling after remove, so mid-group close jumped past group-sorted strip neighbors. Now successor is next strip tab (else previous) via `ordered_tabs()` — same map as Ctrl+Tab / paint.
 - **Selected vs group paint:** group is label + left accent rail only; active tab keeps fill + bottom accent bar (no full-fill group hue). Release zip repacked from this binary (`amni-browse-v0.11.0-win64.zip`).

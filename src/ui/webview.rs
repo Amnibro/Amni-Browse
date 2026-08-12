@@ -107,8 +107,8 @@ pub fn browser_html(theme: &Theme) -> String {
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }}
     .tab:hover {{ background: var(--bg-hover); color: var(--text-primary); }}
-    .tab.active {{ background: var(--tab-active); border-color: var(--border); color: var(--text-primary); border-bottom: 2px solid var(--accent); }}
-    .tab:focus-visible,.tab.kbd-focus {{ outline:2px solid var(--accent); outline-offset:-2px; z-index:1; box-shadow:0 0 0 1px var(--accent-glow); }}
+    .tab.active {{ background: var(--tab-active); border-color: var(--border); color: var(--text-primary); border-bottom: 2px solid var(--accent); box-shadow: 0 1px 0 var(--tab-active), 0 -1px 4px rgba(0,0,0,.14); z-index: 2; }}
+    .tab:focus-visible,.tab.kbd-focus {{ outline:2px solid var(--accent); outline-offset:-2px; z-index:3; box-shadow:0 0 0 1px var(--accent-glow); }}
     .tab .ttl {{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
     .tab-close {{
         display: flex; align-items: center; justify-content: center;
