@@ -80,11 +80,10 @@ impl Browser {
                 if url.contains("amnibrowse.") { return; }
                 let t = lt_load.borrow().clone();
                 let th = lth_load.borrow().clone();
-                if (t.is_empty() || t == "[]") && (th.is_empty() || th == "{}") { return; }
                 let tabs = if t.is_empty() { "[]".to_string() } else { t };
                 let theme = if th.is_empty() { "{}".to_string() } else { th };
                 a_load.borrow_mut().push(Act::Js(format!(
-                    "(function(){{try{{var tabs={0};window.__AMNI_TAB_SEED=tabs;window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS(tabs);var th={1};window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME(th);}}catch(_){{}}}})()",
+                    "(function(){{try{{window.__AMNI_ENSURE&&window.__AMNI_ENSURE();var tabs={0};window.__AMNI_TAB_SEED=tabs;window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS(tabs);var th={1};window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME(th);window.__AMNI_ENSURE&&window.__AMNI_ENSURE();}}catch(_){{}}}})()",
                     tabs, theme
                 )));
                 px_load.send_event(()).ok();
@@ -195,6 +194,15 @@ impl Browser {
                         }
                     }
                 }
+                Event::WindowEvent { event: WindowEvent::Focused(true) | WindowEvent::Resized(_), .. } => {
+                    let th = last_theme.borrow().clone();
+                    if !th.is_empty() && th != "{}" {
+                        webview.evaluate_script(&format!(
+                            "window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME({})",
+                            th
+                        )).ok();
+                    }
+                }
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
                     state.borrow_mut().shutdown();
                     *control_flow = ControlFlow::Exit;
@@ -256,26 +264,28 @@ function applyTheme(th){{
   if (!th || typeof th !== 'object') return;
   T = Object.assign({{}}, T, th);
   var host = document.getElementById('__atb_host');
-  if (!host || !host.shadowRoot) return;
-  var root = host.shadowRoot;
+  var root = (host && (host.shadowRoot || window.__AMNI_SR)) || window.__AMNI_SR;
+  if (!root) return;
   var st = root.getElementById('_ath_css');
   if (st) st.textContent = chromeCss();
-  host.style.setProperty('--bg-primary', T.bg_primary || '#0a0e14');
-  host.style.setProperty('--bg-secondary', T.bg_secondary || '#0f1419');
-  host.style.setProperty('--bg-tertiary', T.bg_tertiary || '#1a1f2e');
-  host.style.setProperty('--bg-hover', T.bg_hover || T.bg_tertiary || '#1a1f2e');
-  host.style.setProperty('--border', T.border || '#1a2332');
-  host.style.setProperty('--text-primary', T.text_primary || '#e0e6f0');
-  host.style.setProperty('--text-secondary', T.text_secondary || '#6b7d99');
-  host.style.setProperty('--accent', T.accent || '#00d4ff');
-  host.style.setProperty('--accent-hover', T.accent_hover || '#33ddff');
-  host.style.setProperty('--accent-glow', T.accent_glow || 'rgba(0,212,255,0.15)');
-  host.style.setProperty('--success', T.success || '#2ed573');
-  host.style.setProperty('--danger', T.danger || '#ff4757');
-  host.style.setProperty('--tab-active', T.tab_active || T.bg_primary || '#0a0e14');
-  host.style.setProperty('--tab-inactive', T.tab_inactive || T.bg_secondary || '#0f1419');
-  host.style.setProperty('--font-family', T.font_family || 'system-ui,sans-serif');
-  host.style.setProperty('--radius', T.border_radius || '8px');
+  if (!host) return;
+  var set = function(k,v){{ try {{ host.style.setProperty(k, v); }} catch(_){{}} }};
+  set('--bg-primary', T.bg_primary || '#0a0e14');
+  set('--bg-secondary', T.bg_secondary || '#0f1419');
+  set('--bg-tertiary', T.bg_tertiary || '#1a1f2e');
+  set('--bg-hover', T.bg_hover || T.bg_tertiary || '#1a1f2e');
+  set('--border', T.border || '#1a2332');
+  set('--text-primary', T.text_primary || '#e0e6f0');
+  set('--text-secondary', T.text_secondary || '#6b7d99');
+  set('--accent', T.accent || '#00d4ff');
+  set('--accent-hover', T.accent_hover || '#33ddff');
+  set('--accent-glow', T.accent_glow || 'rgba(0,212,255,0.15)');
+  set('--success', T.success || '#2ed573');
+  set('--danger', T.danger || '#ff4757');
+  set('--tab-active', T.tab_active || T.bg_primary || '#0a0e14');
+  set('--tab-inactive', T.tab_inactive || T.bg_secondary || '#0f1419');
+  set('--font-family', T.font_family || 'system-ui,sans-serif');
+  set('--radius', T.border_radius || '8px');
 }}
 function chromeCss(){{
   return ':host{{all:initial;position:fixed;top:0;left:0;right:0;height:{chrome_h}px;z-index:2147483647;font-family:var(--font-family,system-ui,sans-serif);color:var(--text-primary,#e0e6f0)}}'
@@ -311,63 +321,67 @@ function tabLabel(t){{
   if (title && title !== 'New Tab' && title !== 'Private Tab') return title;
   try {{ var u = new URL(t.url || ''); return u.hostname || t.url || 'Tab'; }} catch(_) {{ return (t && t.url) || 'Tab'; }}
 }}
-function paintTabs(list){{
+function amniRoot(){{
   var host = document.getElementById('__atb_host');
-  var root = host && host.shadowRoot;
+  return (host && (host.shadowRoot || window.__AMNI_SR)) || window.__AMNI_SR || null;
+}}
+function clearKids(el){{
+  if (!el) return;
+  while (el.firstChild) el.removeChild(el.firstChild);
+}}
+function el(tag, props, kids){{
+  var n = document.createElement(tag);
+  if (props) {{
+    Object.keys(props).forEach(function(k){{
+      var v = props[k];
+      if (k === 'className') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k === 'html') n.textContent = v;
+      else if (k.indexOf('on') === 0 && typeof v === 'function') n[k] = v;
+      else if (k === 'style' && typeof v === 'string') n.setAttribute('style', v);
+      else if (v === true) n.setAttribute(k, '');
+      else if (v !== false && v != null) n.setAttribute(k, String(v));
+    }});
+  }}
+  if (kids) kids.forEach(function(c){{ if (c) n.appendChild(c); }});
+  return n;
+}}
+function paintTabs(list){{
+  var root = amniRoot();
   if (!root) return;
   var strip = root.getElementById('_tabs');
   if (!strip) return;
   var tabs = Array.isArray(list) ? list : (typeof list === 'string' ? (function(){{try{{return JSON.parse(list)}}catch(_){{return[]}}}})() : []);
   if (tabs && tabs.length) window.__AMNI_TAB_SEED = tabs;
-  strip.innerHTML = '';
+  clearKids(strip);
   tabs.forEach(function(t){{
-    var el = document.createElement('button');
-    el.type = 'button';
-    el.className = 'tab' + (t.is_active ? ' active' : '');
-    el.title = t.url || '';
-    el.setAttribute('data-id', t.id || '');
-    var ttl = document.createElement('span');
-    ttl.className = 'ttl';
-    ttl.textContent = tabLabel(t);
-    var x = document.createElement('span');
-    x.className = 'x';
-    x.textContent = '×';
-    x.title = 'Close';
+    var ttl = el('span', {{ className:'ttl', text: tabLabel(t) }});
+    var x = el('span', {{ className:'x', title:'Close', text:'×' }});
     x.onclick = function(e){{ e.stopPropagation(); if (t.id) ipc({{ type:'close_tab', id:t.id }}); }};
-    el.appendChild(ttl);
-    el.appendChild(x);
-    el.onclick = function(){{ if (t.id) ipc({{ type:'switch_tab', id:t.id }}); }};
-    strip.appendChild(el);
-    if (t.is_active) try {{ el.scrollIntoView({{ inline:'nearest', block:'nearest' }}); }} catch(_){{}}
+    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : ''), title: t.url || '', 'data-id': t.id || '' }}, [ttl, x]);
+    node.onclick = function(){{ if (t.id) ipc({{ type:'switch_tab', id:t.id }}); }};
+    strip.appendChild(node);
+    if (t.is_active) try {{ node.scrollIntoView({{ inline:'nearest', block:'nearest' }}); }} catch(_){{}}
   }});
-  var plus = document.createElement('button');
-  plus.type = 'button';
-  plus.id = '_newtab';
-  plus.title = 'New tab';
-  plus.textContent = '+';
+  var plus = el('button', {{ type:'button', id:'_newtab', title:'New tab', text:'+' }});
   plus.onclick = function(){{ ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }};
   strip.appendChild(plus);
 }}
 function paintBookmarks(list){{
-  var host = document.getElementById('__atb_host');
-  var root = host && host.shadowRoot;
+  var root = amniRoot();
   if (!root) return;
   var strip = root.getElementById('_bookmarks');
   if (!strip) return;
   var bmks = Array.isArray(list) ? list : (typeof list === 'string' ? (function(){{try{{return JSON.parse(list)}}catch(_){{return[]}}}})() : []);
-  strip.innerHTML = '';
+  clearKids(strip);
   bmks.forEach(function(b){{
-    var el = document.createElement('button');
-    el.type = 'button';
-    el.className = 'bmk';
-    el.title = b.url || '';
-    el.textContent = b.title || b.url || 'Bookmark';
-    el.onclick = function(){{ ipc({{ type:'navigate', url:b.url }}); }};
-    strip.appendChild(el);
+    var node = el('button', {{ type:'button', className:'bmk', title: b.url || '', text: b.title || b.url || 'Bookmark' }});
+    node.onclick = function(){{ ipc({{ type:'navigate', url:b.url }}); }};
+    strip.appendChild(node);
   }});
 }}
 function wireHandlers(host){{
-  var root = host && host.shadowRoot;
+  var root = (host && (host.shadowRoot || window.__AMNI_SR)) || amniRoot();
   if (!root) return;
   var q = function(id){{ return root.getElementById(id); }};
   var u = q('_au');
@@ -424,61 +438,76 @@ function wireHandlers(host){{
     }}, true);
   }}
 }}
+function buildChromeBar(root){{
+  var bar = el('div', {{ id:'__atb' }});
+  bar.appendChild(el('div', {{ id:'_tabs' }}));
+  var nav = el('div', {{ id:'_nav' }});
+  nav.appendChild(el('span', {{ className:'logo', text:'A' }}));
+  nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Back', id:'_ab', text:'◀' }}));
+  nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Forward', id:'_af', text:'▶' }}));
+  nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Reload', id:'_ar', text:'⟳' }}));
+  nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Home', id:'_ah', text:'⌂' }}));
+  var input = el('input', {{ id:'_au', placeholder:'Search or enter URL…' }});
+  input.setAttribute('type', 'text');
+  input.value = '';
+  try {{ input.value = location.href; }} catch(_){{}}
+  nav.appendChild(input);
+  nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Bookmark', id:'_abk', text:'★' }}));
+  nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Menu', id:'atb-menu-btn', 'aria-haspopup':'true', 'aria-expanded':'false', text:'☰' }}));
+  nav.appendChild(el('span', {{ className:'ab', id:'_as', title:'Ads blocked', text:'🛡' }}));
+  var menu = el('div', {{ id:'atb-menu-dropdown', role:'menu' }});
+  [['apps','Amni Apps'],['themes','Themes'],['history','History'],['downloads','Downloads']].forEach(function(pair){{
+    menu.appendChild(el('button', {{ type:'button', className:'mi', 'data-act':pair[0], role:'menuitem', text:pair[1] }}));
+  }});
+  nav.appendChild(menu);
+  bar.appendChild(nav);
+  bar.appendChild(el('div', {{ id:'_bookmarks' }}));
+  root.appendChild(bar);
+}}
 function ensureToolbar(){{
   try {{
     var d = document;
     if (!d.documentElement) return false;
-    var mount = d.body || d.documentElement;
+    var mount = d.documentElement;
     var host = d.getElementById('__atb_host');
-    var hostCss = 'position:fixed!important;top:0!important;left:0!important;right:0!important;height:{chrome_h}px!important;z-index:2147483647!important;pointer-events:auto!important;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;';
-    if (!host || !host.shadowRoot) {{
+    var hostCss = 'all:initial;position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;height:{chrome_h}px!important;max-height:{chrome_h}px!important;z-index:2147483647!important;pointer-events:auto!important;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;contain:layout style!important;isolation:isolate!important;';
+    var needBuild = !host || !(host.shadowRoot || window.__AMNI_SR) || !((host.shadowRoot || window.__AMNI_SR).getElementById('__atb'));
+    if (needBuild) {{
       if (host) try {{ host.remove(); }} catch(_){{}}
       host = d.createElement('div');
       host.id = '__atb_host';
       host.setAttribute('data-amni','chrome');
-      host.style.cssText = hostCss;
-      var root = host.attachShadow({{ mode:'open' }});
+      try {{ host.style.cssText = hostCss; }} catch(_) {{
+        host.setAttribute('style', hostCss);
+      }}
+      var root;
+      try {{ root = host.attachShadow({{ mode:'closed' }}); }} catch(_) {{ root = host.attachShadow({{ mode:'open' }}); }}
+      window.__AMNI_SR = root;
       var style = d.createElement('style');
       style.id = '_ath_css';
       style.textContent = chromeCss();
       root.appendChild(style);
-      var bar = d.createElement('div');
-      bar.id = '__atb';
-      bar.innerHTML = '<div id="_tabs"></div>'
-        + '<div id="_nav">'
-        + '<span class="logo">A</span>'
-        + '<button class="nav" title="Back" id="_ab">◀</button>'
-        + '<button class="nav" title="Forward" id="_af">▶</button>'
-        + '<button class="nav" title="Reload" id="_ar">⟳</button>'
-        + '<button class="nav" title="Home" id="_ah">⌂</button>'
-        + '<input id="_au" value="" placeholder="Search or enter URL…"/>'
-        + '<button class="nav" title="Bookmark" id="_abk">★</button>'
-        + '<button class="nav" title="Menu" id="atb-menu-btn" aria-haspopup="true" aria-expanded="false">☰</button>'
-        + '<span class="ab" id="_as" title="Ads blocked">🛡</span>'
-        + '<div id="atb-menu-dropdown" role="menu">'
-        + '<button type="button" class="mi" data-act="apps" role="menuitem">Amni Apps</button>'
-        + '<button type="button" class="mi" data-act="themes" role="menuitem">Themes</button>'
-        + '<button type="button" class="mi" data-act="history" role="menuitem">History</button>'
-        + '<button type="button" class="mi" data-act="downloads" role="menuitem">Downloads</button>'
-        + '</div>'
-        + '</div>'
-        + '<div id="_bookmarks"></div>';
-      root.appendChild(bar);
-      mount.prepend(host);
+      buildChromeBar(root);
+      mount.appendChild(host);
       applyTheme(T);
       var seed = (window.__AMNI_TAB_SEED && window.__AMNI_TAB_SEED.length) ? window.__AMNI_TAB_SEED : SEED;
       paintTabs(Array.isArray(seed) && seed.length ? seed : SEED);
     }} else {{
-      host.style.cssText = hostCss;
-      if (!mount.contains(host)) mount.prepend(host);
+      try {{ host.style.cssText = hostCss; }} catch(_) {{ host.setAttribute('style', hostCss); }}
+      if (host.parentNode !== mount) mount.appendChild(host);
+      if (host.nextSibling) mount.appendChild(host);
     }}
     var head = d.head || d.documentElement;
-    if (!d.getElementById('__amni_push_style')) {{
-      var s = d.createElement('style');
-      s.id = '__amni_push_style';
-      s.textContent = 'html{{margin-top:{push_h}px!important}}';
-      head.appendChild(s);
+    var push = d.getElementById('__amni_push_style');
+    if (!push) {{
+      push = d.createElement('style');
+      push.id = '__amni_push_style';
+      push.textContent = 'html{{scroll-padding-top:{push_h}px!important}}html,body{{margin-top:0!important}}#__atb_host{{position:fixed!important;top:0!important;z-index:2147483647!important}}';
+      head.appendChild(push);
     }}
+    try {{
+      d.documentElement.style.setProperty('padding-top', '{push_h}px', 'important');
+    }} catch(_){{}}
     wireHandlers(host);
     if (!window.__AMNI_CHROME_POLL) {{
       window.__AMNI_CHROME_POLL = true;
@@ -488,8 +517,12 @@ function ensureToolbar(){{
       ipc({{ type:'bookmark_list' }});
     }}
     return true;
-  }} catch(_) {{ return false; }}
+  }} catch(err) {{
+    try {{ console.warn('[amni-chrome]', err && err.message ? err.message : err); }} catch(_){{}}
+    return false;
+  }}
 }}
+window.__AMNI_ENSURE = ensureToolbar;
 window.__AMNI_SYNC_THEME = function(th){{
   try {{
     var obj = (typeof th === 'string') ? JSON.parse(th) : th;
@@ -501,8 +534,8 @@ window.__AMNI_SYNC_TABS = function(list){{
 }};
 window.__amni_receive = function(msg){{
   if (!msg) return;
-  var host = document.getElementById('__atb_host');
-  var root = host && host.shadowRoot;
+  ensureToolbar();
+  var root = amniRoot();
   if (!root) return;
   var u = root.getElementById('_au');
   var sh = root.getElementById('_as');
@@ -527,13 +560,16 @@ function start(){{
   ensureToolbar();
   if (!window.__AMNI_CHROME_WATCH) {{
     window.__AMNI_CHROME_WATCH = true;
-    setInterval(function(){{ ensureToolbar(); }}, 400);
+    setInterval(function(){{ ensureToolbar(); }}, 250);
     try {{
       var observer = new MutationObserver(function(){{ ensureToolbar(); }});
       observer.observe(document.documentElement || document, {{ childList:true, subtree:true }});
     }} catch(_) {{}}
     window.addEventListener('pageshow', function(){{ ensureToolbar(); }});
     window.addEventListener('focus', function(){{ ensureToolbar(); }});
+    document.addEventListener('fullscreenchange', function(){{
+      if (!document.fullscreenElement) ensureToolbar();
+    }});
   }}
 }}
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {{ once:true }});

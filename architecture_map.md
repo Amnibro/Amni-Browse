@@ -1,4 +1,7 @@
 ﻿# Amni-Browse Architecture Map
+## 2026-08-12 YouTube chrome (Trusted Types)
+- YouTube enables Trusted Types — `bar.innerHTML = '...'` / `strip.innerHTML = ''` threw and chrome never mounted on external pages.
+- Fix: pure DOM (`createElement`/`textContent`/`removeChild`); closed shadow + `__AMNI_SR`; host on `documentElement` with max z-index; 250ms watchdog; page-load re-`__AMNI_ENSURE`.
 ## 2026-08-12 DRM chrome + privacy copy truth
 - Media/DRM `spawn_media_window` no longer bare: init-script bar + `amni_media_close` + decorations; `drain_close_requests` in servo_real.
 - WebView external chrome: remount watchdog (400ms), force fixed styles, re-prepend if host detached (streaming sites).

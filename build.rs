@@ -2,14 +2,33 @@ use std::{env, fs, path::{Path, PathBuf}};
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=assets/chrome/toolbar.html");
+    println!("cargo:rerun-if-changed=assets/amni-browse.ico");
+    println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
     println!("cargo:rerun-if-env-changed=GSTREAMER_1_0_ROOT_MSVC_X86_64");
     #[cfg(target_os = "windows")]
     {
-        let rc = Path::new("assets/windows_app.rc");
-        if rc.exists() { embed_resource::compile(rc, embed_resource::NONE); }
+        embed_pe_version();
         copy_angle_dlls();
         copy_gstreamer_plugins();
         stage_chrome_assets();
+    }
+}
+#[cfg(target_os = "windows")]
+fn embed_pe_version() {
+    let ver = env::var("CARGO_PKG_VERSION").unwrap_or_else(|_| "0.0.0".into());
+    let mut it = ver.split('.').filter_map(|s| s.parse::<u16>().ok());
+    let (maj, min, pat) = (it.next().unwrap_or(0), it.next().unwrap_or(0), it.next().unwrap_or(0));
+    let manifest = env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".into());
+    let icon = Path::new(&manifest).join("assets").join("amni-browse.ico");
+    let icon_esc = icon.to_string_lossy().replace('\\', "\\\\");
+    let fv = format!("{}.{}.{}.0", maj, min, pat);
+    let body = format!(
+        "1 ICON \"{icon}\"\n1 VERSIONINFO\nFILEVERSION {maj},{min},{pat},0\nPRODUCTVERSION {maj},{min},{pat},0\nFILEFLAGSMASK 0x3fL\nFILEFLAGS 0x0L\nFILEOS 0x40004L\nFILETYPE 0x1L\nFILESUBTYPE 0x0L\nBEGIN\n    BLOCK \"StringFileInfo\"\n    BEGIN\n        BLOCK \"040904b0\"\n        BEGIN\n            VALUE \"CompanyName\", \"Amni-Scient\"\n            VALUE \"FileDescription\", \"Amni Browse\"\n            VALUE \"FileVersion\", \"{fv}\"\n            VALUE \"InternalName\", \"amni-browse\"\n            VALUE \"LegalCopyright\", \"Amni-Scient\"\n            VALUE \"OriginalFilename\", \"amni-browse.exe\"\n            VALUE \"ProductName\", \"Amni Browse\"\n            VALUE \"ProductVersion\", \"{fv}\"\n        END\n    END\n    BLOCK \"VarFileInfo\"\n    BEGIN\n        VALUE \"Translation\", 0x409, 1200\n    END\nEND\n",
+        icon = icon_esc, maj = maj, min = min, pat = pat, fv = fv
+    );
+    let out = PathBuf::from(env::var("OUT_DIR").unwrap_or_else(|_| ".".into())).join("amni_pe_version.rc");
+    if fs::write(&out, body).is_ok() {
+        let _ = embed_resource::compile(&out, embed_resource::NONE);
     }
 }
 #[cfg(target_os = "windows")]
