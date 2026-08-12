@@ -7,7 +7,7 @@ use euclid::default::{Point2D as DefaultPoint2D, Rect as DefaultRect, Size2D as 
 use servo::{
     DevicePixel, EventLoopWaker, InputEvent, LoadStatus, MouseButton as ServoMouseButton, MouseButtonAction,
     MouseButtonEvent, MouseLeftViewportEvent, MouseMoveEvent, NavigationRequest, OffscreenRenderingContext,
-    RenderingContext, Servo, ServoBuilder, WebResourceLoad, WebResourceResponse, WebView, WebViewBuilder,
+    Preferences, RenderingContext, Servo, ServoBuilder, WebResourceLoad, WebResourceResponse, WebView, WebViewBuilder,
     WebViewDelegate, WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
 };
 use url::Url;
@@ -25,7 +25,9 @@ use crate::engine::adblocker::AdBlocker;
 use crate::engine::tabs::TabEngine;
 use crate::platform::media_engine::{self, EngineKind, MediaWindow};
 use crate::platform::servo_keys::keyboard_event_from_winit;
-const CHROME_HEIGHT_CSS: f32 = 74.0;
+use crate::storage::bookmarks::BookmarkManager;
+use crate::storage::config::BrowserConfig;
+const CHROME_HEIGHT_CSS: f32 = 66.0;
 const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
 
 fn load_toolbar_html() -> String {
@@ -50,6 +52,48 @@ fn chrome_data_url() -> Url {
     let encoded = urlencoding::encode(&html);
     Url::parse(&format!("data:text/html;charset=utf-8,{}", encoded)).expect("chrome data url")
 }
+const SETTINGS_TPL: &str = r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Settings &#8212; Amni Browse</title><style>
+:root{--bg:#0a0e1a;--elev:#141a2a;--stroke:#222a3d;--text:#d6dbe8;--dim:#8a92a6;--accent:#00d4ff;--accent-dim:#0089a8}
+body{font:15px/1.55 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:680px;margin:36px auto;padding:0 24px;color:var(--text);background:var(--bg)}
+h1{font-size:22px;margin:0 0 2px}.tag{color:var(--dim);font-size:13px;margin:0 0 26px}
+h2{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin:30px 0 12px}
+.opt{display:inline-flex;align-items:center;gap:7px;padding:7px 14px;margin:0 8px 8px 0;background:var(--elev);border:1px solid var(--stroke);border-radius:999px;cursor:pointer;transition:border-color .12s}
+.opt:hover{border-color:var(--accent-dim)}
+input[type=radio],input[type=checkbox]{accent-color:var(--accent)}
+input[type=text],select{width:100%;max-width:420px;padding:8px 12px;background:var(--elev);border:1px solid var(--stroke);border-radius:8px;color:var(--text);font:inherit;outline:none;margin-top:6px}
+input[type=text]:focus,select:focus{border-color:var(--accent)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:9px 0;border-bottom:1px solid var(--stroke)}.row:last-child{border-bottom:0}
+.row a{color:var(--text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.row a:hover{color:var(--accent)}
+.x{background:none;border:1px solid var(--stroke);border-radius:6px;color:var(--dim);padding:3px 10px;cursor:pointer;font-size:12px}.x:hover{border-color:#ff5577;color:#ff5577}
+.dim{color:var(--dim)}.note{color:var(--dim);font-size:12.5px;margin:6px 0 0}
+.switch{display:flex;align-items:center;gap:10px;padding:8px 0}
+kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padding:1px 6px;font-family:'Cascadia Code',monospace;font-size:12px}
+</style></head><body>
+<h1>Settings</h1><p class='tag'>Amni Browse v__VER__ &#8212; changes save instantly</p>
+<h2>Search engine</h2><div>__RADIOS__</div>
+<h2>Homepage</h2><input type='text' value='__HOME__' placeholder='https://&#8230; (blank = built-in start page)' onchange='set("home_page",this.value)'><p class='note'>New tabs open this.</p>
+<h2>Privacy</h2><label class='switch'><input type='checkbox'__SHIELD__ onchange='set("block_ads",this.checked)'><span>Shield &#8212; block ads &amp; trackers</span></label>
+<h2>Appearance</h2><label>Default zoom for new tabs<select onchange='set("default_zoom",this.value)'>__ZOOMS__</select></label>
+<h2>Advanced</h2><label>User-agent override<input type='text' value='__UA__' placeholder='(Servo default)' onchange='set("custom_user_agent",this.value)'></label><p class='note'>Some sites gate features on UA. Takes effect after restart.</p>
+<h2>Bookmarks</h2><div>__BMS__</div>
+<h2>Shortcuts</h2><p class='dim'><kbd>Ctrl+L</kbd> URL bar &#183; <kbd>Ctrl+D</kbd> bookmark &#183; <kbd>Ctrl+T</kbd>/<kbd>W</kbd> tabs &#183; <kbd>Ctrl+=</kbd>/<kbd>-</kbd>/<kbd>0</kbd> zoom &#183; <kbd>Ctrl+1&#8230;9</kbd> switch &#183; <kbd>Ctrl+Shift+T</kbd> reopen &#183; <kbd>F11</kbd> fullscreen</p>
+<script>
+const T='__TOK__';
+function set(k,v){fetch('amnibrowse://cmd/setting_set?tok='+T+'&k='+encodeURIComponent(k)+'&v='+encodeURIComponent(v),{mode:'no-cors'}).catch(function(){})}
+function rmbm(id){fetch('amnibrowse://cmd/bookmark_remove?tok='+T+'&id='+encodeURIComponent(id),{mode:'no-cors'}).catch(function(){});var e=document.getElementById('bm-'+id);e&&e.remove()}
+</script></body></html>"##;
+const NEWTAB_TPL: &str = r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>New Tab</title><style>
+body{font:15px -apple-system,'Segoe UI',Roboto,Arial,sans-serif;background:#0a0e1a;color:#d6dbe8;display:flex;flex-direction:column;align-items:center;min-height:100vh;margin:0;padding-top:14vh}
+h1{font-size:34px;letter-spacing:.5px;margin:0 0 6px;color:#00d4ff}
+p{color:#8a92a6;margin:0 0 40px}
+.grid{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;max-width:760px}
+.tile{display:flex;flex-direction:column;align-items:center;gap:8px;width:108px;padding:16px 6px;background:#141a2a;border:1px solid #222a3d;border-radius:14px;text-decoration:none;color:#d6dbe8;font-size:12px;transition:border-color .12s}
+.tile:hover{border-color:#00d4ff}
+.mono{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff}
+.tile span{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dim{color:#8a92a6;font-size:13px}
+</style></head><body><h1>Amni Browse</h1><p>Private by default &#8212; search from the bar above</p><div class='grid'>__TILES__</div></body></html>"##;
+fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
 fn chrome_height_px(scale: f32) -> u32 { (CHROME_HEIGHT_CSS * scale).round().max(1.0) as u32 }
 fn content_size(window_size: PhysicalSize<u32>, chrome_px: u32) -> PhysicalSize<u32> {
     PhysicalSize::new(window_size.width.max(1), window_size.height.saturating_sub(chrome_px).max(1))
@@ -59,12 +103,14 @@ pub fn run(state: BrowserState) {
     info!("Media engine platform: {}", media_engine::platform_label());
     let event_loop = EventLoop::<WakerEvent>::with_user_event().build().expect("event loop");
     let ad_blocker = Arc::new(Mutex::new(state.ad_blocker.clone()));
+    let config = state.config.clone();
+    let bookmarks = state.bookmarks.clone();
     let mut initial_urls: Vec<(String, EngineKind)> = state.tabs.tabs.iter().map(|t| {
         let kind = match t.engine { TabEngine::Media => EngineKind::Media, _ => media_engine::route(&t.url) };
         (t.url.clone(), kind)
     }).collect();
     if let Ok(test_url) = std::env::var("AMNI_TEST_MEDIA_URL") { info!("AMNI_TEST_MEDIA_URL set \u{2192} injecting media tab: {}", test_url); initial_urls.push((test_url, EngineKind::Media)); }
-    let mut app = App::new(&event_loop, ad_blocker, initial_urls);
+    let mut app = App::new(&event_loop, ad_blocker, initial_urls, config, bookmarks);
     event_loop.run_app(&mut app).expect("event loop run");
 }
 #[derive(Debug)]
@@ -93,6 +139,9 @@ struct AppState {
     closed_tabs: RefCell<Vec<Url>>,
     tab_zoom: RefCell<Vec<f32>>,
     is_fullscreen: Cell<bool>,
+    config: RefCell<BrowserConfig>,
+    bookmarks: RefCell<BookmarkManager>,
+    cmd_token: String,
     self_weak: Weak<AppState>,
 }
 impl AppState {
@@ -113,7 +162,39 @@ impl AppState {
             .delegate(self.self_rc())
             .build();
         wv.resize(self.offscreen_context.size());
+        let z = self.default_zoom();
+        if (z - 1.0).abs() > 0.01 { wv.set_page_zoom(z); }
         wv
+    }
+    fn default_zoom(&self) -> f32 { (self.config.borrow().default_zoom as f32).clamp(0.25, 5.0) }
+    fn home_url(&self) -> String {
+        let hp = self.config.borrow().home_page.trim().to_string();
+        match hp.starts_with("http") { true => hp, false => format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.newtab_html())) }
+    }
+    fn newtab_html(&self) -> String {
+        let b = self.bookmarks.borrow();
+        let tiles: String = match b.bookmarks.is_empty() {
+            true => "<p class='dim'>Bookmark pages with \u{2606} or Ctrl+D and they land here.</p>".into(),
+            false => b.bookmarks.iter().take(12).map(|bm| {
+                let host = Url::parse(&bm.url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_else(|| bm.title.clone());
+                let ch: String = host.chars().next().unwrap_or('\u{2022}').to_uppercase().collect();
+                let hue = host.bytes().fold(0u32, |a, x| a.wrapping_mul(31).wrapping_add(x as u32)) % 360;
+                format!("<a class='tile' href='{}'><div class='mono' style='background:hsl({},45%,38%)'>{}</div><span>{}</span></a>", esc_html(&bm.url), hue, esc_html(&ch), esc_html(&host))
+            }).collect(),
+        };
+        NEWTAB_TPL.replace("__TILES__", &tiles)
+    }
+    fn settings_page_html(&self) -> String {
+        let c = self.config.borrow();
+        let b = self.bookmarks.borrow();
+        let engines = [("DuckDuckGo", "https://duckduckgo.com/?q="), ("Brave", "https://search.brave.com/search?q="), ("Startpage", "https://www.startpage.com/sp/search?query="), ("Google", "https://www.google.com/search?q=")];
+        let radios: String = engines.iter().map(|(n, p)| format!("<label class='opt'><input type='radio' name='se' value='{}'{} onchange='set(\"search_engine\",this.value)'><span>{}</span></label>", p, match c.search_engine == *p { true => " checked", false => "" }, n)).collect();
+        let zooms: String = [(0.8, "80%"), (0.9, "90%"), (1.0, "100%"), (1.1, "110%"), (1.25, "125%"), (1.5, "150%")].iter().map(|(z, l)| format!("<option value='{}'{}>{}</option>", z, match (*z - c.default_zoom).abs() < 0.01 { true => " selected", false => "" }, l)).collect();
+        let bms: String = match b.bookmarks.is_empty() {
+            true => "<p class='dim'>No bookmarks yet \u{2014} hit \u{2606} in the URL bar or Ctrl+D.</p>".into(),
+            false => b.bookmarks.iter().map(|bm| format!("<div class='row' id='bm-{}'><a href='{}' title='{}'>{}</a><button class='x' onclick='rmbm(\"{}\")'>remove</button></div>", esc_html(&bm.id), esc_html(&bm.url), esc_html(&bm.url), esc_html(&bm.title), esc_html(&bm.id))).collect(),
+        };
+        SETTINGS_TPL.replace("__VER__", env!("CARGO_PKG_VERSION")).replace("__RADIOS__", &radios).replace("__HOME__", &esc_html(match c.home_page.starts_with("http") { true => c.home_page.as_str(), false => "" })).replace("__SHIELD__", match c.block_ads { true => " checked", false => "" }).replace("__ZOOMS__", &zooms).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__BMS__", &bms).replace("__TOK__", &self.cmd_token)
     }
     fn execute_command(&self, name: &str, args: &std::collections::HashMap<String, String>) {
         match name {
@@ -122,7 +203,8 @@ impl AppState {
             "reload" => { if let Some(c) = self.active_content() { c.reload(); info!("cmd reload"); } }
             "navigate" => {
                 let raw = args.get("url").cloned().unwrap_or_default();
-                match resolve_navigate_input(&raw) {
+                let engine = self.config.borrow().search_engine.clone();
+                match resolve_navigate_input(&raw, &engine) {
                     Some(u) => {
                         let us = u.as_str().to_string();
                         match media_engine::wants_media_window(&us) {
@@ -134,7 +216,7 @@ impl AppState {
                 }
             }
             "new_tab" => {
-                let raw = args.get("url").cloned().unwrap_or_else(|| "https://duckduckgo.com".into());
+                let raw = args.get("url").cloned().unwrap_or_else(|| self.home_url());
                 let start = Url::parse(&raw).unwrap_or_else(|_| Url::parse("https://duckduckgo.com").unwrap());
                 let us = start.as_str().to_string();
                 if media_engine::wants_media_window(&us) {
@@ -145,7 +227,7 @@ impl AppState {
                 let wv = self.spawn_content_webview(start);
                 let mut tabs = self.content_webviews.borrow_mut();
                 tabs.push(wv);
-                self.tab_zoom.borrow_mut().push(1.0);
+                self.tab_zoom.borrow_mut().push(self.default_zoom());
                 self.active_content_index.set(tabs.len() - 1);
                 info!("cmd new_tab \u{2192} idx {}", tabs.len() - 1);
                 self.window.request_redraw();
@@ -161,7 +243,7 @@ impl AppState {
                 let wv = self.spawn_content_webview(url.clone());
                 let mut tabs = self.content_webviews.borrow_mut();
                 tabs.push(wv);
-                self.tab_zoom.borrow_mut().push(1.0);
+                self.tab_zoom.borrow_mut().push(self.default_zoom());
                 self.active_content_index.set(tabs.len() - 1);
                 info!("cmd reopen_tab \u{2192} {}", url);
                 self.window.request_redraw();
@@ -226,16 +308,45 @@ impl AppState {
                 info!("cmd close_tab \u{2192} removed {}, active now {}", idx, new_active);
                 self.window.request_redraw();
             }
-            "bookmark" => info!("cmd bookmark (stub)"),
-            "menu" | "shield" => {
-                let about_html = if name == "shield" {
-                    concat!("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Privacy shield</title><style>:root{--bg:#0a0e1a;--elev:#141a2a;--stroke:#222a3d;--text:#d6dbe8;--dim:#8a92a6;--accent:#00d4ff;--ok:#3ccf8e}body{font:15px/1.55 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:var(--text);background:var(--bg)}h1{color:var(--text);margin:0 0 4px;font-size:22px}.tag{color:var(--dim);font-size:13px;margin:0 0 24px}h2{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin:28px 0 10px}.row{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--stroke)}.row:last-child{border-bottom:0}.row b{color:var(--ok);font-weight:600}.pill{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--elev);border:1px solid var(--stroke);color:var(--accent);font-size:12px}</style></head><body><h1>Privacy shield</h1><p class='tag'>Network protections active for this session. <span class='pill'>ON</span></p><h2>Status</h2><div class='row'><span>Ad blocking</span><b>Enabled</b></div><div class='row'><span>Tracker blocking</span><b>Enabled</b></div><div class='row'><span>Telemetry</span><b>Disabled</b></div><div class='row'><span>Third-party cookie jar</span><b>Isolated</b></div><h2>Note</h2><p style='color:var(--dim);margin:0'>Per-site allowlist UI is on the roadmap. This page is the live affordance for the shield control.</p></body></html>")
-                } else {
-                    concat!("<!DOCTYPE html><html><head><meta charset='utf-8'><title>Amni Browse \u{2014} About</title><style>:root{--bg:#0a0e1a;--elev:#141a2a;--stroke:#222a3d;--text:#d6dbe8;--dim:#8a92a6;--accent:#00d4ff;--accent-dim:#0089a8}body{font:15px/1.55 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:640px;margin:40px auto;padding:0 24px;color:var(--text);background:var(--bg)}h1{color:var(--text);margin:0 0 4px;font-size:22px}.tag{color:var(--dim);font-size:13px;margin:0 0 24px}h2{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin:28px 0 10px}kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padding:2px 6px;font-family:'Cascadia Code','Segoe UI Mono',monospace;font-size:12px;color:var(--text)}ul{padding-left:20px;margin:0 0 12px}li{margin:6px 0}.k{color:var(--dim)}a{color:var(--accent)}.row{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid var(--stroke)}.row:last-child{border-bottom:0}.row b{color:var(--text);font-weight:600}</style></head><body><h1>Amni Browse v", env!("CARGO_PKG_VERSION"), "</h1><p class='tag'>By <a href='https://amni-scient.com'>Amni-Scient</a> \u{2014} Privacy-first browser. Zero telemetry. Solo-built.</p><h2>Backend</h2><div class='row'><span>Engine</span><b>Real Servo (libservo)</b></div><div class='row'><span>Compositor</span><b>Offscreen-FB content blit</b></div><div class='row'><span>Privacy</span><b>Ad-block + tracker-block ON</b></div><div class='row'><span>Telemetry</span><b>Disabled</b></div><h2>Keyboard shortcuts</h2><ul><li><kbd>Ctrl</kbd>+<kbd>L</kbd> \u{2014} <span class='k'>Focus URL bar</span></li><li><kbd>Ctrl</kbd>+<kbd>T</kbd> / <kbd>W</kbd> \u{2014} <span class='k'>New / close tab</span></li><li><kbd>Ctrl</kbd>+<kbd>=</kbd> / <kbd>-</kbd> / <kbd>0</kbd> \u{2014} <span class='k'>Zoom in / out / reset</span></li><li><kbd>Ctrl</kbd>+<kbd>1</kbd>\u{2026}<kbd>8</kbd> \u{2014} <span class='k'>Switch to tab N</span> ; <kbd>Ctrl</kbd>+<kbd>9</kbd> \u{2014} <span class='k'>last tab</span></li><li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> \u{2014} <span class='k'>Reopen closed tab</span></li><li><kbd>Alt</kbd>+<kbd>\u{2190}</kbd> / <kbd>\u{2192}</kbd> \u{2014} <span class='k'>Back / forward</span></li><li><kbd>F11</kbd> \u{2014} <span class='k'>Toggle fullscreen</span> ; <kbd>Esc</kbd> \u{2014} <span class='k'>Exit fullscreen</span></li></ul><h2>About</h2><p style='color:var(--dim);margin:0'>Settings panel UI is on the roadmap. Menu opens this page so the chrome control stays wired end-to-end.</p></body></html>")
-                };
-                let url_str = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(about_html));
+            "bookmark" => {
+                let Some(c) = self.active_content() else { return };
+                let u = c.url().map(|u| u.as_str().to_string()).unwrap_or_default();
+                if u.is_empty() || u.starts_with("data:") || u.starts_with("amnibrowse") { info!("cmd bookmark: skip {}", u); return; }
+                let t = c.page_title().unwrap_or_default();
+                let mut b = self.bookmarks.borrow_mut();
+                match b.find_by_url(&u).map(|x| x.id.clone()) {
+                    Some(id) => { b.remove(&id); info!("cmd bookmark \u{2192} removed {}", u); }
+                    None => { b.add(match t.trim().is_empty() { true => u.as_str(), false => t.trim() }, &u, None); info!("cmd bookmark \u{2192} added {}", u); }
+                }
+            }
+            "shield" => {
+                let on = { let mut c = self.config.borrow_mut(); c.block_ads = !c.block_ads; c.block_trackers = c.block_ads; c.save(); c.block_ads };
+                info!("cmd shield \u{2192} {}", match on { true => "on", false => "off" });
+            }
+            "setting_set" => {
+                let (Some(k), Some(v)) = (args.get("k"), args.get("v")) else { info!("setting_set: missing k/v"); return };
+                {
+                    let mut c = self.config.borrow_mut();
+                    match k.as_str() {
+                        "search_engine" => c.search_engine = v.clone(),
+                        "home_page" => c.home_page = v.clone(),
+                        "block_ads" => { c.block_ads = v == "true"; c.block_trackers = c.block_ads; }
+                        "default_zoom" => c.default_zoom = v.parse().unwrap_or(1.0),
+                        "custom_user_agent" => c.custom_user_agent = match v.trim().is_empty() { true => None, false => Some(v.trim().to_string()) },
+                        other => { info!("setting_set: unknown key {}", other); return; }
+                    }
+                    c.save();
+                }
+                info!("cmd setting_set {} \u{2192} {}", k, v);
+            }
+            "bookmark_remove" => {
+                let Some(id) = args.get("id") else { return };
+                if self.bookmarks.borrow_mut().remove(id) { info!("cmd bookmark_remove {}", id); }
+            }
+            "menu" | "settings" => {
+                let url_str = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.settings_page_html()));
                 match Url::parse(&url_str) {
-                    Ok(parsed) => { if let Some(c) = self.active_content() { c.load(parsed); info!("cmd {} \u{2192} chrome page", name); } }
+                    Ok(parsed) => { if let Some(c) = self.active_content() { c.load(parsed); info!("cmd {} \u{2192} settings page", name); } }
                     Err(e) => info!("cmd {}: failed to build data-url ({})", name, e),
                 }
             }
@@ -298,6 +409,8 @@ impl AppState {
             "zoom": zoom,
             "fullscreen": self.is_fullscreen.get(),
             "canReopen": !self.closed_tabs.borrow().is_empty(),
+            "shield": self.config.borrow().block_ads,
+            "bookmarked": !url.is_empty() && self.bookmarks.borrow().find_by_url(&url).is_some(),
         }).to_string()
     }
 }
@@ -334,6 +447,7 @@ fn handle_shortcut(key_event: &KeyEvent, state: &AppState) -> bool {
             }
             true
         }
+        (Key::Character(c), true, false) if c.eq_ignore_ascii_case("d") => { state.execute_command("bookmark", &empty); true }
         (Key::Character(c), true, _) if c.as_str() == "+" || c.as_str() == "=" => { state.execute_command("zoom_in", &empty); true }
         (Key::Character(c), true, _) if c.as_str() == "-" || c.as_str() == "_" => { state.execute_command("zoom_out", &empty); true }
         (Key::Character(c), true, false) if c.as_str() == "0" => { state.execute_command("zoom_reset", &empty); true }
@@ -350,7 +464,7 @@ fn handle_shortcut(key_event: &KeyEvent, state: &AppState) -> bool {
         _ => false,
     }
 }
-fn resolve_navigate_input(raw: &str) -> Option<Url> {
+fn resolve_navigate_input(raw: &str, search_prefix: &str) -> Option<Url> {
     let trimmed = raw.trim();
     if trimmed.is_empty() { return None; }
     if let Ok(u) = Url::parse(trimmed) { return Some(u); }
@@ -358,7 +472,10 @@ fn resolve_navigate_input(raw: &str) -> Option<Url> {
     let has_space = trimmed.contains(' ');
     match has_dot && !has_space {
         true => Url::parse(&format!("https://{}", trimmed)).ok(),
-        false => Url::parse(&format!("https://duckduckgo.com/?q={}", urlencoding::encode(trimmed))).ok(),
+        false => {
+            let prefix = match search_prefix.starts_with("http") { true => search_prefix, false => "https://duckduckgo.com/?q=" };
+            Url::parse(&format!("{}{}", prefix, urlencoding::encode(trimmed))).ok()
+        }
     }
 }
 impl WebViewDelegate for AppState {
@@ -370,11 +487,18 @@ impl WebViewDelegate for AppState {
         let display = match t.trim().is_empty() { true => "Amni Browse".to_string(), false => format!("{} \u{2014} Amni Browse", t) };
         self.window.set_title(&display);
     }
-    fn load_web_resource(&self, _webview: WebView, load: WebResourceLoad) {
+    fn load_web_resource(&self, webview: WebView, load: WebResourceLoad) {
         let req_url = load.request().url.clone();
         if req_url.scheme() == "amnibrowse" {
             let host = req_url.host_str().unwrap_or("");
             let path = req_url.path();
+            let from_chrome = self.chrome_webview.borrow().as_ref().map(|c| c.id() == webview.id()).unwrap_or(false);
+            let tok_ok = req_url.query_pairs().any(|(k, v)| k == "tok" && v == self.cmd_token.as_str());
+            if !from_chrome && !tok_ok {
+                info!("amnibrowse://: denied {:?}{} from non-chrome webview", host, path);
+                load.intercept(WebResourceResponse::new(req_url).status_code(http::StatusCode::FORBIDDEN).headers(cors_headers())).finish();
+                return;
+            }
             match host {
                 "cmd" => {
                     let name = path.trim_start_matches('/');
@@ -401,7 +525,7 @@ impl WebViewDelegate for AppState {
             }
         }
         let url_str = req_url.as_str().to_string();
-        let blocked = self.ad_blocker.lock().map(|mut b| b.should_block(&url_str)).unwrap_or(false);
+        let blocked = self.config.borrow().block_ads && self.ad_blocker.lock().map(|mut b| b.should_block(&url_str)).unwrap_or(false);
         if blocked {
             info!("adblock: blocked {}", url_str);
             load.intercept(WebResourceResponse::new(req_url)).finish();
@@ -458,15 +582,15 @@ fn resize_all(state: &AppState, new_size: PhysicalSize<u32>) {
     for c in state.content_webviews.borrow().iter() { c.resize(content); }
     state.window.request_redraw();
 }
-enum App { Initial(Waker, Arc<Mutex<AdBlocker>>, Vec<(String, EngineKind)>), Running(Rc<AppState>) }
+enum App { Initial(Waker, Arc<Mutex<AdBlocker>>, Vec<(String, EngineKind)>, BrowserConfig, BookmarkManager), Running(Rc<AppState>) }
 impl App {
-    fn new(event_loop: &EventLoop<WakerEvent>, ad_blocker: Arc<Mutex<AdBlocker>>, initial_urls: Vec<(String, EngineKind)>) -> Self {
-        Self::Initial(Waker::new(event_loop), ad_blocker, initial_urls)
+    fn new(event_loop: &EventLoop<WakerEvent>, ad_blocker: Arc<Mutex<AdBlocker>>, initial_urls: Vec<(String, EngineKind)>, config: BrowserConfig, bookmarks: BookmarkManager) -> Self {
+        Self::Initial(Waker::new(event_loop), ad_blocker, initial_urls, config, bookmarks)
     }
 }
 impl ApplicationHandler<WakerEvent> for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        if let Self::Initial(waker, ad_blocker, initial_urls) = self {
+        if let Self::Initial(waker, ad_blocker, initial_urls, config, bookmarks) = self {
             let display_handle = event_loop.display_handle().expect("display handle");
             let window = event_loop.create_window(Window::default_attributes().with_title("Amni Browse \u{2014} Servo")).expect("window");
             let window_handle = window.window_handle().expect("window handle");
@@ -477,8 +601,11 @@ impl ApplicationHandler<WakerEvent> for App {
             let chrome_px = chrome_height_px(scale);
             let content_init = content_size(window_size, chrome_px);
             let offscreen_context = Rc::new(rendering_context.offscreen_context(content_init));
-            let servo = ServoBuilder::default().event_loop_waker(Box::new(waker.clone())).build();
+            let mut prefs = Preferences::default();
+            if let Some(ua) = config.custom_user_agent.as_ref().filter(|u| !u.trim().is_empty()) { info!("custom user agent: {}", ua); prefs.user_agent = ua.clone(); }
+            let servo = ServoBuilder::default().event_loop_waker(Box::new(waker.clone())).preferences(prefs).build();
             let ad_blocker_clone = ad_blocker.clone();
+            let cmd_token = format!("{:016x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x5eed) ^ 0x9e37_79b9_7f4a_7c15u64);
             let app_state = Rc::new_cyclic(|weak: &Weak<AppState>| AppState {
                 window, servo, rendering_context, offscreen_context,
                 chrome_webview: RefCell::new(None),
@@ -493,6 +620,9 @@ impl ApplicationHandler<WakerEvent> for App {
                 closed_tabs: RefCell::new(Vec::new()),
                 tab_zoom: RefCell::new(Vec::new()),
                 is_fullscreen: Cell::new(false),
+                config: RefCell::new(config.clone()),
+                bookmarks: RefCell::new(bookmarks.clone()),
+                cmd_token,
                 self_weak: weak.clone(),
             });
             let chrome_url = chrome_data_url();
@@ -505,7 +635,7 @@ impl ApplicationHandler<WakerEvent> for App {
             *app_state.chrome_webview.borrow_mut() = Some(chrome_webview);
             let servo_url = initial_urls.iter().find(|(_, k)| *k == EngineKind::Servo).map(|(u, _)| u.clone())
                 .filter(|u| !u.starts_with("amnibrowse://") && u.starts_with("http"))
-                .unwrap_or_else(|| "https://duckduckgo.com".into());
+                .unwrap_or_else(|| app_state.home_url());
             let content_url = Url::parse(&servo_url).unwrap_or_else(|_| Url::parse("https://duckduckgo.com").unwrap());
             info!("servo content initial url: {}", content_url);
             let content_webview = WebViewBuilder::new(&app_state.servo, app_state.offscreen_context.clone())
@@ -513,8 +643,10 @@ impl ApplicationHandler<WakerEvent> for App {
                 .hidpi_scale_factor(Scale::new(scale))
                 .delegate(app_state.clone())
                 .build();
+            let z0 = app_state.default_zoom();
+            if (z0 - 1.0).abs() > 0.01 { content_webview.set_page_zoom(z0); }
             app_state.content_webviews.borrow_mut().push(content_webview);
-            app_state.tab_zoom.borrow_mut().push(1.0);
+            app_state.tab_zoom.borrow_mut().push(z0);
             for (u, k) in initial_urls.iter() {
                 if *k != EngineKind::Media { continue; }
                 if let Some((id, mw)) = media_engine::spawn_media_window(event_loop, u) {
