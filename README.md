@@ -63,7 +63,7 @@ cargo build --release
 cargo build --release --no-default-features --features servo-engine
 ```
 
-## Architecture (v0.11.2 — WebView chrome + Servo hybrid)
+## Architecture (v0.11.5 — WebView chrome + Servo hybrid)
 
 ```
 src/
