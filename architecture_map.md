@@ -29,6 +29,11 @@
 - Media/DRM `spawn_media_window` no longer bare: init-script bar + `amni_media_close` + decorations; `drain_close_requests` in servo_real.
 - WebView external chrome: remount watchdog (400ms), force fixed styles, re-prepend if host detached (streaming sites).
 - Home SPA + README + settings footer: drop false “3P cookies blocked by default”; state system WebView cookie policy + URL-bar stripping + no Amni telemetry.
+## 2026-08-12 Tab interaction polish (0.11.0)
+- `src/ui/webview.rs`: Ctrl+Tab/Ctrl+Shift+Tab `cycleTab(dir)`, Ctrl+1..9 `jumpTab(k)` (9=last); tab `onauxclick` middle-close; `tabs-container` dblclick on empty space = new tab; `tabDisplayLabel` truncates via `Array.from` (surrogate-safe).
+- `src/ui/chrome.rs`: `truncate` now char-based (byte slice panicked on multibyte titles); Ctrl+Tab cycling via tabs_json in `handle_keyboard`.
+- Backups: `backups/{{webview,chrome}}.rs.v0.11.0-tabkeys.bak`. Checklist: `docs/checklists/checklist_tab_polish_v1.md`. cargo check clean both default + servo-engine; release binary launch-verified.
+
 ## 2026-08-12 Release ship gate (0.11.0)
 - Public truth is **0.11.0** only: crate `CARGO_PKG_VERSION`, README, chrome canary `0.11.0-settings`, site tags, GitHub Latest release.
 - WebView chrome: `tokens` TAB38+NAV44+BOOK28 = TOTAL 110 / push 114; shadow DOM toolbar mounts on external http(s); SPA home keeps tab/nav/bookmarks bars; OS decorations on.

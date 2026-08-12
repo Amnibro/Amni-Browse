@@ -940,7 +940,8 @@ pub fn browser_html(theme: &Theme) -> String {
             }}
         }}
         title = title.replace(/\s+/g,' ').trim();
-        if (title.length > 22) title = title.slice(0, 20) + '…';
+        var chars = Array.from(title);
+        if (chars.length > 22) title = chars.slice(0, 20).join('') + '…';
         return title || 'Tab';
     }}
     function updateTabs(tabs) {{
@@ -981,6 +982,7 @@ pub fn browser_html(theme: &Theme) -> String {
             el.innerHTML = '<span class="ttl">' + escapeHtml(tabTitle) + (tabPrivate ? '<span class="priv-badge">{e_private}</span>' : '') + '</span>' +
                 '<button class="tab-close" onclick="event.stopPropagation();closeTab(\'' + tabId + '\')">{e_close}</button>';
             el.onclick = () => {{ if (tabId) switchTab(tabId); }};
+            el.onauxclick = (e) => {{ if (e.button === 1 && tabId) {{ e.preventDefault(); closeTab(tabId); }} }};
             el.oncontextmenu = (e) => {{
                 e.preventDefault(); e.stopPropagation();
                 if (!tabId) return;
@@ -1005,6 +1007,19 @@ pub fn browser_html(theme: &Theme) -> String {
     function newTab() {{ sendIpc({{ type: 'new_tab', url: null }}); }}
     function closeTab(id) {{ sendIpc({{ type: 'close_tab', id: id }}); }}
     function switchTab(id) {{ sendIpc({{ type: 'switch_tab', id: id }}); }}
+    function cycleTab(dir) {{
+        if (!currentTabs.length) return;
+        const i = currentTabs.findIndex(t => t && t.is_active);
+        const n = currentTabs.length;
+        const next = currentTabs[(((i < 0 ? 0 : i) + dir) % n + n) % n];
+        if (next && next.id && !next.is_active) switchTab(next.id);
+    }}
+    function jumpTab(k) {{
+        if (!currentTabs.length) return;
+        const idx = k === '9' ? currentTabs.length - 1 : Math.min(parseInt(k, 10) - 1, currentTabs.length - 1);
+        const t = currentTabs[idx];
+        if (t && t.id && !t.is_active) switchTab(t.id);
+    }}
 
     function toggleSplit() {{
         if (splitActive) {{
@@ -1486,6 +1501,8 @@ pub fn browser_html(theme: &Theme) -> String {
                 case '-': e.preventDefault(); zoomOut(); break;
                 case '0': e.preventDefault(); zoomReset(); break;
                 case 'k': e.preventDefault(); openCmdPalette(); break;
+                case 'Tab': e.preventDefault(); cycleTab(e.shiftKey ? -1 : 1); break;
+                case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9': e.preventDefault(); jumpTab(e.key); break;
             }}
             if (e.shiftKey && e.key === 'P') {{ e.preventDefault(); openPanel('vault'); }}
             if (e.shiftKey && e.key === 'I') {{ e.preventDefault(); openPanel('devtools'); }}
@@ -1562,6 +1579,7 @@ pub fn browser_html(theme: &Theme) -> String {
     }}
 
     document.getElementById('shield-btn').classList.add('active');
+    document.getElementById('tabs-container').ondblclick = (e) => {{ if (e.target === e.currentTarget) newTab(); }};
     sendIpc({{ type: 'get_tabs' }});
     sendIpc({{ type: 'bookmark_list' }});
     sendIpc({{ type: 'get_stats' }});

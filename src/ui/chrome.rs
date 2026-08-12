@@ -410,6 +410,15 @@ impl BrowserChrome {
                 let tabs: Vec<serde_json::Value> = serde_json::from_str(&self.tabs_json).unwrap_or_default();
                 tabs.iter().find(|t| t["is_active"].as_bool() == Some(true)).and_then(|t| t["id"].as_str()).map(|id| self.pending_cmds.push(IpcMessage::CloseTab { id: id.into() }));
             }
+            if ctrl && i.key_pressed(egui::Key::Tab) {
+                let tabs: Vec<serde_json::Value> = serde_json::from_str(&self.tabs_json).unwrap_or_default();
+                if !tabs.is_empty() {
+                    let cur = tabs.iter().position(|t| t["is_active"].as_bool() == Some(true)).unwrap_or(0);
+                    let n = tabs.len() as i64;
+                    let next = ((cur as i64 + if i.modifiers.shift { -1 } else { 1 }) % n + n) % n;
+                    if let Some(id) = tabs[next as usize]["id"].as_str() { self.pending_cmds.push(IpcMessage::SwitchTab { id: id.into() }); }
+                }
+            }
             if ctrl && i.key_pressed(egui::Key::F) { self.find_visible = !self.find_visible; }
             if ctrl && i.key_pressed(egui::Key::H) { self.toggle_panel(Panel::History); }
             if ctrl && i.key_pressed(egui::Key::J) { self.toggle_panel(Panel::Downloads); }
@@ -425,5 +434,5 @@ impl BrowserChrome {
 }
 #[cfg(feature = "servo-engine")]
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() } else { format!("{}…", &s[..max.min(s.len())]) }
+    if s.chars().count() <= max { s.to_string() } else { format!("{}…", s.chars().take(max).collect::<String>()) }
 }

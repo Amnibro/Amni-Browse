@@ -1,4 +1,8 @@
 ﻿## v0.11.0 — 2026-08-12 (tab group + private strip polish)
+- **Tab keyboard travel:** Ctrl+Tab / Ctrl+Shift+Tab cycle tabs; Ctrl+1..8 jump to tab N; Ctrl+9 jumps to last — wired in both WebView chrome and egui servo chrome.
+- **Mouse travel:** middle-click a tab to close it (no 18px close-button hunt); double-click empty tab-strip space opens a new tab.
+- **Crash fix (servo chrome):** `truncate` byte-sliced titles at index 20 — panicked on emoji/CJK at the boundary; now char-based.
+- **Glyph fix:** `tabDisplayLabel` uses `Array.from` so 20-char truncation can't split a surrogate pair into a broken glyph.
 - **Group strip:** stable within-group order; gold labels ellipsize at ~12 chars; reset label boundary across ungrouped runs.
 - **Private tabs (external chrome):** title fallback matches home (`Private` / host / Home); gold `P` pill + `.priv` inset; fingerprint tracks `is_private`.
 - **Radius parity:** bookmark chips use theme radius on home and injected chrome.
