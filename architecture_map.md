@@ -51,14 +51,14 @@
 - `src/ui/chrome.rs`: `truncate` now char-based (byte slice panicked on multibyte titles); Ctrl+Tab cycling via tabs_json in `handle_keyboard`.
 - Backups: `backups/{{webview,chrome}}.rs.v0.11.0-tabkeys.bak`. Checklist: `docs/checklists/checklist_tab_polish_v1.md`. cargo check clean both default + servo-engine; release binary launch-verified.
 
-## 2026-08-12 Release ship gate (0.11.0)
-- Public truth is **0.11.0** only: crate `CARGO_PKG_VERSION`, README, chrome canary `0.11.0-settings`, site tags, GitHub Latest release.
+## 2026-08-12 Release ship gate (0.11.1)
+- Public truth is **0.11.1** only: crate `CARGO_PKG_VERSION`, README, chrome canary `0.11.1-settings`, site tags (product/index/about/faq), GitHub Latest = `v0.11.1` asset `amni-browse-v0.11.1-win64.zip`. Leave `v0.11.0` / older tags as history (0.11.0 zip is pre-polish).
 - WebView chrome: `tokens` TAB38+NAV44+BOOK28 = TOTAL 110 / push 114; shadow DOM toolbar mounts on external http(s); SPA home keeps tab/nav/bookmarks bars; OS decorations on.
 - Amni Apps → `https://amni-scient.com` (IPC AmniAppList/LaunchApp navigate; list_apps_json empty).
 - Theme: `__AMNI_SYNC_THEME` + boot ThemeConfig seed. Tabs: host TabManager + `__AMNI_TAB_SEED` / get_tabs resync.
-- Checklist: `docs/checklists/checklist_release_0.11.0_push_v1.md` + `checklist_ui_version_parity_v0.11.0.md`.
+- Package: `target/release/amni-browse-v0.11.1-win64.zip` (toolbar on disk hot-loads; chromeRev must match tag).
 ## Chrome UI
-- `assets/chrome/toolbar.html` — entire browser chrome (tab strip + nav bar + progress). CSS tokens in `:root`, 66px shell (32 tab + 32 nav + 2 progress). Interactive targets 28px (26px in-pill). Nav is a **left cluster**: `#nav-start` | `#url-wrap{flex:0 1 960px}` | `#nav-end` (no margin-left:auto). Free ultrawide space is after the menu. Tab strip: `#tab-list` horizontal scroll + `scrollIntoView` on active/roving. Keyboard: roving tabs; `:focus`/`:focus-visible`; URL via `#url-wrap:focus-within`. Lock via `setLock` + `.secure`/`.insecure`/`.local` (incl. `data:` local). Progress: loading → 72%, complete → 100% then fade (`finishing`). Canary: `window.__amni.chromeRev` (`0.11.0-settings`). Tab favicons are hue-hashed monograms; shield/bookmark buttons reflect live state (`state.shield`, `state.bookmarked`).
+- `assets/chrome/toolbar.html` — entire browser chrome (tab strip + nav bar + progress). CSS tokens in `:root`, 66px shell (32 tab + 32 nav + 2 progress). Interactive targets 28px (26px in-pill). Nav is a **left cluster**: `#nav-start` | `#url-wrap{flex:0 1 960px}` | `#nav-end` (no margin-left:auto). Free ultrawide space is after the menu. Tab strip: `#tab-list` horizontal scroll + `scrollIntoView` on active/roving. Keyboard: roving tabs; `:focus`/`:focus-visible`; URL via `#url-wrap:focus-within`. Lock via `setLock` + `.secure`/`.insecure`/`.local` (incl. `data:` local). Progress: loading → 72%, complete → 100% then fade (`finishing`). Canary: `window.__amni.chromeRev` (`0.11.1-settings`). Tab favicons are hue-hashed monograms; shield/bookmark buttons reflect live state (`state.shield`, `state.bookmarked`).
 - Menu opens the real Settings page (data URL from `settings_page_html()`): search engine, homepage, shield, default zoom, UA override, bookmarks. Mutations go through `amnibrowse://cmd/setting_set` gated by a per-boot `cmd_token`; persisted via `BrowserConfig::save()` (AppData/amni-browse). Blank homepage serves the built-in start page (`newtab_html()`, bookmark tiles).
 - Servo composites chrome over content; body transparent/pointer-events none so content hits fall through.
 - **Critical:** `load_toolbar_html()` in `src/platform/servo_real.rs` reads disk first (cwd then exe-dir), falls back to `include_str!` embed. Chrome HTML hot-loads on launch — **relaunch, don’t rebuild**, after toolbar edits. About/Shield HTML is compiled into the binary — needs rebuild. `CHROME_HEIGHT_CSS` must stay 66 matching `#shell` (both changed together in v0.11.0). `cargo check` without `servo-real` does not compile this file.
@@ -70,9 +70,10 @@
 - `src/ui/tokens.rs`: TAB 38 + NAV 44 + BOOKMARKS 28 = `TOTAL_CHROME_H` 110; content push 114.
 - `src/platform/webview.rs` injects shadow-DOM chrome on external http(s) pages: tab strip + nav + bookmarks, themed from live `ThemeConfig` via `__AMNI_SYNC_THEME`. Tab state survives leave-home via `__AMNI_TAB_SEED` + page-load resync + `get_tabs`. OS frame: `WindowBuilder.with_decorations(true)`.
 - Amni Apps menu/ctx/palette/IPC (`amni_app_list`, `launch_app`) → `https://amni-scient.com` only (no local inventory panel or launch list).
-- Crate / UA / site download tag aligned at **0.11.0** (single source: `Cargo.toml` → `CARGO_PKG_VERSION`). Site index+faq tags must match product page (were stuck on 0.10.3).
+- Crate / UA / site download tag aligned at **0.11.1** (single source: `Cargo.toml` → `CARGO_PKG_VERSION`). Site product/index/about/faq tags must match Latest release.
 ## Recent chrome UI
-- v0.11.0 / webview parity: theme sync home↔external, multi-tab seed on nav, chrome host height matches tokens (was 82px clip), decorations forced on, site+tag 0.11.0
+- v0.11.1 / distribution: polished chrome shipped as Latest; canary `0.11.1-settings`; site about+faq version strings closed (were still 0.11.0 while download was 0.11.1)
+- v0.11.0 / webview parity: theme sync home↔external, multi-tab seed on nav, chrome host height matches tokens (was 82px clip), decorations forced on
 - v0.10.10 / a3ddb5b: dark About+Shield, progress finish-and-fade, tab scroll-into-view (Grok/Claude)
 - v0.11.0 / ff18986: real Settings + start page, live shield toggle (config.block_ads gates adblock), real bookmarks (BookmarkManager wired), search-engine prefix honored by URL bar, default zoom, UA override via Preferences, amnibrowse:// cmd/state locked to chrome webview or token, 66px chrome
 - v0.10.8: URL flex-grow 0 so left cluster actually sticks on ultrawide (Grok)

@@ -1,3 +1,9 @@
+## v0.11.1 - 2026-08-12 (version single-source + polished chrome ship)
+- **Public truth = 0.11.1:** Cargo.toml, chromeRev `0.11.1-settings`, README, GitHub Latest `amni-browse-v0.11.1-win64.zip`, site download + index tag. v0.11.0 zip left as pre-polish history (no clobber).
+- **End-user path verified:** fresh GH download → toolbar canary present; exe boots with window title + responding chrome host.
+- **Site residual:** about.html + faq.html Browse version strings aligned to 0.11.1 (product page already was).
+- Ships the full-chrome polish already on the 04:01 binary (header bar, split view, star/aria-pressed, light-theme contrast, theme sync, tabs persist, apps→amni-scient.com).
+
 ## v0.11.0 - 2026-08-12 (full-chrome polish sweep, 17-finding audit)
 - **Split View resurrected:** `#split-content` + `#split-resize` never existed in the DOM — every entry point threw. Elements added, real drag-resize (5px handle, 13px hit target via ::after, hover accent, `.dragging` state), `split-on` flex layout.
 - **Command palette fixed:** palette item clicks bubbled to the document click-guard and closed the panel they just opened — every open-panel command was a no-op. `#cmd-palette` added to the guard exclusions.
