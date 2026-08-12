@@ -1,3 +1,6 @@
+## v0.11.14-dev webview stub hit parity - 2026-08-12
+- Webview stub .tab-close 18px -> 28px matching CLOSE_HITBOX=28 (tab 32px, same geometry as shipping toolbar). Non-shipping backend (packer refuses it); src hygiene only. Backup: backups/webview.rs.v0.11.13.bak.
+
 ## v0.11.13 content blit vs chrome band - 2026-08-12
 - **Header bar occluded by content (Anthony's fix):** paint_and_present blitted the content layer at GL target_rect origin (0, chrome_px) — GL is bottom-left origin, so the offset pushed content UP over the top chrome band instead of below it. Origin now (0,0) with height win.height-chrome_px: content owns the bottom, chrome overlay owns the top band. This was the remaining "launches with no header bar" pixel cause on the servo-real backend.
 - README: shipping backend documented as servo-real; plain `cargo build --release` called out as the webview stub trap (clobber class from v0.11.11).

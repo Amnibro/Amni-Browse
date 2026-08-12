@@ -111,7 +111,7 @@ pub fn browser_html(theme: &Theme) -> String {
     .tab .ttl {{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
     .tab-close {{
         display: flex; align-items: center; justify-content: center;
-        width: 18px; height: 18px; min-width: 18px; border-radius: 50%; border: none;
+        width: 28px; height: 28px; min-width: 28px; border-radius: 50%; border: none;
         background: transparent; color: var(--text-secondary); font-size: 14px;
         cursor: pointer; flex-shrink: 0; transition: all var(--transition);
     }}
