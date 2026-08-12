@@ -9,4 +9,5 @@
 - [x] Verified overlay skips internal pages (hostname guard line ~266) — no double keydown handling
 - [x] cargo check clean (only pre-existing warnings)
 - [x] changelog.md + architecture_map.md updated
-- [ ] Runtime spot-check on next launch: menu → History opens panel; Ctrl+L from external page focuses URL bar
+- [x] Runtime spot-check (Google, f3d00a3): menu History opens panel; menu Themes lands on Themes tab; Ctrl+L focuses URL bar: menu → History opens panel; Ctrl+L from external page focuses URL bar
+- [x] SHIP GATE v0.11.9: tag pushed (3d729c4), release sole Latest, live asset cold-pulled 170 entries / 0 backslash / toolbar present / 0.11.9 baked in exe, site chips + download href live on v0.11.9 (was silently still serving v0.11.8 zip)
