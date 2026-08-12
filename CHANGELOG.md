@@ -1,4 +1,9 @@
-﻿## v0.11.0 — 2026-08-12 (DRM chrome + honest privacy copy)
+﻿## v0.11.0 — 2026-08-12 (tab group + private strip polish)
+- **Group strip:** stable within-group order; gold labels ellipsize at ~12 chars; reset label boundary across ungrouped runs.
+- **Private tabs (external chrome):** title fallback matches home (`Private` / host / Home); gold `P` pill + `.priv` inset; fingerprint tracks `is_private`.
+- **Radius parity:** bookmark chips use theme radius on home and injected chrome.
+- **Home strip:** active tab scrolls into view on repaint.
+## v0.11.0 — 2026-08-12 (DRM chrome + honest privacy copy)
 - **DRM/media window chrome:** `media_engine` injects a persistent top bar (Back to Amni / Home / close) + OS decorations; IPC `amni_media_close` drains the media window so tabs remain reachable.
 - **External chrome watchdog:** shadow toolbar re-attaches if sites strip the host; 400ms interval + MutationObserver (no 80-try bail).
 - **Truthful privacy claims:** home/settings/README no longer claim “third-party cookies blocked by default” on WebView — cookies follow system WebView policy; Amni telemetry remains none; URL-bar stripping is what we ship on navigate.

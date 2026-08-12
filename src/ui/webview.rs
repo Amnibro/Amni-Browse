@@ -89,10 +89,11 @@ pub fn browser_html(theme: &Theme) -> String {
     }}
     #tabs-container {{ display:flex; align-items:center; gap:4px; overflow-x:auto; flex:1; min-width:0; }}
     .tab-group-label {{
-        flex:0 0 auto; font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
+        flex:0 0 auto; max-width:72px; font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
         color:var(--accent); padding:0 6px; opacity:.9; -webkit-app-region:no-drag; app-region:no-drag;
-        border-left:2px solid var(--accent); margin-left:4px;
+        border-left:2px solid var(--accent); margin-left:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; user-select:none;
     }}
+    .tab.priv {{ box-shadow: inset 0 0 0 1px var(--accent-glow); }}
     .tab {{
         display: flex; align-items: center; gap: 6px;
         flex: 0 0 148px; width: 148px; min-width: 148px; max-width: 148px; height: 30px;
@@ -160,7 +161,7 @@ pub fn browser_html(theme: &Theme) -> String {
         overflow-x: auto; font-size: 12px;
     }}
     .bookmark-item {{
-        padding: 3px 10px; border-radius: 4px; background: transparent;
+        padding: 3px 10px; border-radius: var(--radius); background: transparent;
         border: none; color: var(--text-secondary); font-size: 11px;
         cursor: pointer; white-space: nowrap; transition: all var(--transition);
     }}
@@ -948,10 +949,11 @@ pub fn browser_html(theme: &Theme) -> String {
         const container = document.getElementById('tabs-container');
         if (!container) return;
         container.innerHTML = '';
-        var ordered = tabs.slice().sort(function(a,b){{
-            var ga = (a.panel_group||'~~~~'); var gb = (b.panel_group||'~~~~');
-            if (ga < gb) return -1; if (ga > gb) return 1; return 0;
-        }});
+        var ordered = tabs.map(function(t,i){{ return {{ t:t, i:i }}; }}).sort(function(a,b){{
+            var ga = (a.t && a.t.panel_group) ? String(a.t.panel_group) : '~~~~';
+            var gb = (b.t && b.t.panel_group) ? String(b.t.panel_group) : '~~~~';
+            if (ga < gb) return -1; if (ga > gb) return 1; return a.i - b.i;
+        }}).map(function(x){{ return x.t; }});
         var lastG = null;
         ordered.forEach(tab => {{
             if (!tab || typeof tab !== 'object') return;
@@ -965,13 +967,17 @@ pub fn browser_html(theme: &Theme) -> String {
                 lastG = g;
                 const gl = document.createElement('div');
                 gl.className = 'tab-group-label';
-                gl.textContent = g;
+                var gShow = g.replace(/\s+/g,' ').trim();
+                if (gShow.length > 12) gShow = gShow.slice(0, 10) + '…';
+                gl.textContent = gShow;
                 gl.title = 'Tab group: ' + g;
                 container.appendChild(gl);
+            }} else if (!g) {{
+                lastG = null;
             }}
             const el = document.createElement('div');
-            el.className = 'tab' + (tabActive ? ' active' : '');
-            el.title = tabUrl + (g ? (' · group: ' + g) : '') + String.fromCharCode(10) + 'Right-click to set group';
+            el.className = 'tab' + (tabActive ? ' active' : '') + (tabPrivate ? ' priv' : '');
+            el.title = tabUrl + (g ? (' · group: ' + g) : '') + (tabPrivate ? ' · Private' : '') + String.fromCharCode(10) + 'Right-click to set group';
             el.innerHTML = '<span class="ttl">' + escapeHtml(tabTitle) + (tabPrivate ? '<span class="priv-badge">{e_private}</span>' : '') + '</span>' +
                 '<button class="tab-close" onclick="event.stopPropagation();closeTab(\'' + tabId + '\')">{e_close}</button>';
             el.onclick = () => {{ if (tabId) switchTab(tabId); }};
@@ -983,6 +989,7 @@ pub fn browser_html(theme: &Theme) -> String {
                 sendIpc({{ type:'tab_set_group', id:tabId, group: name.trim() ? name.trim() : null }});
             }};
             container.appendChild(el);
+            if (tabActive) try {{ el.scrollIntoView({{ inline:'nearest', block:'nearest' }}); }} catch(_){{}}
         }});
         const active = tabs.find(t => t && t.is_active);
         if (active) {{

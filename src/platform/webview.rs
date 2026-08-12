@@ -304,19 +304,21 @@ function chromeCss(){{
     + '*{{box-sizing:border-box !important;color:inherit}}'
     + '#__atb{{position:fixed !important;top:0 !important;left:0 !important;right:0 !important;height:{chrome_h}px !important;display:flex !important;flex-direction:column !important;background:' + p.bg + ' !important;color:' + p.text + ' !important;z-index:2147483647 !important;box-shadow:0 2px 16px rgba(0,0,0,0.55) !important;border-bottom:1px solid ' + p.border + ' !important}}'
     + '#_tabs{{height:{tab_h}px !important;display:flex !important;align-items:center !important;gap:4px !important;padding:0 8px !important;overflow-x:auto !important;overflow-y:hidden !important;scrollbar-width:thin !important;flex-wrap:nowrap !important;background:' + p.bg + ' !important;color:' + p.text + ' !important;border-bottom:1px solid ' + p.border + ' !important;pointer-events:auto !important}}'
-    + '.grp{{flex:0 0 auto !important;font-size:10px !important;font-weight:700 !important;letter-spacing:.4px !important;text-transform:uppercase !important;color:' + p.accent + ' !important;padding:0 6px !important;border-left:2px solid ' + p.accent + ' !important;margin-left:4px !important;opacity:.95 !important;white-space:nowrap !important}}'
+    + '.grp{{flex:0 0 auto !important;max-width:72px !important;font-size:10px !important;font-weight:700 !important;letter-spacing:.4px !important;text-transform:uppercase !important;color:' + p.accent + ' !important;padding:0 6px !important;border-left:2px solid ' + p.accent + ' !important;margin-left:4px !important;opacity:.95 !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;user-select:none !important}}'
     + '#_tabs::-webkit-scrollbar{{height:3px}}'
     + '.tab{{flex:0 0 148px !important;flex-grow:0 !important;flex-shrink:0 !important;width:148px !important;min-width:148px !important;max-width:148px !important;height:30px !important;display:flex !important;align-items:center !important;gap:6px !important;padding:0 8px !important;margin:0 !important;border:1px solid transparent !important;border-bottom:none !important;border-radius:' + p.radius + ' ' + p.radius + ' 0 0 !important;background:' + p.tabI + ' !important;color:' + p.muted + ' !important;font-size:12px !important;font-family:' + p.font + ' !important;cursor:pointer !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;pointer-events:auto !important;touch-action:manipulation !important}}'
     + '.tab:hover{{background:' + p.bg3 + ' !important;color:' + p.text + ' !important}}'
     + '.tab.active{{background:' + p.tabA + ' !important;color:' + p.text + ' !important;border-color:' + p.border + ' !important;border-bottom:2px solid ' + p.accent + ' !important}}'
+    + '.tab.priv{{box-shadow:inset 0 0 0 1px ' + p.accent + '33 !important}}'
     + '.tab .ttl{{flex:1 1 auto !important;min-width:0 !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;color:inherit !important;pointer-events:none !important}}'
+    + '.tab .pb{{flex:0 0 auto !important;font-size:9px !important;font-weight:700 !important;letter-spacing:.2px !important;padding:1px 4px !important;border-radius:3px !important;background:' + p.accent + ' !important;color:' + p.bg2 + ' !important;line-height:1.2 !important;pointer-events:none !important}}'
     + '.tab .x{{flex:0 0 18px !important;width:18px !important;min-width:18px !important;height:18px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;border-radius:50% !important;opacity:0.9 !important;font-size:14px !important;padding:0 !important;border:none !important;background:transparent !important;color:' + p.muted + ' !important;cursor:pointer !important;line-height:1 !important;pointer-events:auto !important}}'
     + '.tab .x:hover{{opacity:1 !important;background:' + p.danger + ' !important;color:#fff !important}}'
     + '#_newtab{{flex:0 0 28px !important;width:28px !important;min-width:28px !important;height:28px !important;border:none !important;background:transparent !important;color:' + p.muted + ' !important;font-size:18px !important;cursor:pointer !important;border-radius:' + p.radius + ' !important;margin-left:4px !important;font-family:' + p.font + ' !important;pointer-events:auto !important}}'
     + '#_newtab:hover{{background:' + p.bg3 + ' !important;color:' + p.accent + ' !important}}'
     + '#_nav{{position:relative !important;height:{nav_h}px !important;display:flex !important;align-items:center !important;padding:5px 10px !important;gap:4px !important;background:' + p.bg + ' !important;color:' + p.text + ' !important}}'
     + '#_bookmarks{{height:{book_h}px !important;display:flex !important;align-items:center !important;gap:4px !important;padding:3px 12px !important;background:' + p.bg + ' !important;color:' + p.muted + ' !important;border-bottom:1px solid ' + p.border + ' !important;overflow-x:auto !important;font-size:12px !important}}'
-    + '.bmk{{padding:3px 10px !important;border-radius:6px !important;background:transparent !important;border:none !important;color:' + p.muted + ' !important;font-size:11px !important;cursor:pointer !important;white-space:nowrap !important;font-family:' + p.font + ' !important}}'
+    + '.bmk{{padding:3px 10px !important;border-radius:' + p.radius + ' !important;background:transparent !important;border:none !important;color:' + p.muted + ' !important;font-size:11px !important;cursor:pointer !important;white-space:nowrap !important;font-family:' + p.font + ' !important}}'
     + '.bmk:hover{{background:' + p.bg3 + ' !important;color:' + p.text + ' !important}}'
     + 'button.nav{{background:transparent !important;border:none !important;color:' + p.muted + ' !important;cursor:pointer !important;width:32px !important;height:32px !important;padding:0 !important;font-size:15px !important;border-radius:' + p.radius + ' !important;line-height:1 !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;font-family:' + p.font + ' !important}}'
     + 'button.nav:hover{{background:' + p.bg3 + ' !important;color:' + p.text + ' !important}}'
@@ -339,12 +341,22 @@ function chromeCss(){{
 }}
 function tabLabel(t){{
   var title = (t && t.title) ? String(t.title) : '';
-  if (!title || title === 'New Tab' || title === 'Private Tab') {{
-    try {{ var u = new URL(t.url || ''); title = u.hostname || t.url || 'Tab'; }} catch(_) {{ title = (t && t.url) || 'Tab'; }}
+  var url = (t && t.url) ? String(t.url) : '';
+  if (!title || title === 'New Tab' || title === 'Private Tab' || title === 'Private') {{
+    if (url.indexOf('amnibrowse://developer') === 0) title = 'Developer';
+    else if (url.indexOf('amnibrowse://') === 0) title = 'Home';
+    else {{
+      try {{ title = new URL(url).hostname.replace(/^www\\./,'') || url; }} catch(_) {{ title = url || 'Tab'; }}
+    }}
   }}
   title = title.replace(/\\s+/g, ' ').trim();
   if (title.length > 22) title = title.slice(0, 20) + '…';
   return title || 'Tab';
+}}
+function groupLabel(g){{
+  g = String(g || '').replace(/\\s+/g, ' ').trim();
+  if (g.length > 12) g = g.slice(0, 10) + '…';
+  return g;
 }}
 function amniRoot(){{
   var host = document.getElementById('__atb_host');
@@ -384,7 +396,7 @@ function bindHit(node, fn){{
 }}
 function tabsFingerprint(tabs){{
   try {{
-    return (tabs || []).map(function(t){{ return (t.id||'') + '|' + (t.is_active?1:0) + '|' + tabLabel(t) + '|' + (t.url||'') + '|' + (t.panel_group||''); }}).join(';;');
+    return (tabs || []).map(function(t){{ return (t.id||'') + '|' + (t.is_active?1:0) + '|' + (t.is_private?1:0) + '|' + tabLabel(t) + '|' + (t.url||'') + '|' + (t.panel_group||''); }}).join(';;');
   }} catch(_) {{ return String(Math.random()); }}
 }}
 function paintTabs(list){{
@@ -398,24 +410,29 @@ function paintTabs(list){{
   if (window.__AMNI_TABS_FP === fp && strip.childNodes.length) return;
   window.__AMNI_TABS_FP = fp;
   clearKids(strip);
-  var ordered = tabs.slice().sort(function(a,b){{
-    var ga = (a && a.panel_group) ? a.panel_group : '~~~~';
-    var gb = (b && b.panel_group) ? b.panel_group : '~~~~';
-    if (ga < gb) return -1; if (ga > gb) return 1; return 0;
-  }});
+  var ordered = tabs.map(function(t,i){{ return {{ t:t, i:i }}; }}).sort(function(a,b){{
+    var ga = (a.t && a.t.panel_group) ? String(a.t.panel_group) : '~~~~';
+    var gb = (b.t && b.t.panel_group) ? String(b.t.panel_group) : '~~~~';
+    if (ga < gb) return -1; if (ga > gb) return 1; return a.i - b.i;
+  }}).map(function(x){{ return x.t; }});
   var lastG = null;
   ordered.forEach(function(t){{
     var g = (t && t.panel_group) ? String(t.panel_group) : '';
+    var priv = !!(t && t.is_private);
     if (g && g !== lastG) {{
       lastG = g;
-      var gl = el('span', {{ className:'grp', text: g }});
+      var gl = el('span', {{ className:'grp', text: groupLabel(g) }});
       gl.title = 'Group: ' + g;
       strip.appendChild(gl);
+    }} else if (!g) {{
+      lastG = null;
     }}
-    var ttl = el('span', {{ className:'ttl', text: tabLabel(t) }});
+    var kids = [el('span', {{ className:'ttl', text: tabLabel(t) }})];
+    if (priv) kids.push(el('span', {{ className:'pb', text:'P', title:'Private' }}));
     var x = el('span', {{ className:'x', role:'button', title:'Close tab', tabIndex:'0', text:'×' }});
+    kids.push(x);
     bindHit(x, function(){{ if (t.id) ipc({{ type:'close_tab', id:t.id }}); }});
-    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : ''), title: (t.title || t.url || 'Tab') + (g ? (' · ' + g) : ''), 'data-id': t.id || '' }}, [ttl, x]);
+    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : '') + (priv ? ' priv' : ''), title: (t.title || t.url || 'Tab') + (g ? (' · ' + g) : '') + (priv ? ' · Private' : '') + String.fromCharCode(10) + 'Right-click to set group', 'data-id': t.id || '' }}, kids);
     bindHit(node, function(e){{
       if (e && e.target && (e.target === x || (e.target.closest && e.target.closest('.x')))) return;
       if (t.id) ipc({{ type:'switch_tab', id:t.id }});
