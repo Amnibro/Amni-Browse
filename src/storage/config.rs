@@ -5,7 +5,9 @@ use std::path::PathBuf;
 pub const APP_NAME: &str = "Amni Browse";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOME: &str = "amnibrowse://newtab";
-pub const DEFAULT_SEARCH_ENGINE: &str = "https://duckduckgo.com/?q=";
+/// Lite HTML DDG — Servo cannot run the full Next.js duckduckgo.com SPA yet.
+pub const DEFAULT_SEARCH_ENGINE: &str = "https://html.duckduckgo.com/html/?q=";
+pub const LITE_DDG_HOME: &str = "https://html.duckduckgo.com/html/";
 pub const USER_AGENT: &str = "AmniBrowse/0.3 (Privacy-First; Amni-Scient)";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SplitMode { None, Horizontal, Vertical }
@@ -78,9 +80,26 @@ impl BrowserConfig {
     }
     pub fn load() -> Self {
         let path = Self::config_dir().join("config.json");
-        path.exists().then(|| {
+        let mut cfg = path.exists().then(|| {
             fs::read_to_string(&path).ok().and_then(|d| serde_json::from_str(&d).ok())
-        }).flatten().unwrap_or_else(|| { let c = Self::default(); c.save(); c })
+        }).flatten().unwrap_or_else(|| { let c = Self::default(); c.save(); c });
+        // Migrate full Next.js DDG endpoints → lite HTML (Servo-friendly).
+        let mut dirty = false;
+        if cfg.search_engine.trim() == "https://duckduckgo.com/?q="
+            || cfg.search_engine.trim() == "https://www.duckduckgo.com/?q="
+        {
+            cfg.search_engine = DEFAULT_SEARCH_ENGINE.into();
+            dirty = true;
+        }
+        let hp = cfg.home_page.trim();
+        if hp == "https://duckduckgo.com" || hp == "https://duckduckgo.com/"
+            || hp == "https://www.duckduckgo.com" || hp == "https://www.duckduckgo.com/"
+        {
+            cfg.home_page = DEFAULT_HOME.into();
+            dirty = true;
+        }
+        if dirty { cfg.save(); }
+        cfg
     }
     pub fn save(&self) {
         let path = Self::config_dir().join("config.json");
