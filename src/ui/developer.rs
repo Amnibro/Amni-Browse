@@ -74,9 +74,9 @@ pre{{background:var(--bg-primary);border:1px solid var(--border);border-radius:8
   <div class="card">
     <h2 style="margin-bottom:12px">Custom colors</h2>
     <div class="row"><label>Name</label><input type="text" id="th-name" value="My Theme"/></div>
-    <div class="row"><label>Primary BG</label><input type="color" id="th-bg" value="#0a0e14"/><input type="text" id="th-bg-t" value="#0a0e14" style="max-width:110px"/></div>
+    <div class="row"><label>Primary BG</label><input type="color" id="th-bg" value="#08090B"/><input type="text" id="th-bg-t" value="#08090B" style="max-width:110px"/></div>
     <div class="row"><label>Accent</label><input type="color" id="th-ac" value="#C89B4E"/><input type="text" id="th-ac-t" value="#C89B4E" style="max-width:110px"/></div>
-    <div class="row"><label>Text</label><input type="color" id="th-tx" value="#e0e6f0"/><input type="text" id="th-tx-t" value="#e0e6f0" style="max-width:110px"/></div>
+    <div class="row"><label>Text</label><input type="color" id="th-tx" value="#EDEFF2"/><input type="text" id="th-tx-t" value="#EDEFF2" style="max-width:110px"/></div>
     <div class="row">
       <button class="btn" onclick="saveTheme()">Save &amp; apply</button>
       <button class="btn ghost" onclick="exportThemes()">Export all JSON</button>
@@ -179,14 +179,15 @@ function renderThemes(list){{
     g.appendChild(d);
   }});
 }}
+function shade(hex,pct){{hex=hex.replace('#','');var r=parseInt(hex.substring(0,2),16),g=parseInt(hex.substring(2,4),16),b=parseInt(hex.substring(4,6),16),d=Math.round(255*pct/100);r=Math.max(0,Math.min(255,r+d));g=Math.max(0,Math.min(255,g+d));b=Math.max(0,Math.min(255,b+d));return '#'+[r,g,b].map(function(v){{return v.toString(16).padStart(2,'0')}}).join('');}}
 function saveTheme(){{
   var bg=$('th-bg-t').value,ac=$('th-ac-t').value,tx=$('th-tx-t').value;
   var id='custom-'+Date.now().toString(36);
   var theme={{
-    id:id,name:$('th-name').value||'Custom',bg_primary:bg,bg_secondary:bg,bg_tertiary:'#1a1f2e',bg_hover:'#1a1f2e',
-    border:'#1a2332',text_primary:tx,text_secondary:'#8a96a8',accent:ac,accent_hover:ac,accent_glow:'rgba(0,212,255,0.15)',
+    id:id,name:$('th-name').value||'Custom',bg_primary:bg,bg_secondary:shade(bg,5),bg_tertiary:shade(bg,12),bg_hover:shade(bg,18),
+    border:shade(bg,15),text_primary:tx,text_secondary:shade(tx,-40),accent:ac,accent_hover:shade(ac,15),accent_glow:ac+'26',
     danger:'#ff4757',success:'#2ed573',warning:'#ffa502',gradient_start:ac,gradient_mid:tx,gradient_end:bg,
-    tab_active:bg,tab_inactive:'#0f1419',background_image:null,background_opacity:1,font_family:'system-ui,sans-serif',
+    tab_active:bg,tab_inactive:shade(bg,5),background_image:null,background_opacity:1,font_family:"-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Helvetica, Arial, sans-serif",
     border_radius:'8px',is_custom:true
   }};
   ipc({{type:'theme_save_custom',theme:JSON.stringify(theme)}});
@@ -234,7 +235,7 @@ function previewBug(){{ipc({{type:'bug_diag_preview'}});}}
 window.__amni_receive=function(msg){{
   if(!msg)return;
   if(msg.type==='themes'){{try{{renderThemes(JSON.parse(msg.data));}}catch(e){{}}}}
-  if(msg.type==='active_theme'){{try{{var t=typeof msg.data==='string'?JSON.parse(msg.data):msg.data;activeId=t.id||activeId;}}catch(e){{}}}}
+  if(msg.type==='active_theme'){{try{{var t=typeof msg.data==='string'?JSON.parse(msg.data):msg.data;activeId=t.id||activeId;if(t.bg_primary){{$('th-bg').value=$('th-bg-t').value=t.bg_primary;$('th-ac').value=$('th-ac-t').value=t.accent;$('th-tx').value=$('th-tx-t').value=t.text_primary;}}}}catch(e){{}}}}
   if(msg.type==='theme_export'){{$('th-json').value=msg.data||'';}}
   if(msg.type==='extensions'){{try{{renderExt(JSON.parse(msg.data));}}catch(e){{$('ext-list').textContent='Parse error';}}}}
   if(msg.type==='page_safety'){{paintSafety(typeof msg.data==='string'?JSON.parse(msg.data):msg.data);}}

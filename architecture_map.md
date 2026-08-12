@@ -1,4 +1,7 @@
 # Amni-Browse Architecture Map
+## 2026-08-12 v0.11.7 custom-theme parity (developer.rs == ui/webview.rs)
+- developer.rs saveTheme derives all secondary colors via shade() from user BG/accent/text (was hardcoded navy + cyan accent_glow); glow = accent+'26'.
+- active_theme IPC seeds th-bg/th-ac/th-tx pickers; home SPA custom pickers default to shell tokens. Gradient stops + font stack identical across both editors.
 ## 2026-08-12 v0.11.6 WebView tab reflow + brand gold residual
 - Home SPA (ui/webview.rs) and injected chrome (platform/webview.rs) active tab: inset box-shadow 0 2px 0 accent (parity with toolbar.html); no border-bottom height change.
 - Injected URL focus: 3px glow. Media bar + Developer/Servo start/settings + profile/custom accent defaults: Amni Scient gold #C89B4E (kills leftover cyan chrome).

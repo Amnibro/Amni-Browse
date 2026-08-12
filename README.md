@@ -1,6 +1,6 @@
 ****HEAVILY WORK IN PROGRESS****
 
-# Amni Browse v0.11.6
+# Amni Browse v0.11.7
 
 **A privacy-first web browser built from the ground up in Rust — no Amni product telemetry.**
 **Functional browsing: real URLs, injected chrome toolbar, navigation-level URL cleaning. DRM/media uses a separate system-WebView window with its own bar.**
@@ -63,7 +63,7 @@ cargo build --release
 cargo build --release --no-default-features --features servo-engine
 ```
 
-## Architecture (v0.11.5 — WebView chrome + Servo hybrid)
+## Architecture (v0.11.7 — WebView chrome + Servo hybrid)
 
 ```
 src/

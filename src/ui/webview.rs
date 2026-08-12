@@ -569,9 +569,9 @@ pub fn browser_html(theme: &Theme) -> String {
 
         <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
             <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Custom Theme</div>
-            <div class="color-row"><label>Primary BG</label><input type="color" id="custom-bg-primary" value="#0a0e14"></div>
+            <div class="color-row"><label>Primary BG</label><input type="color" id="custom-bg-primary" value="#08090B"></div>
             <div class="color-row"><label>Accent</label><input type="color" id="custom-accent" value="#C89B4E"></div>
-            <div class="color-row"><label>Text</label><input type="color" id="custom-text" value="#e0e6f0"></div>
+            <div class="color-row"><label>Text</label><input type="color" id="custom-text" value="#EDEFF2"></div>
             <div class="form-group" style="margin-top:8px;">
                 <label>Background Image URL</label>
                 <input class="form-input" id="custom-bg-image" placeholder="https://...">
@@ -1360,8 +1360,8 @@ pub fn browser_html(theme: &Theme) -> String {
             success: '#2ed573',
             warning: '#ffa502',
             gradient_start: accent,
-            gradient_mid: '#7c5cfc',
-            gradient_end: '#2ed573',
+            gradient_mid: text,
+            gradient_end: bg,
             tab_active: bg,
             tab_inactive: lighten(bg, 5),
             background_image: bgImg,

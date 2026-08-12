@@ -1,3 +1,9 @@
+## v0.11.7 - 2026-08-12 (custom-theme parity: dev hub == home SPA)
+- **Cyan glow bug killed:** Developer hub "Save & apply" hardcoded accent_glow rgba(0,212,255,.15) plus navy secondaries into every custom theme (gold/green theme -> cyan focus rings). Now derives bg_secondary/tertiary/hover/border/tab fills from the chosen BG and glow from the chosen accent, byte-for-byte the same recipe as the home SPA editor.
+- Both editors now seed their color pickers from the ACTIVE theme (dev hub live via active_theme IPC; static defaults flipped from old navy #0a0e14/#e0e6f0 to shell tokens #08090B/#EDEFF2).
+- Same inputs -> same theme object in both surfaces: gradient stops (accent/text/bg) and font stack aligned.
+- chromeRev 0.11.7-theme-parity. Backups: backups/*.v0.11.7-pre.bak.
+
 ## v0.11.6 - 2026-08-12 (WebView chrome parity + brand gold residual)
 - **Home SPA + injected shadow chrome** now kill active-tab reflow the same way as Servo toolbar: accent is inset box-shadow, not a 2px border-bottom that reflows the strip (was only fixed on toolbar.html in the prior 0.11.5 pass).
 - Injected URL focus ring matches toolbar: 3px accent_glow (was 2px).
