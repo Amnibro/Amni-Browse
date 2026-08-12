@@ -45,9 +45,6 @@ pub fn browser_html(theme: &Theme) -> String {
     let e_warning = eh("warning");
     let e_globe = eh("globe");
     let e_apps = eh("rocket");
-    let e_bolt = eh("bolt");
-    let e_diamond = eh("diamond");
-    let e_crown = eh("crown");
     format!(
         r##"<!DOCTYPE html>
 <html lang="en">
@@ -116,7 +113,8 @@ pub fn browser_html(theme: &Theme) -> String {
         background: transparent; color: var(--text-secondary); font-size: 14px;
         cursor: pointer; flex-shrink: 0; transition: all var(--transition);
     }}
-    .tab-close:hover {{ background: var(--danger); color: white; }}
+    .tab-close:hover {{ background: var(--danger); color: var(--bg-primary); }}
+    .nav-btn:focus-visible,.ctx-item:focus-visible,.bookmark-item:focus-visible,.vault-btn:focus-visible,.panel-close:focus-visible,.tab-close:focus-visible,.dt-tab:focus-visible,.theme-del-btn:focus-visible,#new-tab-btn:focus-visible,#find-bar button:focus-visible,.toggle-switch:focus-visible,.theme-card:focus-visible,.cmd-item:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 1px; }}
     #new-tab-btn {{
         display: flex; align-items: center; justify-content: center;
         width: 28px; height: 28px; min-width: 28px; border-radius: var(--radius); border: none;
@@ -141,6 +139,8 @@ pub fn browser_html(theme: &Theme) -> String {
     .nav-btn:hover:not(:disabled) {{ background: var(--bg-hover); color: var(--text-primary); }}
     .nav-btn:disabled {{ opacity: 0.3; cursor: not-allowed; }}
     .nav-btn.active {{ color: var(--accent); }}
+    #bookmark-btn.active {{ color: var(--warning); }}
+    #split-btn.active {{ color: var(--accent); background: var(--bg-hover); }}
     #url-bar {{
         flex: 1; height: 32px; background: var(--bg-primary);
         border: 1px solid var(--border); border-radius: 20px;
@@ -150,11 +150,9 @@ pub fn browser_html(theme: &Theme) -> String {
     #url-bar:focus {{ border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }}
     .badge {{
         position: absolute; top: 2px; right: 2px;
-        background: var(--success); color: white; font-size: 7px;
+        background: var(--success); color: var(--bg-primary); font-size: 7px;
         padding: 1px 3px; border-radius: 6px; min-width: 12px; text-align: center;
     }}
-
-    /* ===== BOOKMARKS BAR ===== */
     #bookmarks-bar {{
         display: flex; align-items: center; gap: 4px;
         padding: 3px 12px; background: var(--bg-secondary);
@@ -167,24 +165,24 @@ pub fn browser_html(theme: &Theme) -> String {
         cursor: pointer; white-space: nowrap; transition: all var(--transition);
     }}
     .bookmark-item:hover {{ background: var(--bg-hover); color: var(--text-primary); }}
-
-    /* ===== CONTENT AREA ===== */
     #content-area {{
         flex: 1; position: relative; background: var(--bg-primary);
-        display: flex; /* for split view */
+        display: flex; min-height: 0; overflow: hidden;
     }}
-    #web-content {{ width: 100%; height: 100%; border: none; background: white; }}
+    #web-content {{ flex: 1; min-width: 0; width: auto; height: 100%; border: none; background: white; }}
     #split-content {{
-        display: none; width: 50%; height: 100%; border: none;
-        border-left: 2px solid var(--accent); background: white;
+        display: none; flex: 0 0 50%; min-width: 140px; max-width: calc(100% - 148px);
+        height: 100%; border: none; border-left: 1px solid var(--border); background: white;
     }}
     #split-content.active {{ display: block; }}
     .split-resize {{
-        display: none; width: 4px; cursor: col-resize;
-        background: var(--border); transition: background 0.1s;
+        display: none; flex: 0 0 5px; width: 5px; cursor: col-resize; position: relative;
+        background: var(--border); transition: background 0.1s; z-index: 6; align-self: stretch;
     }}
-    .split-resize:hover {{ background: var(--accent); }}
+    .split-resize::after {{ content: ''; position: absolute; top: 0; bottom: 0; left: -4px; right: -4px; }}
+    .split-resize:hover, .split-resize.dragging {{ background: var(--accent); box-shadow: 0 0 0 1px var(--accent-glow); }}
     .split-resize.active {{ display: block; }}
+    #content-area.split-on #web-content {{ flex: 1 1 50%; }}
 
     /* ===== NEW TAB PAGE ===== */
     #newtab-page {{
@@ -194,6 +192,7 @@ pub fn browser_html(theme: &Theme) -> String {
         position: absolute; top: 0; left: 0; z-index: 10;
     }}
     #newtab-page.visible {{ display: flex; }}
+    #newtab-page::before {{ content: ''; position: absolute; inset: 0; background-image: var(--bg-image, none); background-size: cover; background-position: center; opacity: var(--bg-opacity, 1); z-index: -1; }}
     .logo {{
         font-size: 52px; font-weight: 800; letter-spacing: -1px;
         background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
@@ -235,7 +234,7 @@ pub fn browser_html(theme: &Theme) -> String {
         display: none; position: fixed; top: 0; right: 0;
         width: 380px; height: 100vh; background: var(--bg-secondary);
         border-left: 1px solid var(--border); z-index: 500;
-        flex-direction: column; box-shadow: -8px 0 32px rgba(0,0,0,0.5);
+        flex-direction: column; box-shadow: -8px 0 32px rgba(0,0,0,0.3);
         transition: transform 0.25s ease;
     }}
     .slide-panel.open {{ display: flex; }}
@@ -250,7 +249,7 @@ pub fn browser_html(theme: &Theme) -> String {
         background: transparent; color: var(--text-secondary); font-size: 18px;
         cursor: pointer; transition: all var(--transition);
     }}
-    .panel-close:hover {{ background: var(--danger); color: white; }}
+    .panel-close:hover {{ background: var(--danger); color: var(--bg-primary); }}
     .panel-body {{ flex: 1; overflow-y: auto; padding: 16px 20px; }}
 
     /* ===== VAULT (Password Manager) ===== */
@@ -303,7 +302,7 @@ pub fn browser_html(theme: &Theme) -> String {
         border: none; border-radius: 50%; background: var(--bg-tertiary); color: var(--text-secondary);
         cursor: pointer; font-size: 11px; line-height: 1; transition: all var(--transition);
     }}
-    .theme-del-btn:hover {{ background: var(--danger); color: #fff; }}
+    .theme-del-btn:hover {{ background: var(--danger); color: var(--bg-primary); }}
     .color-row {{
         display: flex; align-items: center; justify-content: space-between;
         padding: 6px 0;
@@ -328,7 +327,7 @@ pub fn browser_html(theme: &Theme) -> String {
     .toggle-switch.on {{ background: var(--accent); }}
     .toggle-switch::after {{
         content: ''; position: absolute; top: 2px; left: 2px;
-        width: 18px; height: 18px; background: white; border-radius: 50%;
+        width: 18px; height: 18px; background: var(--text-primary); border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,0.25);
         transition: left 0.2s;
     }}
     .toggle-switch.on::after {{ left: 20px; }}
@@ -337,8 +336,8 @@ pub fn browser_html(theme: &Theme) -> String {
     #context-menu {{
         display: none; position: fixed; background: var(--bg-secondary);
         border: 1px solid var(--border); border-radius: var(--radius);
-        padding: 4px; min-width: 200px;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); z-index: 1000;
+        padding: 4px; min-width: 200px; max-height: calc(100vh - 100px); overflow-y: auto;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3); z-index: 1000;
     }}
     .ctx-item {{
         display: flex; align-items: center; gap: 8px;
@@ -389,7 +388,7 @@ pub fn browser_html(theme: &Theme) -> String {
     .dt-entry{{font-family:monospace;font-size:11px;padding:3px 6px;border-bottom:1px solid var(--border);white-space:pre-wrap;word-break:break-all}}
     .dt-entry.err{{color:var(--danger)}}
     .dt-entry.wrn{{color:var(--warning)}}
-    .priv-badge{{background:var(--warning);color:#000;font-size:9px;padding:1px 4px;border-radius:3px;margin-left:4px;font-weight:600}}
+    .priv-badge{{background:var(--warning);color:var(--bg-primary);font-size:9px;padding:1px 4px;border-radius:3px;margin-left:4px;font-weight:600}}
     #cmd-palette{{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:2000;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);justify-content:center;padding-top:min(18vh,160px)}}
     #cmd-palette.open{{display:flex}}
     #cmd-box{{width:520px;max-width:92%;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 64px rgba(0,0,0,0.6);overflow:hidden;max-height:420px;display:flex;flex-direction:column}}
@@ -407,7 +406,7 @@ pub fn browser_html(theme: &Theme) -> String {
 
 <!-- Tab Bar -->
 <div id="tab-bar">
-    <div id="tabs-container" style="display:flex;align-items:center;gap:2px;overflow-x:auto;flex:1;"></div>
+    <div id="tabs-container"></div>
     <button id="new-tab-btn" onclick="newTab()" title="New Tab (Ctrl+T)">+</button>
 </div>
 
@@ -418,9 +417,9 @@ pub fn browser_html(theme: &Theme) -> String {
     <button class="nav-btn" onclick="refresh()" title="Refresh (Ctrl+R)">{e_refresh}</button>
     <input type="text" id="url-bar" placeholder="Search or enter URL..."
            onkeydown="if(event.key==='Enter')navigate(this.value)">
-    <button class="nav-btn" id="bookmark-btn" onclick="toggleBookmark()" title="Bookmark (Ctrl+D)">{e_star_empty}</button>
+    <button class="nav-btn" id="bookmark-btn" onclick="toggleBookmark()" title="Bookmark (Ctrl+D)" aria-pressed="false">{e_star_empty}</button>
     <button class="nav-btn" id="shield-btn" onclick="toggleShield()" title="Privacy Shield">{e_shield}<span class="badge" id="block-count">0</span></button>
-    <button class="nav-btn" onclick="toggleSplit()" title="Split View">{e_split}</button>
+    <button class="nav-btn" id="split-btn" onclick="toggleSplit()" title="Split View" aria-pressed="false">{e_split}</button>
     <button class="nav-btn" onclick="openPanel('vault')" title="Password Vault (Ctrl+Shift+P)">{e_key}</button>
     <button class="nav-btn" onclick="openPanel('themes')" title="Themes">{e_palette}</button>
     <button class="nav-btn" onclick="openPanel('downloads')" title="Downloads (Ctrl+J)">{e_download}</button>
@@ -494,6 +493,8 @@ pub fn browser_html(theme: &Theme) -> String {
     </div>
 
     <iframe id="web-content" style="display:none;flex:1;" referrerpolicy="no-referrer-when-downgrade"></iframe>
+    <div class="split-resize" id="split-resize"></div>
+    <iframe id="split-content" referrerpolicy="no-referrer-when-downgrade"></iframe>
 </div>
 
 <!-- Status Bar -->
@@ -845,10 +846,9 @@ pub fn browser_html(theme: &Theme) -> String {
                     if (!frame) {{
                         frame = document.createElement('iframe');
                         frame.id = 'engine-frame';
-                        frame.style.cssText = 'position:fixed;top:48px;left:0;right:0;bottom:0;width:100%;height:calc(100vh - 48px);border:none;background:white;z-index:999';
                         document.body.appendChild(frame);
                     }}
-                    // Use srcdoc for better HTML rendering (executes scripts, handles head/body)
+                    layoutEngineFrame();
                     frame.srcdoc = msg.html;
                     var viewer = document.getElementById('engine-viewer');
                     if (viewer) viewer.style.display = 'none';
@@ -910,6 +910,7 @@ pub fn browser_html(theme: &Theme) -> String {
         document.getElementById('newtab-page').classList.remove('visible');
         document.getElementById('url-bar').value = url;
         currentUrl = url;
+        refreshStar();
         setStatus('Loading: ' + url);
         if (/^https?:\/\//i.test(url)) {{
             document.getElementById('loading-bar').classList.add('loading');
@@ -1024,6 +1025,7 @@ pub fn browser_html(theme: &Theme) -> String {
         }}
         const st = document.getElementById('stat-tabs');
         if (st) st.textContent = currentTabs.length;
+        refreshStar();
     }}
     function newTab() {{ sendIpc({{ type: 'new_tab', url: null }}); }}
     function closeTab(id) {{ sendIpc({{ type: 'close_tab', id: id }}); }}
@@ -1042,35 +1044,102 @@ pub fn browser_html(theme: &Theme) -> String {
         if (t && t.id && !t.is_active) {{ markKbdTab(t.id); switchTab(t.id); }}
     }}
 
+    function layoutEngineFrame() {{
+        const frame = document.getElementById('engine-frame');
+        if (!frame) return;
+        const ca = document.getElementById('content-area');
+        const top = 110, bot = 22;
+        if (splitActive && ca) {{
+            const r = ca.getBoundingClientRect();
+            const sc = document.getElementById('split-content');
+            const rw = document.getElementById('split-resize');
+            const rightW = (sc && sc.classList.contains('active') ? sc.getBoundingClientRect().width : r.width * 0.5) + (rw && rw.classList.contains('active') ? rw.getBoundingClientRect().width : 5);
+            frame.style.cssText = 'position:fixed;top:' + top + 'px;left:0;bottom:' + bot + 'px;width:' + Math.max(120, r.width - rightW) + 'px;border:none;background:white;z-index:5';
+        }} else {{
+            frame.style.cssText = 'position:fixed;top:' + top + 'px;left:0;right:0;bottom:' + bot + 'px;width:100%;border:none;background:white;z-index:5';
+        }}
+    }}
     function toggleSplit() {{
+        const ca = document.getElementById('content-area');
+        const sb = document.getElementById('split-btn');
         if (splitActive) {{
             splitActive = false;
             document.getElementById('split-content').classList.remove('active');
             document.getElementById('split-resize').classList.remove('active');
+            if (ca) ca.classList.remove('split-on');
             document.getElementById('web-content').style.flex = '1';
+            document.getElementById('split-content').style.flex = '';
+            if (sb) {{ sb.classList.remove('active'); sb.setAttribute('aria-pressed', 'false'); }}
+            layoutEngineFrame();
             sendIpc({{ type: 'close_split' }});
         }} else {{
             splitActive = true;
             document.getElementById('split-content').classList.add('active');
             document.getElementById('split-resize').classList.add('active');
-            document.getElementById('web-content').style.flex = '1';
+            if (ca) ca.classList.add('split-on');
+            document.getElementById('web-content').style.flex = '1 1 50%';
+            document.getElementById('split-content').style.flex = '0 0 50%';
+            if (sb) {{ sb.classList.add('active'); sb.setAttribute('aria-pressed', 'true'); }}
             const splitUrl = currentUrl !== 'amnibrowse://newtab' ? currentUrl : 'about:blank';
             document.getElementById('split-content').src = splitUrl;
+            layoutEngineFrame();
             sendIpc({{ type: 'split_tab', mode: 'vertical', url: splitUrl }});
         }}
     }}
-
+    (function initSplitResize() {{
+        const handle = document.getElementById('split-resize');
+        const main = document.getElementById('web-content');
+        const pane = document.getElementById('split-content');
+        const area = document.getElementById('content-area');
+        if (!handle || !main || !pane || !area) return;
+        let dragging = false;
+        handle.addEventListener('mousedown', e => {{
+            if (!splitActive) return;
+            dragging = true;
+            handle.classList.add('dragging');
+            e.preventDefault();
+        }});
+        window.addEventListener('mousemove', e => {{
+            if (!dragging) return;
+            const r = area.getBoundingClientRect();
+            const x = e.clientX - r.left;
+            const left = Math.max(140, Math.min(x, r.width - 148));
+            const right = r.width - left - 5;
+            main.style.flex = '0 0 ' + left + 'px';
+            pane.style.flex = '0 0 ' + right + 'px';
+            layoutEngineFrame();
+        }});
+        window.addEventListener('mouseup', () => {{
+            if (!dragging) return;
+            dragging = false;
+            handle.classList.remove('dragging');
+            layoutEngineFrame();
+        }});
+        window.addEventListener('resize', () => {{ if (splitActive) layoutEngineFrame(); }});
+    }})();
+    const bookmarkIds = new Map();
+    function refreshStar() {{
+        const b = document.getElementById('bookmark-btn');
+        if (!b) return;
+        const on = bookmarkIds.has(document.getElementById('url-bar').value || currentUrl);
+        b.textContent = on ? '{e_star_solid}' : '{e_star_empty}';
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        b.title = on ? 'Bookmarked — click to remove (Ctrl+D)' : 'Bookmark (Ctrl+D)';
+    }}
     function toggleBookmark() {{
         const url = document.getElementById('url-bar').value || currentUrl;
-        if (url && url !== 'amnibrowse://newtab') {{
-            sendIpc({{ type: 'bookmark_add', title: document.title || url, url: url }});
-            document.getElementById('bookmark-btn').textContent = '{e_star_solid}';
-        }}
+        if (!url || url === 'amnibrowse://newtab') return;
+        bookmarkIds.has(url) ? sendIpc({{ type: 'bookmark_remove', id: bookmarkIds.get(url) }}) : sendIpc({{ type: 'bookmark_add', title: document.title || url, url: url }});
+        setTimeout(() => sendIpc({{ type: 'bookmark_list' }}), 200);
     }}
 
     function updateBookmarks(bookmarks) {{
         const container = document.getElementById('bookmarks-container');
         container.innerHTML = '';
+        bookmarkIds.clear();
+        bookmarks.forEach(b => {{ if (b && b.url) bookmarkIds.set(b.url, b.id); }});
+        refreshStar();
         bookmarks.forEach(b => {{
             const el = document.createElement('button');
             el.className = 'bookmark-item';
@@ -1264,6 +1333,8 @@ pub fn browser_html(theme: &Theme) -> String {
         root.style.setProperty('--tab-inactive', theme.tab_inactive);
         root.style.setProperty('--font-family', theme.font_family);
         root.style.setProperty('--radius', theme.border_radius);
+        root.style.setProperty('--bg-image', theme.background_image ? 'url(' + theme.background_image + ')' : 'none');
+        root.style.setProperty('--bg-opacity', theme.background_image ? (theme.background_opacity != null ? theme.background_opacity : 1) : 1);
     }}
 
     function saveCustomTheme() {{
@@ -1324,7 +1395,7 @@ pub fn browser_html(theme: &Theme) -> String {
     }}
 
     function applyConfig(cfg) {{
-        const t = (id, on) => {{ const e=document.getElementById(id); if(e) e.classList.toggle('on',on); }};
+        const t = (id, on) => {{ const e=document.getElementById(id); if(e) {{ e.classList.toggle('on',on); e.setAttribute('aria-checked', on ? 'true' : 'false'); }} }};
         if(cfg.block_ads!==undefined) t('toggle-ads',cfg.block_ads);
         if(cfg.enable_doh!==undefined) t('toggle-doh',cfg.enable_doh);
         if(cfg.restore_session!==undefined) t('toggle-session',cfg.restore_session);
@@ -1447,15 +1518,15 @@ pub fn browser_html(theme: &Theme) -> String {
         else {{
             const rect = event.target.getBoundingClientRect();
             menu.style.display = 'block';
-            menu.style.top = rect.bottom + 4 + 'px';
-            menu.style.left = (rect.right - 200) + 'px';
+            menu.style.left = Math.max(8, Math.min(rect.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - 8)) + 'px';
+            menu.style.top = Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - menu.offsetHeight - 8)) + 'px';
         }}
     }}
 
     function hideMenu() {{ document.getElementById('context-menu').style.display = 'none'; }}
     document.addEventListener('click', (e) => {{
         hideMenu();
-        if (!e.target.closest('.slide-panel') && !e.target.closest('.nav-btn') && !e.target.closest('#context-menu')) {{
+        if (!e.target.closest('.slide-panel') && !e.target.closest('.nav-btn') && !e.target.closest('#context-menu') && !e.target.closest('#cmd-palette')) {{
             closeAllPanels();
         }}
     }});
@@ -1511,7 +1582,7 @@ pub fn browser_html(theme: &Theme) -> String {
         if (e.ctrlKey || e.metaKey) {{
             switch(e.key) {{
                 case 't': e.preventDefault(); newTab(); break;
-                case 'w': e.preventDefault(); {{ const a = currentTabs.find(t => t.is_active); if (a) closeTab(a.id); }} break;
+                case 'w': e.preventDefault(); {{ const a = currentTabs.find(t => t && t.is_active); if (a) closeTab(a.id); }} break;
                 case 'l': e.preventDefault(); document.getElementById('url-bar').focus(); document.getElementById('url-bar').select(); break;
                 case 'd': e.preventDefault(); toggleBookmark(); break;
                 case 'r': e.preventDefault(); refresh(); break;
@@ -1528,6 +1599,7 @@ pub fn browser_html(theme: &Theme) -> String {
             if (e.shiftKey && e.key === 'P') {{ e.preventDefault(); openPanel('vault'); }}
             if (e.shiftKey && e.key === 'I') {{ e.preventDefault(); openPanel('devtools'); }}
             if (e.shiftKey && e.key === 'N') {{ e.preventDefault(); newPrivateTab(); }}
+            if (e.shiftKey && e.key === 'E') {{ e.preventDefault(); currentUrl && currentUrl.startsWith('http') ? sendIpc({{type:'fetch_page',url:currentUrl}}) : setStatus('Navigate to a page first'); }}
         }}
         if (e.altKey) {{
             if (e.key === 'ArrowLeft') {{ e.preventDefault(); goBack(); }}
@@ -1601,6 +1673,13 @@ pub fn browser_html(theme: &Theme) -> String {
 
     document.getElementById('shield-btn').classList.add('active');
     document.getElementById('tabs-container').ondblclick = (e) => {{ if (e.target === e.currentTarget) newTab(); }};
+    document.querySelectorAll('.toggle-switch').forEach(el => {{
+        el.setAttribute('role', 'switch');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('aria-checked', el.classList.contains('on'));
+        el.addEventListener('click', () => el.setAttribute('aria-checked', el.classList.contains('on')));
+        el.addEventListener('keydown', e => {{ if (e.key === 'Enter' || e.key === ' ') {{ e.preventDefault(); el.click(); }} }});
+    }});
     sendIpc({{ type: 'get_tabs' }});
     sendIpc({{ type: 'bookmark_list' }});
     sendIpc({{ type: 'get_stats' }});

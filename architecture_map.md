@@ -29,6 +29,10 @@
 - Media/DRM `spawn_media_window` no longer bare: init-script bar + `amni_media_close` + decorations; `drain_close_requests` in servo_real.
 - WebView external chrome: remount watchdog (400ms), force fixed styles, re-prepend if host detached (streaming sites).
 - Home SPA + README + settings footer: drop false “3P cookies blocked by default”; state system WebView cookie policy + URL-bar stripping + no Amni telemetry.
+## 2026-08-12 Full-chrome polish sweep (0.11.0)
+- Home SPA (`ui/webview.rs`): split view DOM + drag-resize live (`#split-resize` 13px hit, `split-on` flex); `#cmd-palette` excluded from doc-click panel guard; engine iframe `top:110px;bottom:22px;z-index:5` (chrome = 38+44+28, status 22); bookmark star true-toggles via `bookmarkIds` map + `bookmark_remove`; toggles are `role=switch` keyboard-reachable, knob `--text-primary`; shared focus-visible ring; menu viewport clamp; Ctrl+Shift+E bound; BG image/opacity wired to newtab ::before.
+- Servo overlay (`assets/chrome/toolbar.html`): :root seeded with amni-dark tokens (no palette flash if state poll fails); radii from `--radius`; no baked URL; aria-pressed on star/shield.
+- Ship gate: zip repacked (exe 04:01 ≥ sources), boot-verified, 133/133 tests. Checklist: `docs/checklists/checklist_chrome_polish_v0.11.1.md`. Backups: `backups/*.v0.11.1_pre_polish.bak`.
 ## 2026-08-12 Selected contrast lock (0.11.0)
 - Light themes (`amni-light`, `amni-paper-sunset`): strip `bg_secondary` darker than content; `tab_active` = `bg_primary` (content match); `tab_inactive` = strip. Dark themes already used content-match active.
 - Paint: `.tab.active` fill + bottom accent + elevation shadow; `.grp` left rail only. Home SPA (`ui/webview.rs`) and injected (`platform/webview.rs`) share the rule; `toolbar.html` ring is `:focus-visible`/`.kbd-focus` only.

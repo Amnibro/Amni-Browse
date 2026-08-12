@@ -1,3 +1,16 @@
+## v0.11.0 - 2026-08-12 (full-chrome polish sweep, 17-finding audit)
+- **Split View resurrected:** `#split-content` + `#split-resize` never existed in the DOM — every entry point threw. Elements added, real drag-resize (5px handle, 13px hit target via ::after, hover accent, `.dragging` state), `split-on` flex layout.
+- **Command palette fixed:** palette item clicks bubbled to the document click-guard and closed the panel they just opened — every open-panel command was a no-op. `#cmd-palette` added to the guard exclusions.
+- **Engine frame geometry:** `top:48px;z-index:999` painted the DRM/engine iframe over the nav bar, bookmarks bar, and every panel/toast. Now `top:110px;bottom:22px;z-index:5` — under all overlays, clear of chrome.
+- **Bookmark star is a true toggle:** was add-only, never un-filled, never reset on navigation. Now `bookmarkIds` url→id map drives `bookmark_add`/`bookmark_remove` and the star refreshes on tab switch + navigation.
+- **Toggle switches keyboard-reachable:** `role=switch`, `tabindex=0`, `aria-checked`, Enter/Space; knob was hardcoded white (invisible on light themes) — now `var(--text-primary)`.
+- **Focus-visible everywhere:** one shared accent-ring rule for nav/ctx/bookmark/close/vault/find/dt/theme/cmd controls (previously only `.tab` had one).
+- **Menu clamps to viewport:** measured-size clamp + max-height/scroll — bottom items were unreachable on short windows.
+- **Ctrl+Shift+E bound** (was advertised in the palette, never wired); **Ctrl+W guarded** against null tab records.
+- **Theme honesty:** custom-theme BG image/opacity controls now actually apply (newtab ::before layer); hardcoded white/#000 on themed surfaces → `var(--bg-primary)`; shadows softened for light themes.
+- **Servo overlay parity:** default palette now seeds amni-dark gold tokens (no cyan flash / permanent mismatch if the state poll fails); radii literals honor `--radius`; baked duckduckgo URL removed; hamburger titled Menu; aria-pressed states on star/shield.
+- Release zip repacked from this binary; 133/133 tests pass.
+
 ## v0.11.0 - 2026-08-12 (selected tab contrast lock)
 - **Light themes:** Amni Light + Paper Sunset strip was lighter/same as active (tab_active approx strip), so inactive chips read louder than selected. Classic hierarchy restored: strip darker (bg_secondary), active fill = content (tab_active = bg_primary), inactive = strip.
 - **Selected elevation:** home SPA + injected chrome .tab.active get lift shadow + z-index so selected always beats group rail and strip wash on dark and light; kbd ring still :focus-visible/.kbd-focus only.
