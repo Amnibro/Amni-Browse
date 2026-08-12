@@ -29,6 +29,10 @@
 - Media/DRM `spawn_media_window` no longer bare: init-script bar + `amni_media_close` + decorations; `drain_close_requests` in servo_real.
 - WebView external chrome: remount watchdog (400ms), force fixed styles, re-prepend if host detached (streaming sites).
 - Home SPA + README + settings footer: drop false “3P cookies blocked by default”; state system WebView cookie policy + URL-bar stripping + no Amni telemetry.
+## 2026-08-12 Close successor strip-order (0.11.0)
+- `TabManager::close_tab`: when closing the active tab, pick successor from `ordered_tabs()` (next strip index, else previous) — not raw `Vec` index after `remove`. Matches paint/cycle/jump. Unit tests in `tabs.rs`.
+- UI paint rule unchanged: `.tab.active` = fill + bottom accent; `.grp` / `.tab-group-label` = thin left rail + uppercase label only (selected always beats group hue).
+- Package: `target/release/amni-browse-v0.11.0-win64.zip` must contain post-fix `amni-browse.exe` (zip mtime ≥ exe).
 ## 2026-08-12 Canonical tab order + kbd-focus (0.11.0)
 - `src/engine/tabs.rs`: `ordered_tabs()` (group -> insertion index); `to_json` emits that order, so every `tabs_updated` consumer sees strip order. Session snapshot still reads raw `self.tabs.tabs`.
 - All three chromes (`src/ui/webview.rs` home, `src/platform/webview.rs` injected, `src/ui/chrome.rs` egui) share the ordering rule via local `orderedTabs`/`ordered_tab_values`; Ctrl+Tab cycle + Ctrl+1..9 jump index off it.

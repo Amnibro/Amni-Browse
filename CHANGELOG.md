@@ -1,4 +1,7 @@
-﻿## v0.11.0 — 2026-08-12 (tab group + private strip polish)
+﻿## v0.11.0 — 2026-08-12 (close successor = strip neighbor)
+- **Bug:** `TabManager::close_tab` activated the next raw-Vec sibling after remove, so mid-group close jumped past group-sorted strip neighbors. Now successor is next strip tab (else previous) via `ordered_tabs()` — same map as Ctrl+Tab / paint.
+- **Selected vs group paint:** group is label + left accent rail only; active tab keeps fill + bottom accent bar (no full-fill group hue). Release zip repacked from this binary (`amni-browse-v0.11.0-win64.zip`).
+## v0.11.0 — 2026-08-12 (tab group + private strip polish)
 - **Canonical tab order:** `TabManager::to_json` ships group-sorted (visual strip) order; cycle/jump in home chrome, injected chrome, and egui chrome all use the same `orderedTabs` sequence — strip index = cycle index = jump index. Session save unaffected (iterates raw tabs).
 - **Kbd-focus ring:** transient 900ms `.kbd-focus` accent ring on Ctrl+Tab/Ctrl+N target; `:focus-visible` only (no mouse-click ring); no DOM focus steal from page content.
 - **Injected chrome parity:** middle-click close, dblclick-strip new tab, Ctrl+1..9 jump, surrogate-safe tab/group labels; egui chrome gets Ctrl+1..9, middle-click close, highlighted active tab, gold group labels; ARIA `role=tab`/`aria-selected` on home strip.

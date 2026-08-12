@@ -162,13 +162,16 @@ impl TabManager {
     }
     pub fn close_tab(&mut self, id: &str) -> bool {
         let was_active = self.tabs.iter().find(|t| t.id == id).map(|t| t.is_active).unwrap_or(false);
+        let ordered = self.ordered_tabs();
+        let strip_i = ordered.iter().position(|t| t.id == id);
         let idx = self.tabs.iter().position(|t| t.id == id);
         if let Some(i) = idx {
             self.tabs.remove(i);
             if was_active && !self.tabs.is_empty() {
-                let new_active = i.min(self.tabs.len() - 1);
-                self.tabs[new_active].is_active = true;
-                self.active_tab_id = Some(self.tabs[new_active].id.clone());
+                let nid = strip_i
+                    .and_then(|si| if si + 1 < ordered.len() { Some(ordered[si + 1].id.clone()) } else if si > 0 { Some(ordered[si - 1].id.clone()) } else { None })
+                    .unwrap_or_else(|| self.tabs[i.min(self.tabs.len() - 1)].id.clone());
+                self.switch_tab(&nid);
             } else if self.tabs.is_empty() {
                 self.active_tab_id = None;
             }
@@ -224,5 +227,35 @@ impl TabManager {
         g.sort();
         g.dedup();
         g
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn close_active_mid_group_picks_strip_neighbor() {
+        let mut m = TabManager { tabs: Vec::new(), active_tab_id: None };
+        let a = m.new_tab("https://a.example/");
+        let b = m.new_tab("https://b.example/");
+        let c = m.new_tab("https://c.example/");
+        m.set_tab_group(&a, Some("zeta"));
+        m.set_tab_group(&b, Some("alpha"));
+        m.set_tab_group(&c, Some("alpha"));
+        m.switch_tab(&b);
+        assert!(m.close_tab(&b));
+        let ordered: Vec<String> = m.ordered_tabs().into_iter().map(|t| t.id).collect();
+        assert_eq!(ordered, vec![c.clone(), a.clone()]);
+        assert_eq!(m.active_tab().map(|t| t.id.as_str()), Some(c.as_str()));
+    }
+    #[test]
+    fn close_last_in_strip_picks_prev_neighbor() {
+        let mut m = TabManager { tabs: Vec::new(), active_tab_id: None };
+        let a = m.new_tab("https://a.example/");
+        let b = m.new_tab("https://b.example/");
+        m.set_tab_group(&a, Some("z"));
+        m.set_tab_group(&b, Some("a"));
+        m.switch_tab(&a);
+        assert!(m.close_tab(&a));
+        assert_eq!(m.active_tab().map(|t| t.id.as_str()), Some(b.as_str()));
     }
 }
