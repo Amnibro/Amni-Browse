@@ -27,7 +27,9 @@ use crate::platform::media_engine::{self, EngineKind, MediaWindow};
 use crate::platform::servo_keys::keyboard_event_from_winit;
 use crate::storage::bookmarks::BookmarkManager;
 use crate::storage::config::{BrowserConfig, DEFAULT_SEARCH_ENGINE, LITE_DDG_HOME};
-const CHROME_HEIGHT_CSS: f32 = 66.0;
+/// Must match `#shell{height:NNpx}` in `assets/chrome/toolbar.html` (74 = 36 tab + 36 nav + 2 progress).
+/// edca787 parked an unsafe 66-vs-74 split — never change one without the other.
+const CHROME_HEIGHT_CSS: f32 = 74.0;
 const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
 /// Rewrite full Next.js DuckDuckGo URLs to the lite HTML endpoint Servo can paint.
 fn prefer_servo_friendly_url(raw: &str) -> String {
@@ -48,9 +50,32 @@ fn is_client_side_exception_title(title: &str) -> bool {
     t.contains("application error") && t.contains("client-side exception")
 }
 
+fn parse_shell_height_css(html: &str) -> Option<f32> {
+    let marker = "#shell{height:";
+    let i = html.find(marker)?;
+    let rest = &html[i + marker.len()..];
+    let num: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    if num.is_empty() { return None; }
+    num.parse().ok()
+}
+fn assert_chrome_height_synced(html: &str, source: &str) {
+    match parse_shell_height_css(html) {
+        Some(h) if (h - CHROME_HEIGHT_CSS).abs() < 0.01 => {
+            info!("chrome height sync ok: #shell={}px == CHROME_HEIGHT_CSS={} ({})", h, CHROME_HEIGHT_CSS, source);
+        }
+        Some(h) => {
+            log::warn!(
+                "CHROME HEIGHT MISMATCH: #shell={}px in {} vs CHROME_HEIGHT_CSS={} — blit/hit-test will disagree (blank viewport risk). Align both.",
+                h, source, CHROME_HEIGHT_CSS
+            );
+        }
+        None => log::warn!("chrome toolbar: could not parse #shell height from {} — expected height:{}px", source, CHROME_HEIGHT_CSS),
+    }
+}
 fn load_toolbar_html() -> String {
     if let Ok(content) = std::fs::read_to_string("assets/chrome/toolbar.html") {
         info!("chrome toolbar: loaded from cwd assets/chrome/toolbar.html ({} bytes)", content.len());
+        assert_chrome_height_synced(&content, "cwd assets/chrome/toolbar.html");
         return content;
     }
     if let Ok(exe) = std::env::current_exe() {
@@ -58,10 +83,12 @@ fn load_toolbar_html() -> String {
         let asset_path = exe_dir.join("assets").join("chrome").join("toolbar.html");
         if let Ok(content) = std::fs::read_to_string(&asset_path) {
             info!("chrome toolbar: loaded from {} ({} bytes)", asset_path.display(), content.len());
+            assert_chrome_height_synced(&content, &asset_path.display().to_string());
             return content;
         }
     }
     info!("chrome toolbar: using embedded fallback ({} bytes)", TOOLBAR_HTML_EMBEDDED.len());
+    assert_chrome_height_synced(TOOLBAR_HTML_EMBEDDED, "embedded fallback");
     TOOLBAR_HTML_EMBEDDED.to_string()
 }
 

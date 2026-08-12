@@ -8,6 +8,7 @@
 - [x] architecture_map + CHANGELOG (Grok verify pass)
 - [x] Commit + push origin/main (`a3ddb5b`)
 - [x] Parked unsafe WIP: stash `wip: settings/newtab + unsafe CHROME_HEIGHT 66` — do not pop without matching `#shell` height
+- [x] Resolved: restored `CHROME_HEIGHT_CSS` + `#shell` to **74** together (36+36+2); load-time sync warn added
 - [ ] Stage toolbar to release assets; rebuild servo-real for About/Shield (About/Shield need new exe)
 - [ ] Live relaunch smoke (menu dark, progress, canary) — Google dropped; Grok picking up
 - [ ] Claude: confirm About/Shield palette on live PID after rebuild lands
