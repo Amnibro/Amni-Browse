@@ -29,6 +29,12 @@
 - Media/DRM `spawn_media_window` no longer bare: init-script bar + `amni_media_close` + decorations; `drain_close_requests` in servo_real.
 - WebView external chrome: remount watchdog (400ms), force fixed styles, re-prepend if host detached (streaming sites).
 - Home SPA + README + settings footer: drop false “3P cookies blocked by default”; state system WebView cookie policy + URL-bar stripping + no Amni telemetry.
+## 2026-08-12 Canonical tab order + kbd-focus (0.11.0)
+- `src/engine/tabs.rs`: `ordered_tabs()` (group -> insertion index); `to_json` emits that order, so every `tabs_updated` consumer sees strip order. Session snapshot still reads raw `self.tabs.tabs`.
+- All three chromes (`src/ui/webview.rs` home, `src/platform/webview.rs` injected, `src/ui/chrome.rs` egui) share the ordering rule via local `orderedTabs`/`ordered_tab_values`; Ctrl+Tab cycle + Ctrl+1..9 jump index off it.
+- `markKbdTab(id)` sets `window.__AMNI_KBD_TAB` + 900ms timeout; repaint adds `.kbd-focus` ring class. Ring CSS is `:focus-visible,.kbd-focus` ONLY — bare `:focus` would leave a permanent ring after mouse clicks; never call `.focus()` on tab nodes (steals typing from page content).
+- Backups: `backups/*.v0.11.0-kbdfocus.bak`. Checklist: `docs/checklists/checklist_tab_polish_v2.md`.
+
 ## 2026-08-12 Tab interaction polish (0.11.0)
 - `src/ui/webview.rs`: Ctrl+Tab/Ctrl+Shift+Tab `cycleTab(dir)`, Ctrl+1..9 `jumpTab(k)` (9=last); tab `onauxclick` middle-close; `tabs-container` dblclick on empty space = new tab; `tabDisplayLabel` truncates via `Array.from` (surrogate-safe).
 - `src/ui/chrome.rs`: `truncate` now char-based (byte slice panicked on multibyte titles); Ctrl+Tab cycling via tabs_json in `handle_keyboard`.

@@ -309,6 +309,7 @@ function chromeCss(){{
     + '.tab{{flex:0 0 148px !important;flex-grow:0 !important;flex-shrink:0 !important;width:148px !important;min-width:148px !important;max-width:148px !important;height:30px !important;display:flex !important;align-items:center !important;gap:6px !important;padding:0 8px !important;margin:0 !important;border:1px solid transparent !important;border-bottom:none !important;border-radius:' + p.radius + ' ' + p.radius + ' 0 0 !important;background:' + p.tabI + ' !important;color:' + p.muted + ' !important;font-size:12px !important;font-family:' + p.font + ' !important;cursor:pointer !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;pointer-events:auto !important;touch-action:manipulation !important}}'
     + '.tab:hover{{background:' + p.bg3 + ' !important;color:' + p.text + ' !important}}'
     + '.tab.active{{background:' + p.tabA + ' !important;color:' + p.text + ' !important;border-color:' + p.border + ' !important;border-bottom:2px solid ' + p.accent + ' !important}}'
+    + '.tab:focus-visible,.tab.kbd-focus{{outline:2px solid ' + p.accent + ' !important;outline-offset:-2px !important;z-index:2 !important;box-shadow:0 0 0 1px ' + p.glow + ' !important}}'
     + '.tab.priv{{box-shadow:inset 0 0 0 1px ' + p.accent + '33 !important}}'
     + '.tab .ttl{{flex:1 1 auto !important;min-width:0 !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;color:inherit !important;pointer-events:none !important}}'
     + '.tab .pb{{flex:0 0 auto !important;font-size:9px !important;font-weight:700 !important;letter-spacing:.2px !important;padding:1px 4px !important;border-radius:3px !important;background:' + p.accent + ' !important;color:' + p.bg2 + ' !important;line-height:1.2 !important;pointer-events:none !important}}'
@@ -350,13 +351,32 @@ function tabLabel(t){{
     }}
   }}
   title = title.replace(/\\s+/g, ' ').trim();
-  if (title.length > 22) title = title.slice(0, 20) + '…';
+  var chars = Array.from(title);
+  if (chars.length > 22) title = chars.slice(0, 20).join('') + '…';
   return title || 'Tab';
 }}
 function groupLabel(g){{
   g = String(g || '').replace(/\\s+/g, ' ').trim();
-  if (g.length > 12) g = g.slice(0, 10) + '…';
+  var chars = Array.from(g);
+  if (chars.length > 12) g = chars.slice(0, 10).join('') + '…';
   return g;
+}}
+function orderedTabs(tabs){{
+  return (Array.isArray(tabs) ? tabs : []).map(function(t,i){{ return {{ t:t, i:i }}; }}).sort(function(a,b){{
+    var ga = (a.t && a.t.panel_group) ? String(a.t.panel_group) : '~~~~';
+    var gb = (b.t && b.t.panel_group) ? String(b.t.panel_group) : '~~~~';
+    if (ga < gb) return -1; if (ga > gb) return 1; return a.i - b.i;
+  }}).map(function(x){{ return x.t; }});
+}}
+function markKbdTab(id){{
+  window.__AMNI_KBD_TAB = id || null;
+  if (window.__AMNI_KBD_TAB_T) clearTimeout(window.__AMNI_KBD_TAB_T);
+  window.__AMNI_KBD_TAB_T = setTimeout(function(){{
+    window.__AMNI_KBD_TAB = null;
+    var root = amniRoot();
+    if (!root) return;
+    root.querySelectorAll('.tab.kbd-focus').forEach(function(e){{ e.classList.remove('kbd-focus'); }});
+  }}, 900);
 }}
 function amniRoot(){{
   var host = document.getElementById('__atb_host');
@@ -404,19 +424,22 @@ function paintTabs(list){{
   if (!root) return;
   var strip = root.getElementById('_tabs');
   if (!strip) return;
-  var tabs = Array.isArray(list) ? list : (typeof list === 'string' ? (function(){{try{{return JSON.parse(list)}}catch(_){{return[]}}}})() : []);
+  var raw = Array.isArray(list) ? list : (typeof list === 'string' ? (function(){{try{{return JSON.parse(list)}}catch(_){{return[]}}}})() : []);
+  var tabs = orderedTabs(raw);
   if (tabs && tabs.length) window.__AMNI_TAB_SEED = tabs;
   var fp = tabsFingerprint(tabs);
-  if (window.__AMNI_TABS_FP === fp && strip.childNodes.length) return;
+  if (window.__AMNI_TABS_FP === fp && strip.childNodes.length) {{
+    var kidEarly = window.__AMNI_KBD_TAB;
+    if (kidEarly) {{
+      var ke = strip.querySelector('.tab[data-id="' + String(kidEarly).replace(/"/g,'') + '"]');
+      if (ke) {{ ke.classList.add('kbd-focus'); }}
+    }}
+    return;
+  }}
   window.__AMNI_TABS_FP = fp;
   clearKids(strip);
-  var ordered = tabs.map(function(t,i){{ return {{ t:t, i:i }}; }}).sort(function(a,b){{
-    var ga = (a.t && a.t.panel_group) ? String(a.t.panel_group) : '~~~~';
-    var gb = (b.t && b.t.panel_group) ? String(b.t.panel_group) : '~~~~';
-    if (ga < gb) return -1; if (ga > gb) return 1; return a.i - b.i;
-  }}).map(function(x){{ return x.t; }});
   var lastG = null;
-  ordered.forEach(function(t){{
+  tabs.forEach(function(t){{
     var g = (t && t.panel_group) ? String(t.panel_group) : '';
     var priv = !!(t && t.is_private);
     if (g && g !== lastG) {{
@@ -432,11 +455,16 @@ function paintTabs(list){{
     var x = el('span', {{ className:'x', role:'button', title:'Close tab', tabIndex:'0', text:'×' }});
     kids.push(x);
     bindHit(x, function(){{ if (t.id) ipc({{ type:'close_tab', id:t.id }}); }});
-    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : '') + (priv ? ' priv' : ''), title: (t.title || t.url || 'Tab') + (g ? (' · ' + g) : '') + (priv ? ' · Private' : '') + String.fromCharCode(10) + 'Right-click to set group', 'data-id': t.id || '' }}, kids);
+    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : '') + (priv ? ' priv' : ''), title: (t.title || t.url || 'Tab') + (g ? (' · ' + g) : '') + (priv ? ' · Private' : '') + String.fromCharCode(10) + 'Right-click to set group', 'data-id': t.id || '', tabIndex: t.is_active ? '0' : '-1' }}, kids);
     bindHit(node, function(e){{
       if (e && e.target && (e.target === x || (e.target.closest && e.target.closest('.x')))) return;
       if (t.id) ipc({{ type:'switch_tab', id:t.id }});
     }});
+    node.onauxclick = function(e){{
+      if (e.button !== 1 || !t.id) return;
+      stopHit(e);
+      ipc({{ type:'close_tab', id:t.id }});
+    }};
     node.oncontextmenu = function(e){{
       stopHit(e);
       if (!t.id) return;
@@ -450,6 +478,14 @@ function paintTabs(list){{
   var plus = el('button', {{ type:'button', id:'_newtab', title:'New tab', text:'+' }});
   bindHit(plus, function(){{ ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }});
   strip.appendChild(plus);
+  strip.ondblclick = function(e){{
+    if (e.target === strip) {{ stopHit(e); ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }}
+  }};
+  var kid = window.__AMNI_KBD_TAB;
+  if (kid) {{
+    var kn = strip.querySelector('.tab[data-id="' + String(kid).replace(/"/g,'') + '"]');
+    if (kn) {{ kn.classList.add('kbd-focus'); kn.tabIndex = 0; }}
+  }}
 }}
 function paintBookmarks(list){{
   var root = amniRoot();
@@ -753,15 +789,22 @@ function start(){{
       var mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       var k = (e.key || '').toLowerCase();
-      if (k === 'w') {{ stopHit(e); ipc({{ type:'get_tabs' }}); var seed = window.__AMNI_TAB_SEED || []; var cur = seed.filter(function(t){{ return t.is_active; }})[0]; if (cur && cur.id) ipc({{ type:'close_tab', id:cur.id }}); }}
+      var tabs = orderedTabs(window.__AMNI_TAB_SEED || []);
+      if (k === 'w') {{ stopHit(e); var cur = tabs.filter(function(t){{ return t.is_active; }})[0]; if (cur && cur.id) ipc({{ type:'close_tab', id:cur.id }}); }}
       else if (k === 't') {{ stopHit(e); ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }}
       else if (k === 'tab') {{
         stopHit(e);
-        var tabs = window.__AMNI_TAB_SEED || [];
         if (!tabs.length) return;
         var i = 0; for (; i < tabs.length; i++) if (tabs[i].is_active) break;
         var next = tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length];
-        if (next && next.id) ipc({{ type:'switch_tab', id:next.id }});
+        if (next && next.id) {{ markKbdTab(next.id); ipc({{ type:'switch_tab', id:next.id }}); }}
+      }}
+      else if (k >= '1' && k <= '9') {{
+        stopHit(e);
+        if (!tabs.length) return;
+        var idx = k === '9' ? tabs.length - 1 : Math.min(parseInt(k, 10) - 1, tabs.length - 1);
+        var jt = tabs[idx];
+        if (jt && jt.id) {{ markKbdTab(jt.id); ipc({{ type:'switch_tab', id:jt.id }}); }}
       }}
     }}, true);
   }}

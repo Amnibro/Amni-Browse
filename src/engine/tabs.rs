@@ -201,8 +201,17 @@ impl TabManager {
     pub fn zoom_set(&mut self, level: f64) -> Option<f64> {
         self.active_tab_mut().map(|t| { t.zoom_level = level.clamp(0.25, 5.0); t.zoom_level })
     }
+    pub fn ordered_tabs(&self) -> Vec<Tab> {
+        let mut ix: Vec<(usize, Tab)> = self.tabs.iter().cloned().enumerate().collect();
+        ix.sort_by(|a, b| {
+            let ga = a.1.panel_group.as_deref().unwrap_or("~~~~");
+            let gb = b.1.panel_group.as_deref().unwrap_or("~~~~");
+            ga.cmp(gb).then(a.0.cmp(&b.0))
+        });
+        ix.into_iter().map(|(_, t)| t).collect()
+    }
     pub fn to_json(&self) -> String {
-        serde_json::to_string(&self.tabs).unwrap_or_else(|_| "[]".to_string())
+        serde_json::to_string(&self.ordered_tabs()).unwrap_or_else(|_| "[]".to_string())
     }
     pub fn set_tab_group(&mut self, id: &str, group: Option<&str>) -> bool {
         if let Some(t) = self.tabs.iter_mut().find(|t| t.id == id) {

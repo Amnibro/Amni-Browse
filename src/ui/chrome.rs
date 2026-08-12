@@ -80,16 +80,22 @@ impl BrowserChrome {
     fn render_tab_bar(&mut self, ctx: &egui::Context) {
         egui::TopBottomPanel::top("tab_bar").exact_height(32.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                let tabs: Vec<serde_json::Value> = serde_json::from_str(&self.tabs_json).unwrap_or_default();
+                let tabs = ordered_tab_values(&self.tabs_json);
+                let mut last_g = String::new();
                 for tab in &tabs {
                     let title = tab["title"].as_str().unwrap_or("New Tab");
                     let id = tab["id"].as_str().unwrap_or("");
                     let active = tab["is_active"].as_bool().unwrap_or(false);
                     let is_priv = tab["is_private"].as_bool().unwrap_or(false);
+                    let g = tab["panel_group"].as_str().unwrap_or("");
+                    if !g.is_empty() && g != last_g {
+                        last_g = g.to_string();
+                        ui.label(egui::RichText::new(truncate(g, 10)).small().strong().color(egui::Color32::from_rgb(200, 155, 78)));
+                    } else if g.is_empty() { last_g.clear(); }
                     let label = if is_priv { format!("🕶 {}", truncate(title, 20)) } else { truncate(title, 20) };
-                    let btn = ui.selectable_label(active, &label);
+                    let btn = if active { ui.selectable_label(active, &label).highlight() } else { ui.selectable_label(active, &label) };
                     if btn.clicked() { self.cmd(IpcMessage::SwitchTab { id: id.into() }); }
-                    if btn.secondary_clicked() { self.cmd(IpcMessage::CloseTab { id: id.into() }); }
+                    if btn.secondary_clicked() || btn.middle_clicked() { self.cmd(IpcMessage::CloseTab { id: id.into() }); }
                 }
                 if ui.small_button("＋").clicked() { self.cmd(IpcMessage::NewTab { url: None }); }
                 ui.separator();
@@ -411,12 +417,23 @@ impl BrowserChrome {
                 tabs.iter().find(|t| t["is_active"].as_bool() == Some(true)).and_then(|t| t["id"].as_str()).map(|id| self.pending_cmds.push(IpcMessage::CloseTab { id: id.into() }));
             }
             if ctrl && i.key_pressed(egui::Key::Tab) {
-                let tabs: Vec<serde_json::Value> = serde_json::from_str(&self.tabs_json).unwrap_or_default();
+                let tabs = ordered_tab_values(&self.tabs_json);
                 if !tabs.is_empty() {
                     let cur = tabs.iter().position(|t| t["is_active"].as_bool() == Some(true)).unwrap_or(0);
                     let n = tabs.len() as i64;
                     let next = ((cur as i64 + if i.modifiers.shift { -1 } else { 1 }) % n + n) % n;
                     if let Some(id) = tabs[next as usize]["id"].as_str() { self.pending_cmds.push(IpcMessage::SwitchTab { id: id.into() }); }
+                }
+            }
+            if ctrl {
+                let digit = [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3, egui::Key::Num4, egui::Key::Num5, egui::Key::Num6, egui::Key::Num7, egui::Key::Num8, egui::Key::Num9]
+                    .iter().position(|k| i.key_pressed(*k));
+                if let Some(d) = digit {
+                    let tabs = ordered_tab_values(&self.tabs_json);
+                    if !tabs.is_empty() {
+                        let idx = if d == 8 { tabs.len() - 1 } else { d.min(tabs.len() - 1) };
+                        if let Some(id) = tabs[idx]["id"].as_str() { self.pending_cmds.push(IpcMessage::SwitchTab { id: id.into() }); }
+                    }
                 }
             }
             if ctrl && i.key_pressed(egui::Key::F) { self.find_visible = !self.find_visible; }
@@ -431,6 +448,17 @@ impl BrowserChrome {
             if i.key_pressed(egui::Key::Escape) { self.active_panel = Panel::None; self.find_visible = false; }
         });
     }
+}
+#[cfg(feature = "servo-engine")]
+fn ordered_tab_values(tabs_json: &str) -> Vec<serde_json::Value> {
+    let tabs: Vec<serde_json::Value> = serde_json::from_str(tabs_json).unwrap_or_default();
+    let mut ix: Vec<(usize, serde_json::Value)> = tabs.into_iter().enumerate().collect();
+    ix.sort_by(|a, b| {
+        let ga = a.1["panel_group"].as_str().unwrap_or("~~~~");
+        let gb = b.1["panel_group"].as_str().unwrap_or("~~~~");
+        ga.cmp(gb).then(a.0.cmp(&b.0))
+    });
+    ix.into_iter().map(|(_, t)| t).collect()
 }
 #[cfg(feature = "servo-engine")]
 fn truncate(s: &str, max: usize) -> String {

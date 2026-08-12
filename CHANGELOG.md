@@ -1,4 +1,7 @@
 ﻿## v0.11.0 — 2026-08-12 (tab group + private strip polish)
+- **Canonical tab order:** `TabManager::to_json` ships group-sorted (visual strip) order; cycle/jump in home chrome, injected chrome, and egui chrome all use the same `orderedTabs` sequence — strip index = cycle index = jump index. Session save unaffected (iterates raw tabs).
+- **Kbd-focus ring:** transient 900ms `.kbd-focus` accent ring on Ctrl+Tab/Ctrl+N target; `:focus-visible` only (no mouse-click ring); no DOM focus steal from page content.
+- **Injected chrome parity:** middle-click close, dblclick-strip new tab, Ctrl+1..9 jump, surrogate-safe tab/group labels; egui chrome gets Ctrl+1..9, middle-click close, highlighted active tab, gold group labels; ARIA `role=tab`/`aria-selected` on home strip.
 - **Tab keyboard travel:** Ctrl+Tab / Ctrl+Shift+Tab cycle tabs; Ctrl+1..8 jump to tab N; Ctrl+9 jumps to last — wired in both WebView chrome and egui servo chrome.
 - **Mouse travel:** middle-click a tab to close it (no 18px close-button hunt); double-click empty tab-strip space opens a new tab.
 - **Crash fix (servo chrome):** `truncate` byte-sliced titles at index 20 — panicked on emoji/CJK at the boundary; now char-based.

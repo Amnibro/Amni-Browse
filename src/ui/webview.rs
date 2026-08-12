@@ -108,6 +108,7 @@ pub fn browser_html(theme: &Theme) -> String {
     }}
     .tab:hover {{ background: var(--bg-hover); color: var(--text-primary); }}
     .tab.active {{ background: var(--tab-active); border-color: var(--border); color: var(--text-primary); border-bottom: 2px solid var(--accent); }}
+    .tab:focus-visible,.tab.kbd-focus {{ outline:2px solid var(--accent); outline-offset:-2px; z-index:1; box-shadow:0 0 0 1px var(--accent-glow); }}
     .tab .ttl {{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }}
     .tab-close {{
         display: flex; align-items: center; justify-content: center;
@@ -944,19 +945,29 @@ pub fn browser_html(theme: &Theme) -> String {
         if (chars.length > 22) title = chars.slice(0, 20).join('') + '…';
         return title || 'Tab';
     }}
-    function updateTabs(tabs) {{
-        if (!Array.isArray(tabs)) tabs = [];
-        currentTabs = tabs;
-        const container = document.getElementById('tabs-container');
-        if (!container) return;
-        container.innerHTML = '';
-        var ordered = tabs.map(function(t,i){{ return {{ t:t, i:i }}; }}).sort(function(a,b){{
+    function orderedTabs(tabs) {{
+        return (Array.isArray(tabs) ? tabs : []).map(function(t,i){{ return {{ t:t, i:i }}; }}).sort(function(a,b){{
             var ga = (a.t && a.t.panel_group) ? String(a.t.panel_group) : '~~~~';
             var gb = (b.t && b.t.panel_group) ? String(b.t.panel_group) : '~~~~';
             if (ga < gb) return -1; if (ga > gb) return 1; return a.i - b.i;
         }}).map(function(x){{ return x.t; }});
+    }}
+    function markKbdTab(id) {{
+        window.__AMNI_KBD_TAB = id || null;
+        if (window.__AMNI_KBD_TAB_T) clearTimeout(window.__AMNI_KBD_TAB_T);
+        window.__AMNI_KBD_TAB_T = setTimeout(function(){{
+            window.__AMNI_KBD_TAB = null;
+            document.querySelectorAll('.tab.kbd-focus').forEach(function(e){{ e.classList.remove('kbd-focus'); }});
+        }}, 900);
+    }}
+    function updateTabs(tabs) {{
+        if (!Array.isArray(tabs)) tabs = [];
+        currentTabs = orderedTabs(tabs);
+        const container = document.getElementById('tabs-container');
+        if (!container) return;
+        container.innerHTML = '';
         var lastG = null;
-        ordered.forEach(tab => {{
+        currentTabs.forEach(tab => {{
             if (!tab || typeof tab !== 'object') return;
             const tabId = (tab.id || '').toString();
             const tabTitle = tabDisplayLabel(tab);
@@ -969,7 +980,8 @@ pub fn browser_html(theme: &Theme) -> String {
                 const gl = document.createElement('div');
                 gl.className = 'tab-group-label';
                 var gShow = g.replace(/\s+/g,' ').trim();
-                if (gShow.length > 12) gShow = gShow.slice(0, 10) + '…';
+                var gChars = Array.from(gShow);
+                if (gChars.length > 12) gShow = gChars.slice(0, 10).join('') + '…';
                 gl.textContent = gShow;
                 gl.title = 'Tab group: ' + g;
                 container.appendChild(gl);
@@ -978,6 +990,10 @@ pub fn browser_html(theme: &Theme) -> String {
             }}
             const el = document.createElement('div');
             el.className = 'tab' + (tabActive ? ' active' : '') + (tabPrivate ? ' priv' : '');
+            el.setAttribute('data-id', tabId);
+            el.setAttribute('role', 'tab');
+            el.setAttribute('tabindex', tabActive ? '0' : '-1');
+            el.setAttribute('aria-selected', tabActive ? 'true' : 'false');
             el.title = tabUrl + (g ? (' · group: ' + g) : '') + (tabPrivate ? ' · Private' : '') + String.fromCharCode(10) + 'Right-click to set group';
             el.innerHTML = '<span class="ttl">' + escapeHtml(tabTitle) + (tabPrivate ? '<span class="priv-badge">{e_private}</span>' : '') + '</span>' +
                 '<button class="tab-close" onclick="event.stopPropagation();closeTab(\'' + tabId + '\')">{e_close}</button>';
@@ -993,7 +1009,12 @@ pub fn browser_html(theme: &Theme) -> String {
             container.appendChild(el);
             if (tabActive) try {{ el.scrollIntoView({{ inline:'nearest', block:'nearest' }}); }} catch(_){{}}
         }});
-        const active = tabs.find(t => t && t.is_active);
+        var kid = window.__AMNI_KBD_TAB;
+        if (kid) {{
+            var kn = container.querySelector('.tab[data-id="' + kid.replace(/"/g,'') + '"]');
+            if (kn) {{ kn.classList.add('kbd-focus'); kn.setAttribute('tabindex','0'); }}
+        }}
+        const active = currentTabs.find(t => t && t.is_active);
         if (active) {{
             const activeUrl = (active.url || 'amnibrowse://newtab').toString();
             document.getElementById('url-bar').value = activeUrl === 'amnibrowse://newtab' || activeUrl.indexOf('amnibrowse://newtab') === 0 ? '' : activeUrl;
@@ -1002,7 +1023,7 @@ pub fn browser_html(theme: &Theme) -> String {
             }}
         }}
         const st = document.getElementById('stat-tabs');
-        if (st) st.textContent = tabs.length;
+        if (st) st.textContent = currentTabs.length;
     }}
     function newTab() {{ sendIpc({{ type: 'new_tab', url: null }}); }}
     function closeTab(id) {{ sendIpc({{ type: 'close_tab', id: id }}); }}
@@ -1012,13 +1033,13 @@ pub fn browser_html(theme: &Theme) -> String {
         const i = currentTabs.findIndex(t => t && t.is_active);
         const n = currentTabs.length;
         const next = currentTabs[(((i < 0 ? 0 : i) + dir) % n + n) % n];
-        if (next && next.id && !next.is_active) switchTab(next.id);
+        if (next && next.id && !next.is_active) {{ markKbdTab(next.id); switchTab(next.id); }}
     }}
     function jumpTab(k) {{
         if (!currentTabs.length) return;
         const idx = k === '9' ? currentTabs.length - 1 : Math.min(parseInt(k, 10) - 1, currentTabs.length - 1);
         const t = currentTabs[idx];
-        if (t && t.id && !t.is_active) switchTab(t.id);
+        if (t && t.id && !t.is_active) {{ markKbdTab(t.id); switchTab(t.id); }}
     }}
 
     function toggleSplit() {{
