@@ -440,7 +440,7 @@ pub fn browser_html(theme: &Theme) -> String {
     <!-- New Tab Page -->
     <div id="newtab-page" class="visible">
         <div class="logo">Amni Browse</div>
-        <div class="logo-sub">Independent {e_middot} Private {e_middot} Yours</div>
+        <div class="logo-sub">Independent {e_middot} Local profile {e_middot} Yours</div>
 
         <input type="text" id="search-box" placeholder="Search with DuckDuckGo or enter a URL..."
                onkeydown="if(event.key==='Enter')navigate(this.value)" autofocus>
@@ -694,8 +694,10 @@ pub fn browser_html(theme: &Theme) -> String {
     <button class="ctx-item" onclick="openPanel('history')">{e_clock} History</button>
     <div class="ctx-divider"></div>
     <button class="ctx-item" onclick="openPanel('devtools')">{e_wrench} DevTools</button>
+    <button class="ctx-item" onclick="navigate('amnibrowse://developer')">{e_wrench} Developer Hub</button>
+    <button class="ctx-item" onclick="navigate('amnibrowse://developer#bug')">{e_memo} Report bug</button>
     <button class="ctx-item" onclick="navigate('https://amni-scient.com')">{e_apps} Amni Apps</button>
-    <button class="ctx-item" onclick="openPanel('extensions')">{e_puzzle} Extensions</button>
+    <button class="ctx-item" onclick="navigate('amnibrowse://developer#ext')">{e_puzzle} Extensions</button>
     <button class="ctx-item" onclick="openPanel('profiles')">{e_person} Profiles</button>
     <button class="ctx-item" onclick="openPanel('autofill')">{e_memo} Autofill</button>
     <button class="ctx-item" onclick="openPanel('permissions')">{e_lock} Permissions</button>
@@ -1444,7 +1446,10 @@ pub fn browser_html(theme: &Theme) -> String {
         {{icon:'{e_clock}',label:'History',kbd:'Ctrl+H',fn:()=>openPanel('history')}},
         {{icon:'{e_book}',label:'Reader Mode',kbd:'',fn:()=>toggleReader()}},
         {{icon:'{e_wrench}',label:'DevTools',kbd:'Ctrl+Shift+I',fn:()=>openPanel('devtools')}},
-        {{icon:'{e_puzzle}',label:'Extensions',kbd:'',fn:()=>openPanel('extensions')}},
+        {{icon:'{e_wrench}',label:'Developer Hub',kbd:'',fn:()=>navigate('amnibrowse://developer')}},
+        {{icon:'{e_puzzle}',label:'Extensions',kbd:'',fn:()=>navigate('amnibrowse://developer#ext')}},
+        {{icon:'{e_shield}',label:'Security assess URL',kbd:'',fn:()=>navigate('amnibrowse://developer#sec')}},
+        {{icon:'{e_memo}',label:'Report a bug',kbd:'',fn:()=>navigate('amnibrowse://developer#bug')}},
         {{icon:'{e_apps}',label:'Amni Apps',kbd:'',fn:()=>navigate('https://amni-scient.com')}},
         {{icon:'{e_person}',label:'Profiles',kbd:'',fn:()=>openPanel('profiles')}},
         {{icon:'{e_memo}',label:'Autofill',kbd:'',fn:()=>openPanel('autofill')}},

@@ -6,3 +6,4 @@ pub mod theme;
 pub mod reader;
 pub mod emoji;
 pub mod tokens;
+pub mod developer;

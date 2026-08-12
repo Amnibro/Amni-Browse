@@ -3,6 +3,8 @@ pub mod adblocker;
 pub mod extensions;
 pub mod permissions;
 pub mod devtools;
+pub mod page_safety;
+pub mod bug_report;
 pub mod dom;
 pub mod layout;
 pub mod style;

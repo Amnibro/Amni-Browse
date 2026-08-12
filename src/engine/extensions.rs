@@ -49,6 +49,27 @@ impl ExtensionManager {
         fs::create_dir_all(&dir).ok();
         dir
     }
+    pub fn extensions_dir_public() -> String {
+        Self::extensions_dir().display().to_string()
+    }
+    pub fn open_dir() -> Result<(), String> {
+        let dir = Self::extensions_dir();
+        #[cfg(target_os = "windows")]
+        { std::process::Command::new("explorer").arg(&dir).spawn().map_err(|e| e.to_string())?; }
+        #[cfg(target_os = "macos")]
+        { std::process::Command::new("open").arg(&dir).spawn().map_err(|e| e.to_string())?; }
+        #[cfg(all(unix, not(target_os = "macos")))]
+        { std::process::Command::new("xdg-open").arg(&dir).spawn().map_err(|e| e.to_string())?; }
+        Ok(())
+    }
+    pub fn write_sample() -> Result<String, String> {
+        let dir = Self::extensions_dir().join("hello-amni");
+        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let manifest = r#"{"id":"hello-amni","name":"Hello Amni","version":"0.1.0","description":"Sample content-script extension","permissions":["activeTab"],"content_scripts":[{"matches":["*://*/*"],"js":["content.js"],"css":[],"run_at":"document_idle"}]}"#;
+        fs::write(dir.join("manifest.json"), manifest).map_err(|e| e.to_string())?;
+        fs::write(dir.join("content.js"), "console.info('[hello-amni] loaded on', location.href);\n").map_err(|e| e.to_string())?;
+        Ok(dir.display().to_string())
+    }
     fn registry_path() -> PathBuf { BrowserConfig::config_dir().join("extensions.json") }
     fn load_registry() -> ExtensionRegistry {
         let path = Self::registry_path();

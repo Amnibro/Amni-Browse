@@ -170,6 +170,22 @@ pub enum IpcMessage {
     ExtRemove { id: String },
     #[serde(rename = "ext_scan")]
     ExtScan,
+    #[serde(rename = "ext_open_dir")]
+    ExtOpenDir,
+    #[serde(rename = "ext_write_sample")]
+    ExtWriteSample,
+    #[serde(rename = "theme_export")]
+    ThemeExport,
+    #[serde(rename = "theme_import")]
+    ThemeImport { data: String },
+    #[serde(rename = "page_safety")]
+    PageSafety { url: String },
+    #[serde(rename = "page_safety_active")]
+    PageSafetyActive,
+    #[serde(rename = "bug_report")]
+    BugReport { title: String, body: String, include_diag: Option<bool> },
+    #[serde(rename = "bug_diag_preview")]
+    BugDiagPreview,
     #[serde(rename = "profile_list")]
     ProfileList,
     #[serde(rename = "profile_create")]
@@ -220,6 +236,12 @@ pub enum IpcResponse {
     Themes { data: String },
     #[serde(rename = "active_theme")]
     ActiveTheme { data: String },
+    #[serde(rename = "theme_export")]
+    ThemeExportData { data: String },
+    #[serde(rename = "page_safety")]
+    PageSafetyResp { data: String },
+    #[serde(rename = "bug_diag")]
+    BugDiag { data: String },
     #[serde(rename = "config")]
     Config { data: String },
     #[serde(rename = "layout")]

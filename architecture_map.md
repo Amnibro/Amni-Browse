@@ -1,4 +1,11 @@
 ﻿# Amni-Browse Architecture Map
+## 2026-08-12 Developer hub + security + bug report
+- Internal page `amnibrowse://developer` (tabs: Themes, Extensions, Security, Bug report).
+- Themes: pick/save custom, export/import JSON IPC (`theme_export` / `theme_import`).
+- Extensions: scan AppData `extensions/`, open dir, install sample `hello-amni`, enable/disable/remove.
+- Page safety heuristics (`engine/page_safety.rs`): HTTP, IP hosts, lookalikes, risky TLDs, userinfo-in-URL, punycode → SAFE..CRITICAL; live chip + caution strip on external chrome.
+- Bug report: prefilled GitHub issue (`engine/bug_report.rs`) with version/OS/page diag — no auto upload.
+- Menu + command palette: Developer / Extensions / Security / Report bug.
 ## 2026-08-12 YouTube chrome (Trusted Types)
 - YouTube enables Trusted Types — `bar.innerHTML = '...'` / `strip.innerHTML = ''` threw and chrome never mounted on external pages.
 - Fix: pure DOM (`createElement`/`textContent`/`removeChild`); closed shadow + `__AMNI_SR`; host on `documentElement` with max z-index; 250ms watchdog; page-load re-`__AMNI_ENSURE`.

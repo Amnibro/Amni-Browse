@@ -60,9 +60,14 @@ impl Browser {
         let lth_load = Rc::clone(&last_theme);
         let px_load = proxy.clone();
         let webview = WebViewBuilder::new()
-            .with_custom_protocol("amnibrowse".to_string(), move |_, _request| {
+            .with_custom_protocol("amnibrowse".to_string(), move |_, request| {
                 let theme = s_proto.borrow().themes.active_theme();
-                let html = spa::browser_html(&theme).into_bytes();
+                let uri = request.uri().to_string().to_ascii_lowercase();
+                let html = if uri.contains("developer") || uri.contains("dev") {
+                    crate::ui::developer::developer_html(&theme)
+                } else {
+                    spa::browser_html(&theme)
+                }.into_bytes();
                 wry::http::Response::builder()
                     .header("Content-Type", "text/html; charset=utf-8")
                     .header("Cache-Control", "no-cache, no-store, must-revalidate")
@@ -82,9 +87,10 @@ impl Browser {
                 let th = lth_load.borrow().clone();
                 let tabs = if t.is_empty() { "[]".to_string() } else { t };
                 let theme = if th.is_empty() { "{}".to_string() } else { th };
+                let safety = crate::engine::page_safety::assess_json(&url);
                 a_load.borrow_mut().push(Act::Js(format!(
-                    "(function(){{try{{window.__AMNI_ENSURE&&window.__AMNI_ENSURE();var tabs={0};window.__AMNI_TAB_SEED=tabs;window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS(tabs);var th={1};window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME(th);window.__AMNI_ENSURE&&window.__AMNI_ENSURE();}}catch(_){{}}}})()",
-                    tabs, theme
+                    "(function(){{try{{window.__AMNI_ENSURE&&window.__AMNI_ENSURE();var tabs={0};window.__AMNI_TAB_SEED=tabs;window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS(tabs);var th={1};window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME(th);window.__AMNI_SAFETY&&window.__AMNI_SAFETY({2});window.__AMNI_ENSURE&&window.__AMNI_ENSURE();}}catch(_){{}}}})()",
+                    tabs, theme, safety
                 )));
                 px_load.send_event(()).ok();
             })
@@ -317,7 +323,14 @@ function chromeCss(){{
     + 'input::placeholder{{color:' + p.muted + ' !important;opacity:1 !important}}'
     + 'input:focus{{border-color:' + p.accent + ' !important;box-shadow:0 0 0 2px ' + p.glow + ' !important}}'
     + '.ab{{font-size:10px !important;background:' + p.ok + ' !important;color:#04140a !important;padding:1px 6px !important;border-radius:8px !important;font-weight:700 !important;margin-left:2px !important}}'
-    + '.logo{{color:' + p.accent + ' !important;font-weight:800 !important;font-size:13px !important;letter-spacing:-0.5px !important;margin:0 4px !important}}'
+    + '.secchip{{font-size:10px !important;font-weight:700 !important;padding:2px 8px !important;border-radius:999px !important;margin-left:4px !important;letter-spacing:.3px !important;cursor:pointer !important;border:1px solid ' + p.border + ' !important;background:' + p.bg3 + ' !important;color:' + p.text + ' !important}}'
+    + '.secchip.safe{{background:#143d28 !important;color:#2ed573 !important;border-color:#1f5a3a !important}}'
+    + '.secchip.low{{background:#3d3a1a !important;color:#e6c84a !important;border-color:#6a5f20 !important}}'
+    + '.secchip.medium{{background:#3d2a1a !important;color:#ff9f43 !important;border-color:#6a4018 !important}}'
+    + '.secchip.high,.secchip.critical{{background:#3d1a1a !important;color:#ff6b7a !important;border-color:#6a2028 !important}}'
+    + '#_safebar{{display:none;padding:6px 12px;font-size:12px;background:#2a1518;color:#ffc9cf;border-bottom:1px solid #6a2028}}'
+    + '#_safebar.show{{display:block}}'
+    + '#_safebar button{{margin-left:10px;background:#ff4757;color:#fff;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;font:600 11px ' + p.font + '}}'
     + '#atb-menu-dropdown{{display:none !important;position:absolute !important;right:6px !important;top:40px !important;min-width:188px !important;flex-direction:column !important;padding:4px !important;background:' + p.bg2 + ' !important;color:' + p.text + ' !important;border:1px solid ' + p.border + ' !important;border-radius:' + p.radius + ' !important;box-shadow:0 8px 28px rgba(0,0,0,0.55) !important;z-index:20 !important}}'
     + '#atb-menu-dropdown.open{{display:flex !important}}'
     + '#atb-menu-dropdown .mi{{background:transparent !important;border:none !important;color:' + p.text + ' !important;text-align:left !important;padding:9px 12px !important;border-radius:6px !important;cursor:pointer !important;font:13px ' + p.font + ' !important}}'
@@ -423,7 +436,10 @@ function wireHandlers(host){{
         var act = btn.getAttribute('data-act') || '';
         setMenu(false);
         act === 'apps' ? ipc({{ type:'navigate', url:'https://amni-scient.com' }})
-          : act === 'themes' ? ipc({{ type:'navigate', url:'amnibrowse://newtab' }})
+          : act === 'developer' ? ipc({{ type:'navigate', url:'amnibrowse://developer' }})
+          : act === 'themes' ? ipc({{ type:'navigate', url:'amnibrowse://developer#themes' }})
+          : act === 'extensions' ? ipc({{ type:'navigate', url:'amnibrowse://developer#ext' }})
+          : act === 'report' ? ipc({{ type:'navigate', url:'amnibrowse://developer#bug' }})
           : act === 'history' ? ipc({{ type:'navigate', url:'amnibrowse://newtab' }})
           : act === 'downloads' ? ipc({{ type:'navigate', url:'amnibrowse://newtab' }})
           : null;
@@ -462,13 +478,20 @@ function buildChromeBar(root){{
   nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Bookmark', id:'_abk', text:'★' }}));
   nav.appendChild(el('button', {{ type:'button', className:'nav', title:'Menu', id:'atb-menu-btn', 'aria-haspopup':'true', 'aria-expanded':'false', text:'☰' }}));
   nav.appendChild(el('span', {{ className:'ab', id:'_as', title:'Ads blocked', text:'🛡' }}));
+  nav.appendChild(el('span', {{ className:'secchip', id:'_sec', title:'Page security', text:'SAFE' }}));
   var menu = el('div', {{ id:'atb-menu-dropdown', role:'menu' }});
-  [['apps','Amni Apps'],['themes','Themes'],['history','History'],['downloads','Downloads']].forEach(function(pair){{
+  [['apps','Amni Apps'],['developer','Developer'],['themes','Themes'],['extensions','Extensions'],['report','Report bug'],['history','History'],['downloads','Downloads']].forEach(function(pair){{
     menu.appendChild(el('button', {{ type:'button', className:'mi', 'data-act':pair[0], role:'menuitem', text:pair[1] }}));
   }});
   nav.appendChild(menu);
   bar.appendChild(nav);
   bar.appendChild(el('div', {{ id:'_bookmarks' }}));
+  var safe = el('div', {{ id:'_safebar' }});
+  safe.appendChild(el('span', {{ id:'_safetxt', text:'' }}));
+  var det = el('button', {{ type:'button', text:'Details' }});
+  det.onclick = function(e){{ e.preventDefault(); ipc({{ type:'navigate', url:'amnibrowse://developer#sec' }}); }};
+  safe.appendChild(det);
+  bar.appendChild(safe);
   root.appendChild(bar);
 }}
 function ensureToolbar(){{
@@ -530,6 +553,32 @@ function ensureToolbar(){{
   }}
 }}
 window.__AMNI_ENSURE = ensureToolbar;
+window.__AMNI_SAFETY = function(rep){{
+  try {{
+    ensureToolbar();
+    var root = amniRoot();
+    if (!root || !rep) return;
+    var chip = root.getElementById('_sec');
+    var bar = root.getElementById('_safebar');
+    var txt = root.getElementById('_safetxt');
+    var lvl = String(rep.level || 'safe').toLowerCase();
+    if (chip) {{
+      chip.className = 'secchip ' + lvl;
+      chip.textContent = lvl.toUpperCase();
+      chip.title = (rep.reasons && rep.reasons.length) ? rep.reasons.join(' · ') : ('Page security: ' + lvl);
+      chip.onclick = function(){{ ipc({{ type:'navigate', url:'amnibrowse://developer#sec' }}); }};
+    }}
+    if (bar && txt) {{
+      if (lvl === 'medium' || lvl === 'high' || lvl === 'critical') {{
+        bar.className = 'show';
+        txt.textContent = 'Caution (' + lvl + '): ' + ((rep.reasons && rep.reasons[0]) || 'Review this page before signing in.');
+      }} else {{
+        bar.className = '';
+        txt.textContent = '';
+      }}
+    }}
+  }} catch(_){{}}
+}};
 window.__AMNI_SYNC_THEME = function(th){{
   try {{
     ensureToolbar();

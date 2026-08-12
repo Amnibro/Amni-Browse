@@ -222,6 +222,37 @@ impl BrowserState {
                 None
             }
             IpcMessage::ThemeRemoveCustom { theme_id } => { self.themes.remove_custom_theme(&theme_id); info!("Custom theme removed: {}", theme_id); None }
+            IpcMessage::ThemeExport => Some(IpcResponse::ThemeExportData { data: self.themes.all_themes_json() }),
+            IpcMessage::ThemeImport { data } => {
+                match serde_json::from_str::<Vec<crate::ui::theme::Theme>>(&data)
+                    .or_else(|_| serde_json::from_str::<crate::ui::theme::Theme>(&data).map(|t| vec![t])) {
+                    Ok(list) => {
+                        for t in list { if t.is_custom || t.id.starts_with("custom") { self.themes.add_custom_theme(t); } }
+                        info!("Theme import ok");
+                        Some(IpcResponse::Success { message: "Themes imported".into() })
+                    }
+                    Err(e) => Some(IpcResponse::Error { message: format!("Theme import failed: {}", e) }),
+                }
+            }
+            IpcMessage::PageSafety { url } => Some(IpcResponse::PageSafetyResp { data: crate::engine::page_safety::assess_json(&url) }),
+            IpcMessage::PageSafetyActive => {
+                let url = self.tabs.active_tab().map(|t| t.url.clone()).unwrap_or_default();
+                Some(IpcResponse::PageSafetyResp { data: crate::engine::page_safety::assess_json(&url) })
+            }
+            IpcMessage::BugReport { title, body, include_diag } => {
+                let page = self.tabs.active_tab().map(|t| t.url.clone()).unwrap_or_default();
+                let diag = if include_diag.unwrap_or(true) {
+                    crate::engine::bug_report::collect_diag(&page, &format!("ads_blocked={}", self.ad_blocker.blocked_count()))
+                } else { String::new() };
+                let url = crate::engine::bug_report::github_new_issue_url(&title, &body, &diag);
+                info!("Bug report → GitHub issue form");
+                Some(IpcResponse::NavigateTo { url })
+            }
+            IpcMessage::BugDiagPreview => {
+                let page = self.tabs.active_tab().map(|t| t.url.clone()).unwrap_or_default();
+                let diag = crate::engine::bug_report::collect_diag(&page, &format!("ads_blocked={}", self.ad_blocker.blocked_count()));
+                Some(IpcResponse::BugDiag { data: diag })
+            }
             IpcMessage::ClearData { categories } => {
                 info!("Clearing data: {:?}", categories);
                 for cat in &categories {
@@ -353,7 +384,19 @@ impl BrowserState {
             IpcMessage::ExtEnable { id } => { self.extensions.enable(&id); info!("Extension enabled: {}", id); None }
             IpcMessage::ExtDisable { id } => { self.extensions.disable(&id); info!("Extension disabled: {}", id); None }
             IpcMessage::ExtRemove { id } => { self.extensions.remove(&id); info!("Extension removed: {}", id); None }
-            IpcMessage::ExtScan => { self.extensions.scan_extensions(); info!("Extensions rescanned"); None }
+            IpcMessage::ExtScan => { self.extensions.scan_extensions(); info!("Extensions rescanned"); Some(IpcResponse::Extensions { data: self.extensions.to_json() }) }
+            IpcMessage::ExtOpenDir => {
+                match crate::engine::extensions::ExtensionManager::open_dir() {
+                    Ok(()) => Some(IpcResponse::Success { message: format!("Opened {}", crate::engine::extensions::ExtensionManager::extensions_dir_public()) }),
+                    Err(e) => Some(IpcResponse::Error { message: e }),
+                }
+            }
+            IpcMessage::ExtWriteSample => {
+                match crate::engine::extensions::ExtensionManager::write_sample() {
+                    Ok(p) => { self.extensions.scan_extensions(); Some(IpcResponse::Success { message: format!("Sample extension at {}", p) }) }
+                    Err(e) => Some(IpcResponse::Error { message: e }),
+                }
+            }
             IpcMessage::ProfileList => Some(IpcResponse::Profiles { data: self.profiles.to_json(), active_id: self.profiles.active_profile().id.clone() }),
             IpcMessage::ProfileCreate { name, color } => { let id = self.profiles.create_profile(&name, &color); info!("Profile created: {}", id); None }
             IpcMessage::ProfileSwitch { id } => { self.profiles.switch_profile(&id); info!("Switched to profile: {}", id); None }
