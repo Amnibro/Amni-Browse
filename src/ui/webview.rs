@@ -3,6 +3,7 @@ use crate::ui::emoji::eh;
 pub fn browser_html(theme: &Theme) -> String {
     let css_vars = ThemeConfig::theme_to_css_vars(theme);
     let ver = env!("CARGO_PKG_VERSION");
+    let engine_label = if cfg!(feature = "servo-real") { "Real Servo" } else if cfg!(feature = "webview") { "WebView2 · Chromium" } else { "Amni Engine" };
     let e_back = eh("back");
     let e_forward = eh("forward");
     let e_refresh = eh("refresh");
@@ -77,14 +78,15 @@ pub fn browser_html(theme: &Theme) -> String {
         align-items: center;
         background: var(--bg-secondary);
         border-bottom: 1px solid var(--border);
-        height: 38px;
+        height: 40px;
         padding: 0 8px;
         gap: 4px;
         overflow-x: auto;
+        flex-shrink: 0;
         -webkit-app-region: drag;
         app-region: drag;
     }}
-    #tabs-container {{ display:flex; align-items:center; gap:4px; overflow-x:auto; flex:1; min-width:0; }}
+    #tabs-container {{ display:flex; align-items:center; gap:4px; overflow-x:auto; flex:1; min-width:0; scrollbar-width:thin; }}
     .tab-group-label {{
         flex:0 0 auto; max-width:72px; font-size:10px; font-weight:700; letter-spacing:.4px; text-transform:uppercase;
         color:var(--accent); padding:0 6px; opacity:.9; -webkit-app-region:no-drag; app-region:no-drag;
@@ -93,7 +95,7 @@ pub fn browser_html(theme: &Theme) -> String {
     .tab.priv {{ box-shadow: inset 0 0 0 1px var(--accent-glow); }}
     .tab {{
         display: flex; align-items: center; gap: 6px;
-        flex: 0 0 148px; width: 148px; min-width: 148px; max-width: 148px; height: 30px;
+        flex: 0 0 148px; width: 148px; min-width: 120px; max-width: 240px; height: 32px;
         padding: 0 8px;
         background: var(--tab-inactive);
         border: 1px solid transparent; border-bottom: none;
@@ -127,23 +129,24 @@ pub fn browser_html(theme: &Theme) -> String {
     /* ===== NAV BAR ===== */
     #nav-bar {{
         display: flex; align-items: center; gap: 4px;
-        padding: 5px 10px; background: var(--bg-secondary);
-        border-bottom: 1px solid var(--border); height: 44px;
+        padding: 4px 10px; background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border); height: 44px; flex-shrink: 0;
     }}
     .nav-btn {{
         display: flex; align-items: center; justify-content: center;
-        width: 32px; height: 32px; border-radius: var(--radius); border: none;
+        width: 36px; height: 36px; min-width: 36px; border-radius: var(--radius); border: none;
         background: transparent; color: var(--text-secondary); font-size: 15px;
         cursor: pointer; transition: all var(--transition); position: relative;
     }}
     .nav-btn:hover:not(:disabled) {{ background: var(--bg-hover); color: var(--text-primary); }}
     .nav-btn:disabled {{ opacity: 0.3; cursor: not-allowed; }}
     .nav-btn.active {{ color: var(--accent); }}
+    .nav-btn:focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; }}
     #bookmark-btn.active {{ color: var(--warning); }}
     #split-btn.active {{ color: var(--accent); background: var(--bg-hover); }}
     #url-bar {{
         flex: 1; height: 32px; background: var(--bg-primary);
-        border: 1px solid var(--border); border-radius: 20px;
+        border: 1px solid var(--border); border-radius: 16px;
         padding: 0 16px; color: var(--text-primary); font-size: 13px;
         outline: none; transition: all var(--transition);
     }}
@@ -503,7 +506,7 @@ pub fn browser_html(theme: &Theme) -> String {
         <span id="status-text">Ready</span>
     </div>
     <div class="status-right">
-        <span id="engine-badge" title="Active browser engine">WebView2 · Chromium</span>
+        <span id="engine-badge" title="Active browser engine">{engine_label}</span>
         <span id="xr-status" title="WebXR Status">{e_xr} XR</span>
         <span>{e_shield} Local profile</span>
         <span id="status-url"></span>

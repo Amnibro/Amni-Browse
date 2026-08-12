@@ -1,3 +1,11 @@
+## v0.11.13 content blit vs chrome band - 2026-08-12
+- **Header bar occluded by content (Anthony's fix):** paint_and_present blitted the content layer at GL target_rect origin (0, chrome_px) — GL is bottom-left origin, so the offset pushed content UP over the top chrome band instead of below it. Origin now (0,0) with height win.height-chrome_px: content owns the bottom, chrome overlay owns the top band. This was the remaining "launches with no header bar" pixel cause on the servo-real backend.
+- README: shipping backend documented as servo-real; plain `cargo build --release` called out as the webview stub trap (clobber class from v0.11.11).
+- Rebuilt --no-default-features --features servo-real after a default-feature build clobbered target/release at 10:02 (guard held: packer refused the webview exe).
+- Tab close hitbox 20px -> **28px** (`CLOSE_HITBOX=28`, toolbar `.close` 28×28, font 14px) — Fitts-friendly without growing the 32px tab.
+- URL bar hides internal page URLs (`data:`, `about:blank`, `amnibrowse://newtab`) — blank bar + placeholder on home instead of a data-URI dump.
+- **Glass polish (UI seat):** Servo chrome contract **84px** (40 tab + 42 nav + 2 progress) in `tokens.rs` + `toolbar.html`; nav hits **36×36**; tab min/max 120–240; strip scrollbars thin not hidden-only. Theme root emits dual aliases (`--bg`/`--bg-primary`, `--dim`/`--text-muted`, `--chrome`, tab tokens) so home content + chrome poll paint one palette. Newtab footer shows `v{CARGO_PKG_VERSION} · Real Servo`. Webview shell matches tab 40 / nav 36 hit targets; engine badge is feature-honest (`Real Servo` vs `WebView2 · Chromium`).
+
 ## v0.11.12 tab strip mouse polish - 2026-08-12
 - **Wheel-scrolls the tab strip:** #tab-list is overflow-x:auto with the scrollbar hidden (scrollbar-width:none), so once tabs overflowed there was NO mouse path to off-screen tabs (keyboard roving only). Vertical wheel over the strip now pans it horizontally (passive:false, deltaX passthrough untouched).
 - **Double-click empty strip -> new tab** (Chrome/Firefox affordance; cuts travel to the 26px + button). Excludes tabs and the + button itself.

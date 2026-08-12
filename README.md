@@ -1,6 +1,6 @@
 ****HEAVILY WORK IN PROGRESS****
 
-# Amni Browse v0.11.12
+# Amni Browse v0.11.13
 
 **A privacy-first web browser built from the ground up in Rust — no Amni product telemetry.**
 **Functional browsing: real URLs, injected chrome toolbar, navigation-level URL cleaning. DRM/media uses a separate system-WebView window with its own bar.**
@@ -56,14 +56,13 @@ cargo run --release
 
 # Create desktop shortcut (Windows, pinnable to taskbar)
 powershell scripts/create_shortcut.ps1
-cargo run --no-default-features --features servo-engine
 
-# Release build
-cargo build --release
-cargo build --release --no-default-features --features servo-engine
+# Release build — SHIPPING backend is servo-real (real Servo engine).
+# Plain `cargo build --release` produces the webview stub; `servo-engine` is the legacy egui stub.
+cargo build --release --no-default-features --features servo-real
 ```
 
-## Architecture (v0.11.12 — WebView chrome + Servo hybrid)
+## Architecture (v0.11.13 — WebView chrome + Servo hybrid)
 
 ```
 src/
@@ -105,7 +104,8 @@ src/
 | Backend | Feature Flag | Rendering | Dependencies |
 |---------|-------------|-----------|-------------|
 | **WebView** (default) | `webview` | System WebView (Chromium/WebKit) | tao, wry |
-| **Servo-egui** | `servo-engine` | Custom wgpu + egui | winit, wgpu, egui, egui-wgpu |
+| **Servo-real** (shipping) | `servo-real` | Real Servo engine (libservo) | servo, winit, surfman |
+| **Servo-egui** (legacy) | `servo-engine` | Custom wgpu + egui | winit, wgpu, egui, egui-wgpu |
 
 The Servo-egui backend provides fully native browser chrome via egui/wgpu, independent of any system WebView. This is the foundation for the planned **AmniShunt** rendering engine (v0.5+).
 

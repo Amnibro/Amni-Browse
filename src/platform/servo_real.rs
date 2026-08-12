@@ -96,7 +96,8 @@ p{color:var(--dim);margin:0 0 40px}
 .mono{width:40px;height:40px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff}
 .tile span{max-width:100px;overflow:hidden;white-space:nowrap}
 .dim{color:var(--dim);font-size:13px}
-</style></head><body><h1>Amni Browse</h1><p>No Amni telemetry &#183; local profile &#183; search from the bar above</p><div class='grid'>__TILES__</div></body></html>"##;
+.ver{margin-top:28px;font-size:11px;color:var(--dim);letter-spacing:.6px}
+</style></head><body><h1>Amni Browse</h1><p>No Amni product telemetry &#183; local profile &#183; search from the bar above</p><div class='grid'>__TILES__</div><p class='ver'>v__VER__ &#183; Real Servo &#183; Amni-Scient</p></body></html>"##;
 fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
 fn chrome_height_px(scale: f32) -> u32 { (CHROME_HEIGHT_CSS * scale).round().max(1.0) as u32 }
 fn content_size(window_size: PhysicalSize<u32>, chrome_px: u32) -> PhysicalSize<u32> {
@@ -179,7 +180,10 @@ impl AppState {
     }
     fn theme_root_vars(&self) -> String {
         let t = self.themes.borrow().active_theme();
-        format!("--bg:{};--elev:{};--stroke:{};--text:{};--dim:{};--accent:{};--accent-dim:{}", t.bg_primary, t.bg_tertiary, t.border, t.text_primary, t.text_secondary, t.accent, t.accent_hover)
+        format!(
+            "--bg:{p};--bg-primary:{p};--elev:{e};--bg-tertiary:{e};--bg-secondary:{s};--stroke:{b};--border:{b};--text:{tp};--text-primary:{tp};--dim:{td};--text-secondary:{td};--text-muted:{td};--accent:{a};--accent-dim:{ah};--tab-active:{ta};--tab-inactive:{ti};--chrome:{s}",
+            p = t.bg_primary, e = t.bg_tertiary, s = t.bg_secondary, b = t.border, tp = t.text_primary, td = t.text_secondary, a = t.accent, ah = t.accent_hover, ta = t.tab_active, ti = t.tab_inactive
+        )
     }
     fn newtab_html(&self) -> String {
         let b = self.bookmarks.borrow();
@@ -192,7 +196,7 @@ impl AppState {
                 format!("<a class='tile' href='{}'><div class='mono' style='background:hsl({},45%,38%)'>{}</div><span>{}</span></a>", esc_html(&bm.url), hue, esc_html(&ch), esc_html(&host))
             }).collect(),
         };
-        NEWTAB_TPL.replace("__THEME__", &self.theme_root_vars()).replace("__TILES__", &tiles)
+        NEWTAB_TPL.replace("__THEME__", &self.theme_root_vars()).replace("__TILES__", &tiles).replace("__VER__", env!("CARGO_PKG_VERSION"))
     }
     fn settings_page_html(&self) -> String {
         let c = self.config.borrow();
@@ -596,7 +600,7 @@ fn paint_and_present(state: &AppState) {
         let chrome_px = state.chrome_px();
         let content_h = win.height.saturating_sub(chrome_px).max(1);
         let target_rect = DefaultRect::new(
-            DefaultPoint2D::new(0i32, chrome_px as i32),
+            DefaultPoint2D::new(0i32, 0i32),
             DefaultSize2D::new(win.width as i32, content_h as i32),
         );
         state.rendering_context.prepare_for_rendering();
