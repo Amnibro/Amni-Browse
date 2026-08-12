@@ -1,3 +1,7 @@
+## 2026-08-12 v0.11.13 content blit fix + glass polish (SHIPPED)
+- `src/platform/servo_real.rs` paint_and_present: GL target_rect origin (0,chrome_px)->(0,0) — bottom-left GL origin meant the old offset pushed content UP over the chrome band; this was the remaining "no header bar" pixel cause. Newtab footer `v{ver} · Real Servo · Amni-Scient`; theme_root_vars emits dual aliases (--bg/--bg-primary, --dim/--text-muted, --chrome, tab tokens).
+- Chrome contract 84px (SERVO_TAB_H 40 + NAV 42 + progress 2) in `src/ui/tokens.rs` + `assets/chrome/toolbar.html`; CLOSE_HITBOX 28 (28×28 .close); NAV_HIT 36; url bar hides data:/about:blank/amnibrowse://newtab. Gates: scripts/run_glass_gates.ps1 4/4 pass on cold zip extract. Release v0.11.13 sole Latest, live asset md5 == local; site about/index/amni-browse/faq flipped + Pages build 773435e2 verified live.
+
 ## 2026-08-12 v0.11.12 tab strip mouse polish
 - `assets/chrome/toolbar.html`: wheel over #tab-list pans it horizontally (strip is overflow-x:auto + scrollbar-width:none — wheel was the only missing mouse path to off-screen tabs); dblclick/middle-click on empty #tabs space -> new_tab (auxclick moved #tab-list -> #tabs so dead space right of last tab counts; tab middle-click still closes, + button excluded). Cargo 0.11.12; rebuild+repack+publish pending.
 
