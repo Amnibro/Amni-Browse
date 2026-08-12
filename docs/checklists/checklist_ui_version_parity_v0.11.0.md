@@ -9,10 +9,11 @@
 - [x] WindowBuilder.with_decorations(true) for OS title bar
 - [x] Cargo.toml / APP_VERSION / UA / README / chromeRev → 0.11.0
 - [x] cargo check --features webview (Finished; warnings only)
-- [ ] release rebuild target/release/amni-browse.exe
+- [x] release rebuild target/release/amni-browse.exe (0.11.0 strings; no 0.10.3/0.7.0)
 - [x] amni-scient-site version strings + download link → 0.11.0 (index+faq were still 0.10.3; product page 0.11.0)
 - [x] architecture_map.md + CHANGELOG update
-- [ ] commit + push Amni-Browse; tag v0.11.0
-- [x] home claims truth: third-party cookies (default) + AES-256-GCM
+- [x] commit + push Amni-Browse; tag v0.11.0 (Latest = v0.11.0)
+- [x] home claims truth: system WebView cookies (not Amni-forced 3P block) + AES-256-GCM + no Amni product telemetry
 - [x] README Amni Apps → amni-scient.com (no local inventory table)
 - [x] IPC AmniAppList/LaunchApp → NavigateTo https://amni-scient.com (no local inventory)
+- [x] applyContentPush under 110px host bar (`e5351a1`) baked into release binary
