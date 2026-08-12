@@ -1,3 +1,8 @@
+## 2026-08-12 v0.11.10 servo internal-page theme parity + theme picker
+- Public truth: Cargo 0.11.10 / GH Latest v0.11.10. chromeRev now auto-injected: toolbar.html carries `__CHROMEREV__`, replaced with CARGO_PKG_VERSION in `chrome_data_url()` (servo_real.rs) — never hand-bump the rev string again.
+- servo_real.rs NEWTAB_TPL + SETTINGS_TPL: palettes are `__THEME__`-substituted from `ThemeConfig::active_theme()` via `theme_root_vars()` (--bg/--elev/--stroke/--text/--dim/--accent/--accent-dim). No hardcoded gold/dark hexes left except .mono glyph white.
+- Settings page has a Theme section (radio chips, all_themes(), active checked) -> `setting_set theme` -> `ThemeConfig::set_theme` (persists) + settings page reloads themed; toolbar re-themes on next 250ms state poll. This was the ONLY way to switch themes on the servo backend.
+
 # Amni-Browse Architecture Map
 ## 2026-08-12 v0.11.9 keyboard travel + internal hash routing
 - Public truth: Cargo 0.11.9 / GH Latest v0.11.9, v0.11.8 demoted to Pre-release.

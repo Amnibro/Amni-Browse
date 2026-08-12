@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+﻿use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use std::sync::{Arc, Mutex};
@@ -50,12 +50,12 @@ fn load_toolbar_html() -> String {
 }
 
 fn chrome_data_url() -> Url {
-    let html = load_toolbar_html().replace("__CHROMEREV__", env!("CARGO_PKG_VERSION"));
+    let html = load_toolbar_html();
     let encoded = urlencoding::encode(&html);
     Url::parse(&format!("data:text/html;charset=utf-8,{}", encoded)).expect("chrome data url")
 }
 const SETTINGS_TPL: &str = r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>Settings &#8212; Amni Browse</title><style>
-:root{__THEME__}
+:root{--bg:#08090B;--elev:#111418;--stroke:#20242B;--text:#EDEFF2;--dim:#A7ADB6;--accent:#C89B4E;--accent-dim:#E2BC7C}
 body{font:15px/1.55 -apple-system,'Segoe UI',Roboto,Arial,sans-serif;max-width:680px;margin:36px auto;padding:0 24px;color:var(--text);background:var(--bg)}
 h1{font-size:22px;margin:0 0 2px}.tag{color:var(--dim);font-size:13px;margin:0 0 26px}
 h2{color:var(--accent);font-size:12px;text-transform:uppercase;letter-spacing:1.5px;margin:30px 0 12px}
@@ -75,27 +75,25 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padd
 <h2>Search engine</h2><div>__RADIOS__</div>
 <h2>Homepage</h2><input type='text' value='__HOME__' placeholder='https://&#8230; (blank = built-in start page)' onchange='set("home_page",this.value)'><p class='note'>New tabs open this.</p>
 <h2>Privacy</h2><label class='switch'><input type='checkbox'__SHIELD__ onchange='set("block_ads",this.checked)'><span>Shield &#8212; block ads &amp; trackers</span></label>
-<h2>Theme</h2><div>__THEMES__</div>
 <h2>Appearance</h2><label>Default zoom for new tabs<select onchange='set("default_zoom",this.value)'>__ZOOMS__</select></label>
 <h2>Advanced</h2><label>User-agent override<input type='text' value='__UA__' placeholder='(Servo default)' onchange='set("custom_user_agent",this.value)'></label><p class='note'>Some sites gate features on UA. Takes effect after restart.</p>
 <h2>Bookmarks</h2><div>__BMS__</div>
-<h2>Shortcuts</h2><p class='dim'><kbd>Ctrl+L</kbd> URL bar &#183; <kbd>Ctrl+D</kbd> bookmark &#183; <kbd>Ctrl+T</kbd>/<kbd>W</kbd> tabs &#183; <kbd>Ctrl+=</kbd>/<kbd>-</kbd>/<kbd>0</kbd> zoom &#183; <kbd>Ctrl+1&#8230;9</kbd>/<kbd>Ctrl+Tab</kbd> switch &#183; <kbd>Ctrl+Shift+T</kbd> reopen &#183; <kbd>F11</kbd> fullscreen</p>
+<h2>Shortcuts</h2><p class='dim'><kbd>Ctrl+L</kbd> URL bar &#183; <kbd>Ctrl+D</kbd> bookmark &#183; <kbd>Ctrl+T</kbd>/<kbd>W</kbd> tabs &#183; <kbd>Ctrl+=</kbd>/<kbd>-</kbd>/<kbd>0</kbd> zoom &#183; <kbd>Ctrl+1&#8230;9</kbd> switch &#183; <kbd>Ctrl+Shift+T</kbd> reopen &#183; <kbd>F11</kbd> fullscreen</p>
 <script>
 const T='__TOK__';
 function set(k,v){fetch('amnibrowse://cmd/setting_set?tok='+T+'&k='+encodeURIComponent(k)+'&v='+encodeURIComponent(v),{mode:'no-cors'}).catch(function(){})}
 function rmbm(id){fetch('amnibrowse://cmd/bookmark_remove?tok='+T+'&id='+encodeURIComponent(id),{mode:'no-cors'}).catch(function(){});var e=document.getElementById('bm-'+id);e&&e.remove()}
 </script></body></html>"##;
 const NEWTAB_TPL: &str = r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>New Tab</title><style>
-:root{__THEME__}
-body{font:15px -apple-system,'Segoe UI',Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);display:flex;flex-direction:column;align-items:center;min-height:100vh;margin:0;padding-top:14vh}
-h1{font-size:34px;letter-spacing:.5px;margin:0 0 6px;color:var(--accent)}
-p{color:var(--dim);margin:0 0 40px}
+body{font:15px -apple-system,'Segoe UI',Roboto,Arial,sans-serif;background:#08090B;color:#EDEFF2;display:flex;flex-direction:column;align-items:center;min-height:100vh;margin:0;padding-top:14vh}
+h1{font-size:34px;letter-spacing:.5px;margin:0 0 6px;color:#C89B4E}
+p{color:#A7ADB6;margin:0 0 40px}
 .grid{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;max-width:760px}
-.tile{display:flex;flex-direction:column;align-items:center;gap:8px;width:108px;padding:16px 6px;background:var(--elev);border:1px solid var(--stroke);border-radius:4px;text-decoration:none;color:var(--text);font-size:12px;transition:border-color .12s}
-.tile:hover{border-color:var(--accent)}
+.tile{display:flex;flex-direction:column;align-items:center;gap:8px;width:108px;padding:16px 6px;background:#111418;border:1px solid #20242B;border-radius:4px;text-decoration:none;color:#EDEFF2;font-size:12px;transition:border-color .12s}
+.tile:hover{border-color:#C89B4E}
 .mono{width:40px;height:40px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff}
 .tile span{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dim{color:var(--dim);font-size:13px}
+.dim{color:#A7ADB6;font-size:13px}
 </style></head><body><h1>Amni Browse</h1><p>No Amni telemetry &#183; local profile &#183; search from the bar above</p><div class='grid'>__TILES__</div></body></html>"##;
 fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
 fn chrome_height_px(scale: f32) -> u32 { (CHROME_HEIGHT_CSS * scale).round().max(1.0) as u32 }
@@ -177,10 +175,6 @@ impl AppState {
         let hp = self.config.borrow().home_page.trim().to_string();
         match hp.starts_with("http") { true => hp, false => format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.newtab_html())) }
     }
-    fn theme_root_vars(&self) -> String {
-        let t = self.themes.borrow().active_theme();
-        format!("--bg:{};--elev:{};--stroke:{};--text:{};--dim:{};--accent:{};--accent-dim:{}", t.bg_primary, t.bg_tertiary, t.border, t.text_primary, t.text_secondary, t.accent, t.accent_hover)
-    }
     fn newtab_html(&self) -> String {
         let b = self.bookmarks.borrow();
         let tiles: String = match b.bookmarks.is_empty() {
@@ -192,7 +186,7 @@ impl AppState {
                 format!("<a class='tile' href='{}'><div class='mono' style='background:hsl({},45%,38%)'>{}</div><span>{}</span></a>", esc_html(&bm.url), hue, esc_html(&ch), esc_html(&host))
             }).collect(),
         };
-        NEWTAB_TPL.replace("__THEME__", &self.theme_root_vars()).replace("__TILES__", &tiles)
+        NEWTAB_TPL.replace("__TILES__", &tiles)
     }
     fn settings_page_html(&self) -> String {
         let c = self.config.borrow();
@@ -204,11 +198,7 @@ impl AppState {
             true => "<p class='dim'>No bookmarks yet \u{2014} hit \u{2606} in the URL bar or Ctrl+D.</p>".into(),
             false => b.bookmarks.iter().map(|bm| format!("<div class='row' id='bm-{}'><a href='{}' title='{}'>{}</a><button class='x' onclick='rmbm(\"{}\")'>remove</button></div>", esc_html(&bm.id), esc_html(&bm.url), esc_html(&bm.url), esc_html(&bm.title), esc_html(&bm.id))).collect(),
         };
-        let th = self.themes.borrow();
-        let active_id = th.active_theme().id;
-        let themes: String = th.all_themes().iter().map(|t| format!("<label class='opt'><input type='radio' name='th' value='{}'{} onchange='set(\"theme\",this.value)'><span>{}</span></label>", esc_html(&t.id), match t.id == active_id { true => " checked", false => "" }, esc_html(&t.name))).collect();
-        drop(th);
-        SETTINGS_TPL.replace("__THEME__", &self.theme_root_vars()).replace("__THEMES__", &themes).replace("__VER__", env!("CARGO_PKG_VERSION")).replace("__RADIOS__", &radios).replace("__HOME__", &esc_html(match c.home_page.starts_with("http") { true => c.home_page.as_str(), false => "" })).replace("__SHIELD__", match c.block_ads { true => " checked", false => "" }).replace("__ZOOMS__", &zooms).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__BMS__", &bms).replace("__TOK__", &self.cmd_token)
+        SETTINGS_TPL.replace("__VER__", env!("CARGO_PKG_VERSION")).replace("__RADIOS__", &radios).replace("__HOME__", &esc_html(match c.home_page.starts_with("http") { true => c.home_page.as_str(), false => "" })).replace("__SHIELD__", match c.block_ads { true => " checked", false => "" }).replace("__ZOOMS__", &zooms).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__BMS__", &bms).replace("__TOK__", &self.cmd_token)
     }
     fn execute_command(&self, name: &str, args: &std::collections::HashMap<String, String>) {
         match name {
@@ -339,13 +329,6 @@ impl AppState {
             }
             "setting_set" => {
                 let (Some(k), Some(v)) = (args.get("k"), args.get("v")) else { info!("setting_set: missing k/v"); return };
-                if k == "theme" {
-                    self.themes.borrow_mut().set_theme(v);
-                    info!("cmd setting_set theme \u{2192} {}", v);
-                    let url_str = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.settings_page_html()));
-                    if let (Ok(parsed), Some(c)) = (Url::parse(&url_str), self.active_content()) { c.load(parsed); }
-                    return;
-                }
                 {
                     let mut c = self.config.borrow_mut();
                     match k.as_str() {
