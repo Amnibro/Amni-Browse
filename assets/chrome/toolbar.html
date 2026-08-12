@@ -127,7 +127,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
   tabList.addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;if(e.target.classList.contains('close')){cmd('close_tab',{id:t.dataset.id});e.stopPropagation()}else{setRoving(t);cmd('switch_tab',{id:t.dataset.id})}});
   tabList.addEventListener('keydown',e=>{const t=e.target.closest('.tab');if(!t)return;const all=tabs(),i=all.indexOf(t);if(e.key==='Enter'||e.key===' '){e.preventDefault();cmd('switch_tab',{id:t.dataset.id});return}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();cmd('close_tab',{id:t.dataset.id});return}let n=null;if(e.key==='ArrowRight')n=all[(i+1)%all.length];if(e.key==='ArrowLeft')n=all[(i+all.length-1)%all.length];if(e.key==='Home')n=all[0];if(e.key==='End')n=all[all.length-1];if(n){e.preventDefault();setRoving(n);cmd('switch_tab',{id:n.dataset.id})}});
   tabList.addEventListener('auxclick',e=>{if(e.button!==1)return;const t=e.target.closest('.tab');if(t){cmd('close_tab',{id:t.dataset.id});e.preventDefault()}});
-  window.__amni={setProgress,setUrl,setLock,chromeRev:'0.11.0-settings'};
+  window.__amni={setProgress,setUrl,setLock,chromeRev:'0.11.1-settings'};
   setLock(url.value);poll();setInterval(poll,250);
 })();
 </script>
