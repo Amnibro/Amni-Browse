@@ -303,15 +303,15 @@ function chromeCss(){{
   return ':host{{all:initial !important;position:fixed !important;top:0 !important;left:0 !important;right:0 !important;width:100% !important;height:{chrome_h}px !important;z-index:2147483647 !important;font-family:' + p.font + ' !important;color:' + p.text + ' !important;background:' + p.bg + ' !important;pointer-events:auto !important}}'
     + '*{{box-sizing:border-box !important;color:inherit}}'
     + '#__atb{{position:fixed !important;top:0 !important;left:0 !important;right:0 !important;height:{chrome_h}px !important;display:flex !important;flex-direction:column !important;background:' + p.bg + ' !important;color:' + p.text + ' !important;z-index:2147483647 !important;box-shadow:0 2px 16px rgba(0,0,0,0.55) !important;border-bottom:1px solid ' + p.border + ' !important}}'
-    + '#_tabs{{height:{tab_h}px !important;display:flex !important;align-items:center !important;gap:2px !important;padding:0 8px !important;overflow-x:auto !important;overflow-y:hidden !important;scrollbar-width:thin !important;background:' + p.bg + ' !important;color:' + p.text + ' !important;border-bottom:1px solid ' + p.border + ' !important}}'
+    + '#_tabs{{height:{tab_h}px !important;display:flex !important;align-items:center !important;gap:4px !important;padding:0 8px !important;overflow-x:auto !important;overflow-y:hidden !important;scrollbar-width:thin !important;flex-wrap:nowrap !important;background:' + p.bg + ' !important;color:' + p.text + ' !important;border-bottom:1px solid ' + p.border + ' !important;pointer-events:auto !important}}'
     + '#_tabs::-webkit-scrollbar{{height:3px}}'
-    + '.tab{{flex:0 1 160px !important;min-width:80px !important;max-width:200px !important;display:flex !important;align-items:center !important;gap:6px !important;padding:6px 12px !important;margin:0 !important;border:1px solid transparent !important;border-bottom:none !important;border-radius:' + p.radius + ' ' + p.radius + ' 0 0 !important;background:' + p.tabI + ' !important;color:' + p.muted + ' !important;font-size:12px !important;font-family:' + p.font + ' !important;cursor:pointer !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important}}'
+    + '.tab{{flex:0 0 148px !important;flex-grow:0 !important;flex-shrink:0 !important;width:148px !important;min-width:148px !important;max-width:148px !important;height:30px !important;display:flex !important;align-items:center !important;gap:6px !important;padding:0 8px !important;margin:0 !important;border:1px solid transparent !important;border-bottom:none !important;border-radius:' + p.radius + ' ' + p.radius + ' 0 0 !important;background:' + p.tabI + ' !important;color:' + p.muted + ' !important;font-size:12px !important;font-family:' + p.font + ' !important;cursor:pointer !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;pointer-events:auto !important;touch-action:manipulation !important}}'
     + '.tab:hover{{background:' + p.bg3 + ' !important;color:' + p.text + ' !important}}'
     + '.tab.active{{background:' + p.tabA + ' !important;color:' + p.text + ' !important;border-color:' + p.border + ' !important;border-bottom:2px solid ' + p.accent + ' !important}}'
-    + '.tab .ttl{{flex:1 !important;overflow:hidden !important;text-overflow:ellipsis !important;color:inherit !important}}'
-    + '.tab .x{{flex:0 0 16px !important;width:16px !important;height:16px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;border-radius:50% !important;opacity:0.85 !important;font-size:14px !important;padding:0 !important;border:none !important;background:transparent !important;color:' + p.muted + ' !important;cursor:pointer !important;line-height:1 !important}}'
+    + '.tab .ttl{{flex:1 1 auto !important;min-width:0 !important;overflow:hidden !important;text-overflow:ellipsis !important;white-space:nowrap !important;color:inherit !important;pointer-events:none !important}}'
+    + '.tab .x{{flex:0 0 18px !important;width:18px !important;min-width:18px !important;height:18px !important;display:inline-flex !important;align-items:center !important;justify-content:center !important;border-radius:50% !important;opacity:0.9 !important;font-size:14px !important;padding:0 !important;border:none !important;background:transparent !important;color:' + p.muted + ' !important;cursor:pointer !important;line-height:1 !important;pointer-events:auto !important}}'
     + '.tab .x:hover{{opacity:1 !important;background:' + p.danger + ' !important;color:#fff !important}}'
-    + '#_newtab{{flex:0 0 28px !important;width:28px !important;height:28px !important;border:none !important;background:transparent !important;color:' + p.muted + ' !important;font-size:18px !important;cursor:pointer !important;border-radius:' + p.radius + ' !important;margin-left:4px !important;font-family:' + p.font + ' !important}}'
+    + '#_newtab{{flex:0 0 28px !important;width:28px !important;min-width:28px !important;height:28px !important;border:none !important;background:transparent !important;color:' + p.muted + ' !important;font-size:18px !important;cursor:pointer !important;border-radius:' + p.radius + ' !important;margin-left:4px !important;font-family:' + p.font + ' !important;pointer-events:auto !important}}'
     + '#_newtab:hover{{background:' + p.bg3 + ' !important;color:' + p.accent + ' !important}}'
     + '#_nav{{position:relative !important;height:{nav_h}px !important;display:flex !important;align-items:center !important;padding:5px 10px !important;gap:4px !important;background:' + p.bg + ' !important;color:' + p.text + ' !important}}'
     + '#_bookmarks{{height:{book_h}px !important;display:flex !important;align-items:center !important;gap:4px !important;padding:3px 12px !important;background:' + p.bg + ' !important;color:' + p.muted + ' !important;border-bottom:1px solid ' + p.border + ' !important;overflow-x:auto !important;font-size:12px !important}}'
@@ -338,8 +338,12 @@ function chromeCss(){{
 }}
 function tabLabel(t){{
   var title = (t && t.title) ? String(t.title) : '';
-  if (title && title !== 'New Tab' && title !== 'Private Tab') return title;
-  try {{ var u = new URL(t.url || ''); return u.hostname || t.url || 'Tab'; }} catch(_) {{ return (t && t.url) || 'Tab'; }}
+  if (!title || title === 'New Tab' || title === 'Private Tab') {{
+    try {{ var u = new URL(t.url || ''); title = u.hostname || t.url || 'Tab'; }} catch(_) {{ title = (t && t.url) || 'Tab'; }}
+  }}
+  title = title.replace(/\\s+/g, ' ').trim();
+  if (title.length > 22) title = title.slice(0, 20) + '…';
+  return title || 'Tab';
 }}
 function amniRoot(){{
   var host = document.getElementById('__atb_host');
@@ -366,6 +370,22 @@ function el(tag, props, kids){{
   if (kids) kids.forEach(function(c){{ if (c) n.appendChild(c); }});
   return n;
 }}
+function stopHit(e){{
+  try {{ e.preventDefault(); e.stopPropagation(); if (e.stopImmediatePropagation) e.stopImmediatePropagation(); }} catch(_){{}}
+}}
+function bindHit(node, fn){{
+  if (!node || !fn) return;
+  node.onpointerdown = function(e){{
+    if (e.button != null && e.button !== 0) return;
+    stopHit(e);
+    fn(e);
+  }};
+}}
+function tabsFingerprint(tabs){{
+  try {{
+    return (tabs || []).map(function(t){{ return (t.id||'') + '|' + (t.is_active?1:0) + '|' + tabLabel(t) + '|' + (t.url||''); }}).join(';;');
+  }} catch(_) {{ return String(Math.random()); }}
+}}
 function paintTabs(list){{
   var root = amniRoot();
   if (!root) return;
@@ -373,18 +393,24 @@ function paintTabs(list){{
   if (!strip) return;
   var tabs = Array.isArray(list) ? list : (typeof list === 'string' ? (function(){{try{{return JSON.parse(list)}}catch(_){{return[]}}}})() : []);
   if (tabs && tabs.length) window.__AMNI_TAB_SEED = tabs;
+  var fp = tabsFingerprint(tabs);
+  if (window.__AMNI_TABS_FP === fp && strip.childNodes.length) return;
+  window.__AMNI_TABS_FP = fp;
   clearKids(strip);
   tabs.forEach(function(t){{
     var ttl = el('span', {{ className:'ttl', text: tabLabel(t) }});
-    var x = el('span', {{ className:'x', title:'Close', text:'×' }});
-    x.onclick = function(e){{ e.stopPropagation(); if (t.id) ipc({{ type:'close_tab', id:t.id }}); }};
-    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : ''), title: t.url || '', 'data-id': t.id || '' }}, [ttl, x]);
-    node.onclick = function(){{ if (t.id) ipc({{ type:'switch_tab', id:t.id }}); }};
+    var x = el('span', {{ className:'x', role:'button', title:'Close tab', tabIndex:'0', text:'×' }});
+    bindHit(x, function(){{ if (t.id) ipc({{ type:'close_tab', id:t.id }}); }});
+    var node = el('button', {{ type:'button', className:'tab' + (t.is_active ? ' active' : ''), title: (t.title || t.url || 'Tab'), 'data-id': t.id || '' }}, [ttl, x]);
+    bindHit(node, function(e){{
+      if (e && e.target && (e.target === x || (e.target.closest && e.target.closest('.x')))) return;
+      if (t.id) ipc({{ type:'switch_tab', id:t.id }});
+    }});
     strip.appendChild(node);
     if (t.is_active) try {{ node.scrollIntoView({{ inline:'nearest', block:'nearest' }}); }} catch(_){{}}
   }});
   var plus = el('button', {{ type:'button', id:'_newtab', title:'New tab', text:'+' }});
-  plus.onclick = function(){{ ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }};
+  bindHit(plus, function(){{ ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }});
   strip.appendChild(plus);
 }}
 function paintBookmarks(list){{
@@ -494,22 +520,28 @@ function buildChromeBar(root){{
   bar.appendChild(safe);
   root.appendChild(bar);
 }}
+function pinHost(host){{
+  if (!host) return;
+  var hostCss = 'all:initial;position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;height:{chrome_h}px!important;max-height:{chrome_h}px!important;z-index:2147483647!important;pointer-events:auto!important;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;isolation:isolate!important;margin:0!important;border:none!important;padding:0!important;overflow:visible!important;inset:auto!important;';
+  try {{ host.style.cssText = hostCss; }} catch(_) {{ try {{ host.setAttribute('style', hostCss); }} catch(__){{}} }}
+  try {{
+    if (!host.hasAttribute('popover')) host.setAttribute('popover', 'manual');
+    if (typeof host.showPopover === 'function' && !host.matches(':popover-open')) host.showPopover();
+  }} catch(_){{}}
+}}
 function ensureToolbar(){{
   try {{
     var d = document;
     if (!d.documentElement) return false;
     var mount = d.documentElement;
     var host = d.getElementById('__atb_host');
-    var hostCss = 'all:initial;position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;height:{chrome_h}px!important;max-height:{chrome_h}px!important;z-index:2147483647!important;pointer-events:auto!important;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;contain:layout style!important;isolation:isolate!important;';
     var needBuild = !host || !(host.shadowRoot || window.__AMNI_SR) || !((host.shadowRoot || window.__AMNI_SR).getElementById('__atb'));
     if (needBuild) {{
       if (host) try {{ host.remove(); }} catch(_){{}}
       host = d.createElement('div');
       host.id = '__atb_host';
       host.setAttribute('data-amni','chrome');
-      try {{ host.style.cssText = hostCss; }} catch(_) {{
-        host.setAttribute('style', hostCss);
-      }}
+      pinHost(host);
       var root;
       try {{ root = host.attachShadow({{ mode:'closed' }}); }} catch(_) {{ root = host.attachShadow({{ mode:'open' }}); }}
       window.__AMNI_SR = root;
@@ -519,16 +551,18 @@ function ensureToolbar(){{
       root.appendChild(style);
       buildChromeBar(root);
       mount.appendChild(host);
+      pinHost(host);
       applyTheme(T);
+      window.__AMNI_TABS_FP = '';
       var seed = (window.__AMNI_TAB_SEED && window.__AMNI_TAB_SEED.length) ? window.__AMNI_TAB_SEED : SEED;
       paintTabs(Array.isArray(seed) && seed.length ? seed : SEED);
+      window.__AMNI_WIRED = false;
     }} else {{
-      try {{ host.style.cssText = hostCss; }} catch(_) {{ host.setAttribute('style', hostCss); }}
-      if (host.parentNode !== mount) mount.appendChild(host);
-      if (host.nextSibling) mount.appendChild(host);
+      pinHost(host);
+      if (!mount.contains(host)) mount.appendChild(host);
     }}
     applyContentPush(host);
-    wireHandlers(host);
+    if (!window.__AMNI_WIRED) {{ wireHandlers(host); window.__AMNI_WIRED = true; }}
     if (!window.__AMNI_CHROME_POLL) {{
       window.__AMNI_CHROME_POLL = true;
       ipc({{ type:'get_tabs' }});
@@ -553,6 +587,8 @@ function applyContentPush(host){{
     var d = document;
     if (!d.documentElement) return;
     var ph = contentPushPx(host || d.getElementById('__atb_host'));
+    if (window.__AMNI_PUSH_H === ph && d.getElementById('__amni_push_style')) return;
+    window.__AMNI_PUSH_H = ph;
     var head = d.head || d.documentElement;
     var push = d.getElementById('__amni_push_style');
     if (!push) {{
@@ -565,7 +601,7 @@ function applyContentPush(host){{
       + 'html{{padding-top:' + ph + 'px!important;scroll-padding-top:' + ph + 'px!important;box-sizing:border-box!important;min-height:100%!important}}'
       + 'html,body{{margin-top:0!important}}'
       + 'body{{padding-top:0!important;box-sizing:border-box!important}}'
-      + '#__atb_host{{position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:2147483647!important}}'
+      + '#__atb_host,#__atb_host:popover-open{{position:fixed!important;top:0!important;left:0!important;right:0!important;width:100%!important;height:{chrome_h}px!important;max-height:{chrome_h}px!important;z-index:2147483647!important;margin:0!important;border:none!important;padding:0!important;overflow:visible!important;inset:auto!important;pointer-events:auto!important;background:transparent!important}}'
       + '#masthead-container,ytd-masthead,#masthead,#header-bar,header#header,#header,tp-yt-app-header,#gb,header[role="banner"],.ytSearchboxComponentHost,.ytSearchboxComponentInputBox{{top:' + ph + 'px!important}}'
       + '#masthead-container{{position:fixed!important;left:0!important;right:0!important;width:100%!important;z-index:2020!important}}'
       + 'ytd-mini-guide-renderer,ytd-guide-renderer#guide,tp-yt-app-drawer#guide{{top:' + ph + 'px!important;height:calc(100vh - ' + ph + 'px)!important;max-height:calc(100vh - ' + ph + 'px)!important}}'
@@ -655,16 +691,41 @@ function start(){{
   ensureToolbar();
   if (!window.__AMNI_CHROME_WATCH) {{
     window.__AMNI_CHROME_WATCH = true;
-    setInterval(function(){{ ensureToolbar(); }}, 250);
+    setInterval(function(){{
+      var h = document.getElementById('__atb_host');
+      if (!h || !document.documentElement.contains(h) || !(h.shadowRoot || window.__AMNI_SR)) ensureToolbar();
+      else {{
+        pinHost(h);
+        try {{ if (typeof h.showPopover === 'function' && !h.matches(':popover-open')) h.showPopover(); }} catch(_){{}}
+      }}
+    }}, 800);
     try {{
-      var observer = new MutationObserver(function(){{ ensureToolbar(); }});
-      observer.observe(document.documentElement || document, {{ childList:true, subtree:true }});
+      var observer = new MutationObserver(function(){{
+        var h = document.getElementById('__atb_host');
+        if (!h || !document.documentElement.contains(h)) ensureToolbar();
+      }});
+      observer.observe(document.documentElement || document, {{ childList:true, subtree:false }});
     }} catch(_) {{}}
     window.addEventListener('pageshow', function(){{ ensureToolbar(); }});
     window.addEventListener('focus', function(){{ ensureToolbar(); }});
     document.addEventListener('fullscreenchange', function(){{
       if (!document.fullscreenElement) ensureToolbar();
     }});
+    window.addEventListener('keydown', function(e){{
+      var mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      var k = (e.key || '').toLowerCase();
+      if (k === 'w') {{ stopHit(e); ipc({{ type:'get_tabs' }}); var seed = window.__AMNI_TAB_SEED || []; var cur = seed.filter(function(t){{ return t.is_active; }})[0]; if (cur && cur.id) ipc({{ type:'close_tab', id:cur.id }}); }}
+      else if (k === 't') {{ stopHit(e); ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }}
+      else if (k === 'tab') {{
+        stopHit(e);
+        var tabs = window.__AMNI_TAB_SEED || [];
+        if (!tabs.length) return;
+        var i = 0; for (; i < tabs.length; i++) if (tabs[i].is_active) break;
+        var next = tabs[(i + (e.shiftKey ? tabs.length - 1 : 1)) % tabs.length];
+        if (next && next.id) ipc({{ type:'switch_tab', id:next.id }});
+      }}
+    }}, true);
   }}
 }}
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {{ once:true }});
