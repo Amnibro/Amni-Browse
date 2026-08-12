@@ -9,12 +9,29 @@ fn main() {
         if rc.exists() { embed_resource::compile(rc, embed_resource::NONE); }
         copy_angle_dlls();
         copy_gstreamer_plugins();
+        stage_chrome_assets();
     }
 }
 #[cfg(target_os = "windows")]
 fn profile_dir() -> Option<PathBuf> {
     let out = env::var("OUT_DIR").ok()?;
     PathBuf::from(out).ancestors().nth(3).map(|p| p.to_path_buf())
+}
+#[cfg(target_os = "windows")]
+fn stage_chrome_assets() {
+    let Some(profile_dir) = profile_dir() else { return };
+    let src_dir = Path::new("assets/chrome");
+    let dst_dir = profile_dir.join("assets").join("chrome");
+    if fs::create_dir_all(&dst_dir).is_err() { println!("cargo:warning=could not create {}", dst_dir.display()); return; }
+    let entries = match fs::read_dir(src_dir) { Ok(e) => e, Err(_) => { println!("cargo:warning=missing {}", src_dir.display()); return; } };
+    let mut staged = 0usize;
+    for entry in entries.flatten() {
+        let src = entry.path();
+        if !src.is_file() { continue; }
+        let dst = dst_dir.join(entry.file_name());
+        fs::copy(&src, &dst).is_ok().then(|| staged += 1);
+    }
+    println!("cargo:warning=staged {} chrome asset(s) to {}", staged, dst_dir.display());
 }
 #[cfg(target_os = "windows")]
 fn copy_angle_dlls() {
