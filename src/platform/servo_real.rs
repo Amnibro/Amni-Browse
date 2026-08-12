@@ -26,13 +26,57 @@ use crate::engine::tabs::TabEngine;
 use crate::platform::media_engine::{self, EngineKind, MediaWindow};
 use crate::platform::servo_keys::keyboard_event_from_winit;
 use crate::storage::bookmarks::BookmarkManager;
-use crate::storage::config::BrowserConfig;
+use crate::storage::config::{BrowserConfig, DEFAULT_SEARCH_ENGINE, LITE_DDG_HOME};
+/// Must match `#shell{height:NNpx}` in `assets/chrome/toolbar.html` (66 = 32 tab + 32 nav + 2 progress).
+/// Current tree is deliberately 66/66 — do not "fix" by reverting to 74 (edca787 park was about
+/// mismatched pairs, not that 66 is wrong when HTML matches).
 const CHROME_HEIGHT_CSS: f32 = 66.0;
 const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
+/// Rewrite full Next.js DuckDuckGo URLs to the lite HTML endpoint Servo can paint.
+fn prefer_servo_friendly_url(raw: &str) -> String {
+    let trimmed = raw.trim();
+    let Ok(u) = Url::parse(trimmed) else { return trimmed.to_string() };
+    let host = u.host_str().unwrap_or("");
+    if host != "duckduckgo.com" && host != "www.duckduckgo.com" { return trimmed.to_string(); }
+    let path = u.path();
+    if path.starts_with("/html") { return trimmed.to_string(); }
+    let q = u.query_pairs().find(|(k, _)| k == "q").map(|(_, v)| v.into_owned());
+    match q {
+        Some(query) => format!("{}?q={}", LITE_DDG_HOME.trim_end_matches('/'), urlencoding::encode(&query)),
+        None => LITE_DDG_HOME.to_string(),
+    }
+}
+fn is_client_side_exception_title(title: &str) -> bool {
+    let t = title.to_ascii_lowercase();
+    t.contains("application error") && t.contains("client-side exception")
+}
 
+fn parse_shell_height_css(html: &str) -> Option<f32> {
+    let marker = "#shell{height:";
+    let i = html.find(marker)?;
+    let rest = &html[i + marker.len()..];
+    let num: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    if num.is_empty() { return None; }
+    num.parse().ok()
+}
+fn assert_chrome_height_synced(html: &str, source: &str) {
+    match parse_shell_height_css(html) {
+        Some(h) if (h - CHROME_HEIGHT_CSS).abs() < 0.01 => {
+            info!("chrome height sync ok: #shell={}px == CHROME_HEIGHT_CSS={} ({})", h, CHROME_HEIGHT_CSS, source);
+        }
+        Some(h) => {
+            log::warn!(
+                "CHROME HEIGHT MISMATCH: #shell={}px in {} vs CHROME_HEIGHT_CSS={} — blit/hit-test will disagree (blank viewport risk). Align both.",
+                h, source, CHROME_HEIGHT_CSS
+            );
+        }
+        None => log::warn!("chrome toolbar: could not parse #shell height from {} — expected height:{}px", source, CHROME_HEIGHT_CSS),
+    }
+}
 fn load_toolbar_html() -> String {
     if let Ok(content) = std::fs::read_to_string("assets/chrome/toolbar.html") {
         info!("chrome toolbar: loaded from cwd assets/chrome/toolbar.html ({} bytes)", content.len());
+        assert_chrome_height_synced(&content, "cwd assets/chrome/toolbar.html");
         return content;
     }
     if let Ok(exe) = std::env::current_exe() {
@@ -40,10 +84,12 @@ fn load_toolbar_html() -> String {
         let asset_path = exe_dir.join("assets").join("chrome").join("toolbar.html");
         if let Ok(content) = std::fs::read_to_string(&asset_path) {
             info!("chrome toolbar: loaded from {} ({} bytes)", asset_path.display(), content.len());
+            assert_chrome_height_synced(&content, &asset_path.display().to_string());
             return content;
         }
     }
     info!("chrome toolbar: using embedded fallback ({} bytes)", TOOLBAR_HTML_EMBEDDED.len());
+    assert_chrome_height_synced(TOOLBAR_HTML_EMBEDDED, "embedded fallback");
     TOOLBAR_HTML_EMBEDDED.to_string()
 }
 
@@ -187,7 +233,7 @@ impl AppState {
     fn settings_page_html(&self) -> String {
         let c = self.config.borrow();
         let b = self.bookmarks.borrow();
-        let engines = [("DuckDuckGo", "https://duckduckgo.com/?q="), ("Brave", "https://search.brave.com/search?q="), ("Startpage", "https://www.startpage.com/sp/search?query="), ("Google", "https://www.google.com/search?q=")];
+        let engines = [("DuckDuckGo", DEFAULT_SEARCH_ENGINE), ("Brave", "https://search.brave.com/search?q="), ("Startpage", "https://www.startpage.com/sp/search?query="), ("Google", "https://www.google.com/search?q=")];
         let radios: String = engines.iter().map(|(n, p)| format!("<label class='opt'><input type='radio' name='se' value='{}'{} onchange='set(\"search_engine\",this.value)'><span>{}</span></label>", p, match c.search_engine == *p { true => " checked", false => "" }, n)).collect();
         let zooms: String = [(0.8, "80%"), (0.9, "90%"), (1.0, "100%"), (1.1, "110%"), (1.25, "125%"), (1.5, "150%")].iter().map(|(z, l)| format!("<option value='{}'{}>{}</option>", z, match (*z - c.default_zoom).abs() < 0.01 { true => " selected", false => "" }, l)).collect();
         let bms: String = match b.bookmarks.is_empty() {
@@ -206,18 +252,28 @@ impl AppState {
                 let engine = self.config.borrow().search_engine.clone();
                 match resolve_navigate_input(&raw, &engine) {
                     Some(u) => {
-                        let us = u.as_str().to_string();
+                        let friendly = prefer_servo_friendly_url(u.as_str());
+                        let dest = Url::parse(&friendly).unwrap_or(u);
+                        let us = dest.as_str().to_string();
                         match media_engine::wants_media_window(&us) {
                             true => { info!("cmd navigate \u{2192} media engine: {}", us); self.pending_media_urls.borrow_mut().push(us); }
-                            false => { if let Some(c) = self.active_content() { info!("cmd navigate \u{2192} {}", u); c.load(u); } }
+                            false => { if let Some(c) = self.active_content() { info!("cmd navigate \u{2192} {}", dest); c.load(dest); } }
                         }
                     }
                     None => info!("cmd navigate: empty/invalid input"),
                 }
             }
+            "open_lite_ddg" => {
+                if let Some(c) = self.active_content() {
+                    let u = Url::parse(LITE_DDG_HOME).unwrap();
+                    info!("cmd open_lite_ddg \u{2192} {}", u);
+                    c.load(u);
+                }
+            }
             "new_tab" => {
                 let raw = args.get("url").cloned().unwrap_or_else(|| self.home_url());
-                let start = Url::parse(&raw).unwrap_or_else(|_| Url::parse("https://duckduckgo.com").unwrap());
+                let friendly = prefer_servo_friendly_url(&raw);
+                let start = Url::parse(&friendly).unwrap_or_else(|_| Url::parse(LITE_DDG_HOME).unwrap());
                 let us = start.as_str().to_string();
                 if media_engine::wants_media_window(&us) {
                     info!("cmd new_tab \u{2192} media engine: {}", us);
@@ -399,6 +455,7 @@ impl AppState {
         let mut all_tabs = tabs;
         all_tabs.extend(media_tabs);
         let zoom = self.tab_zoom.borrow().get(active_idx).copied().unwrap_or(1.0);
+        let compat_hint = is_client_side_exception_title(&title);
         serde_json::json!({
             "url": url,
             "title": title,
@@ -411,6 +468,10 @@ impl AppState {
             "canReopen": !self.closed_tabs.borrow().is_empty(),
             "shield": self.config.borrow().block_ads,
             "bookmarked": !url.is_empty() && self.bookmarks.borrow().find_by_url(&url).is_some(),
+            "compatHint": compat_hint,
+            "compatMessage": if compat_hint {
+                "This site needs modern JS Servo can't run yet. Open DuckDuckGo lite instead?"
+            } else { "" },
         }).to_string()
     }
 }
@@ -467,13 +528,18 @@ fn handle_shortcut(key_event: &KeyEvent, state: &AppState) -> bool {
 fn resolve_navigate_input(raw: &str, search_prefix: &str) -> Option<Url> {
     let trimmed = raw.trim();
     if trimmed.is_empty() { return None; }
-    if let Ok(u) = Url::parse(trimmed) { return Some(u); }
+    if let Ok(u) = Url::parse(trimmed) {
+        return Url::parse(&prefer_servo_friendly_url(u.as_str())).ok().or(Some(u));
+    }
     let has_dot = trimmed.contains('.');
     let has_space = trimmed.contains(' ');
     match has_dot && !has_space {
-        true => Url::parse(&format!("https://{}", trimmed)).ok(),
+        true => {
+            let candidate = format!("https://{}", trimmed);
+            Url::parse(&prefer_servo_friendly_url(&candidate)).ok().or_else(|| Url::parse(&candidate).ok())
+        }
         false => {
-            let prefix = match search_prefix.starts_with("http") { true => search_prefix, false => "https://duckduckgo.com/?q=" };
+            let prefix = match search_prefix.starts_with("http") { true => search_prefix, false => DEFAULT_SEARCH_ENGINE };
             Url::parse(&format!("{}{}", prefix, urlencoding::encode(trimmed))).ok()
         }
     }
@@ -548,28 +614,68 @@ fn drain_pending_media(event_loop: &winit::event_loop::ActiveEventLoop, state: &
     }
 }
 static LAST_MISMATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static LAST_OFFSCREEN_DRIFT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn paint_and_present(state: &AppState) {
+    // Servoshell binds the GL context before every composite. Without this, ANGLE/surfman
+    // can leave the wrong context current after input/wake → clear/blit become no-ops and
+    // present shows a cleared (black) or untouched (white) content band.
+    if let Err(e) = state.rendering_context.make_current() {
+        log::warn!("paint_and_present: make_current failed: {:?}", e);
+    }
+
     let win_now = state.window_size();
     let ctx_now = state.rendering_context.size();
     let key = ((win_now.width as u64) << 32) | win_now.height as u64;
     if (ctx_now.width, ctx_now.height) != (win_now.width, win_now.height) && LAST_MISMATCH.swap(key, std::sync::atomic::Ordering::Relaxed) != key {
         info!("paint mismatch: ctx {}x{} vs win {}x{}", ctx_now.width, ctx_now.height, win_now.width, win_now.height);
     }
+
+    let chrome_px = state.chrome_px();
+    let expected_content = content_size(win_now, chrome_px);
+    let off_now = state.offscreen_context.size();
+    if (off_now.width, off_now.height) != (expected_content.width, expected_content.height) {
+        let off_key = ((off_now.width as u64) << 32) | off_now.height as u64;
+        if LAST_OFFSCREEN_DRIFT.swap(off_key, std::sync::atomic::Ordering::Relaxed) != off_key {
+            info!(
+                "offscreen size drift {}x{} vs expected content {}x{} (chrome_px={}) — resizing webviews",
+                off_now.width, off_now.height, expected_content.width, expected_content.height, chrome_px
+            );
+        }
+        // WebView::resize drives OffscreenRenderingContext::resize (do not pre-resize contexts).
+        if let Some(chrome) = state.chrome_webview.borrow().as_ref() { chrome.resize(win_now); }
+        for c in state.content_webviews.borrow().iter() { c.resize(expected_content); }
+    }
+
     let chrome_opt = state.chrome_webview.borrow().clone();
     let content_opt = state.active_content();
     if let Some(chrome) = chrome_opt.as_ref() { chrome.paint(); }
     if let Some(content) = content_opt.as_ref() { content.paint(); }
-    if let Some(callback) = state.offscreen_context.render_to_parent_callback() {
-        let win = state.window_size();
-        let chrome_px = state.chrome_px();
-        let content_h = win.height.saturating_sub(chrome_px).max(1);
-        let target_rect = DefaultRect::new(
-            DefaultPoint2D::new(0i32, 0i32),
-            DefaultSize2D::new(win.width as i32, content_h as i32),
-        );
-        state.rendering_context.prepare_for_rendering();
-        let gl = state.rendering_context.glow_gl_api();
-        callback(&gl, target_rect);
+
+    // v0.10.1 invariant: after content.paint() the offscreen FB is the DRAW target. Servo's
+    // blit callback scissor-clears *before* rebinding, so we must rebind the window FB first
+    // or the clear blacks the source → black content void (_shot_nav.png).
+    state.rendering_context.prepare_for_rendering();
+
+    let content_h = win_now.height.saturating_sub(chrome_px).max(1);
+    // GL framebuffer origin is BOTTOM-LEFT (servoshell uses clip.from_bottom_px). Content
+    // lives under the top chrome strip ⇒ target_rect.y = 0, height = content_h. Using
+    // y=chrome_px here would wipe chrome and leave a blank band at the bottom.
+    let target_rect = DefaultRect::new(
+        DefaultPoint2D::new(0i32, 0i32),
+        DefaultSize2D::new(win_now.width.max(1) as i32, content_h as i32),
+    );
+    match state.offscreen_context.render_to_parent_callback() {
+        Some(callback) => {
+            let gl = state.rendering_context.glow_gl_api();
+            callback(&gl, target_rect);
+        }
+        None => {
+            // framebuffer_id==0 → FBO never created (context not current at offscreen init).
+            log::warn!(
+                "paint_and_present: render_to_parent_callback=None (offscreen FBO missing) — content void; offscreen={}x{} win={}x{}",
+                off_now.width, off_now.height, win_now.width, win_now.height
+            );
+        }
     }
     state.rendering_context.present();
 }
@@ -635,14 +741,22 @@ impl ApplicationHandler<WakerEvent> for App {
             *app_state.chrome_webview.borrow_mut() = Some(chrome_webview);
             let servo_url = initial_urls.iter().find(|(_, k)| *k == EngineKind::Servo).map(|(u, _)| u.clone())
                 .filter(|u| !u.starts_with("amnibrowse://") && u.starts_with("http"))
+                .map(|u| prefer_servo_friendly_url(&u))
                 .unwrap_or_else(|| app_state.home_url());
-            let content_url = Url::parse(&servo_url).unwrap_or_else(|_| Url::parse("https://duckduckgo.com").unwrap());
+            let content_url = Url::parse(&servo_url).unwrap_or_else(|_| Url::parse(LITE_DDG_HOME).unwrap());
             info!("servo content initial url: {}", content_url);
             let content_webview = WebViewBuilder::new(&app_state.servo, app_state.offscreen_context.clone())
                 .url(content_url)
                 .hidpi_scale_factor(Scale::new(scale))
                 .delegate(app_state.clone())
                 .build();
+            // Explicit resize attaches the content WebView to the offscreen surface size.
+            // Without this, some boots leave a zero/stale viewport and blit an empty FB.
+            let off_sz = app_state.offscreen_context.size();
+            content_webview.resize(off_sz);
+            if let Some(chrome) = app_state.chrome_webview.borrow().as_ref() {
+                chrome.resize(window_size);
+            }
             let z0 = app_state.default_zoom();
             if (z0 - 1.0).abs() > 0.01 { content_webview.set_page_zoom(z0); }
             app_state.content_webviews.borrow_mut().push(content_webview);
@@ -653,8 +767,12 @@ impl ApplicationHandler<WakerEvent> for App {
                     app_state.media_windows.borrow_mut().insert(id, mw);
                 }
             }
+            info!(
+                "Servo embedder ready: win={}x{} chrome_px={} offscreen={}x{} scale={} (blit GL y=0,h=content)",
+                window_size.width, window_size.height, chrome_px, off_sz.width, off_sz.height, scale
+            );
+            app_state.window.request_redraw();
             *self = Self::Running(app_state);
-            info!("Servo embedder ready (chrome + content compositing)");
         }
     }
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, _event: WakerEvent) {
