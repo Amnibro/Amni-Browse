@@ -45,8 +45,11 @@ Amni Browse is designed with a single principle: **your browsing is yours.**
 ### Build & Run
 
 ```bash
-# Quick launch (Windows)
+# First build + launch (Windows, ~30 min cold)
 run.bat
+
+# Every launch after that (no rebuild)
+run-fast.bat
 
 # Or build manually
 cargo build --release
