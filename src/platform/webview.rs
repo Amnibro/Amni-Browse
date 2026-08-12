@@ -196,12 +196,13 @@ impl Browser {
                 }
                 Event::WindowEvent { event: WindowEvent::Focused(true) | WindowEvent::Resized(_), .. } => {
                     let th = last_theme.borrow().clone();
-                    if !th.is_empty() && th != "{}" {
-                        webview.evaluate_script(&format!(
-                            "window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME({})",
-                            th
-                        )).ok();
-                    }
+                    let tabs = last_tabs.borrow().clone();
+                    let th_js = if th.is_empty() || th == "{}" { "null".into() } else { th };
+                    let tabs_js = if tabs.is_empty() { "[]".into() } else { tabs };
+                    webview.evaluate_script(&format!(
+                        "try{{window.__AMNI_ENSURE&&window.__AMNI_ENSURE();window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS({tabs});if({th})window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME({th})}}catch(_){{}}",
+                        tabs = tabs_js, th = th_js
+                    )).ok();
                 }
                 Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
                     state.borrow_mut().shutdown();
@@ -525,12 +526,16 @@ function ensureToolbar(){{
 window.__AMNI_ENSURE = ensureToolbar;
 window.__AMNI_SYNC_THEME = function(th){{
   try {{
+    ensureToolbar();
     var obj = (typeof th === 'string') ? JSON.parse(th) : th;
     applyTheme(obj);
   }} catch(_) {{}}
 }};
 window.__AMNI_SYNC_TABS = function(list){{
-  try {{ paintTabs(list); }} catch(_) {{}}
+  try {{
+    ensureToolbar();
+    paintTabs(list);
+  }} catch(_) {{}}
 }};
 window.__amni_receive = function(msg){{
   if (!msg) return;
