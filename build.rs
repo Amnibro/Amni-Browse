@@ -57,6 +57,7 @@ fn copy_angle_dlls() {
 fn copy_gstreamer_plugins() {
     let Some(profile_dir) = profile_dir() else { return };
     let Ok(gst_root) = env::var("GSTREAMER_1_0_ROOT_MSVC_X86_64") else { return };
+    copy_gstreamer_runtime_dlls(&gst_root, &profile_dir);
     let plugin_dir = PathBuf::from(&gst_root).join("lib").join("gstreamer-1.0");
     if !plugin_dir.exists() { println!("cargo:warning=gstreamer plugin dir not found: {}", plugin_dir.display()); return; }
     let plugins = [
@@ -78,4 +79,17 @@ fn copy_gstreamer_plugins() {
         if fs::copy(&src, &dst).is_ok() { copied += 1; }
     }
     println!("cargo:warning=copied {} gstreamer plugins to {}", copied, profile_dir.display());
+}
+#[cfg(target_os = "windows")]
+fn copy_gstreamer_runtime_dlls(gst_root: &str, profile_dir: &Path) {
+    let bin_dir = PathBuf::from(gst_root).join("bin");
+    let entries = match fs::read_dir(&bin_dir) { Ok(e) => e, Err(_) => { println!("cargo:warning=gstreamer bin dir not found: {}", bin_dir.display()); return; } };
+    let mut copied = 0usize;
+    for entry in entries.flatten() {
+        let src = entry.path();
+        if src.extension().and_then(|e| e.to_str()) != Some("dll") { continue; }
+        let dst = profile_dir.join(entry.file_name());
+        fs::copy(&src, &dst).is_ok().then(|| copied += 1);
+    }
+    println!("cargo:warning=copied {} gstreamer runtime dll(s) to {} (so the exe launches without run.bat's PATH shim)", copied, profile_dir.display());
 }

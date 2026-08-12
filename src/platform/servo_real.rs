@@ -27,6 +27,7 @@ use crate::platform::media_engine::{self, EngineKind, MediaWindow};
 use crate::platform::servo_keys::keyboard_event_from_winit;
 use crate::storage::bookmarks::BookmarkManager;
 use crate::storage::config::BrowserConfig;
+use crate::ui::theme::ThemeConfig;
 const CHROME_HEIGHT_CSS: f32 = 66.0;
 const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
 
@@ -110,7 +111,8 @@ pub fn run(state: BrowserState) {
         (t.url.clone(), kind)
     }).collect();
     if let Ok(test_url) = std::env::var("AMNI_TEST_MEDIA_URL") { info!("AMNI_TEST_MEDIA_URL set \u{2192} injecting media tab: {}", test_url); initial_urls.push((test_url, EngineKind::Media)); }
-    let mut app = App::new(&event_loop, ad_blocker, initial_urls, config, bookmarks);
+    let themes = state.themes.clone();
+    let mut app = App::new(&event_loop, ad_blocker, initial_urls, config, bookmarks, themes);
     event_loop.run_app(&mut app).expect("event loop run");
 }
 #[derive(Debug)]
@@ -141,6 +143,7 @@ struct AppState {
     is_fullscreen: Cell<bool>,
     config: RefCell<BrowserConfig>,
     bookmarks: RefCell<BookmarkManager>,
+    themes: RefCell<ThemeConfig>,
     cmd_token: String,
     self_weak: Weak<AppState>,
 }
@@ -187,7 +190,7 @@ impl AppState {
     fn settings_page_html(&self) -> String {
         let c = self.config.borrow();
         let b = self.bookmarks.borrow();
-        let engines = [("DuckDuckGo", "https://duckduckgo.com/?q="), ("Brave", "https://search.brave.com/search?q="), ("Startpage", "https://www.startpage.com/sp/search?query="), ("Google", "https://www.google.com/search?q=")];
+        let engines = [("DuckDuckGo", "https://html.duckduckgo.com/html/?q="), ("Brave", "https://search.brave.com/search?q="), ("Startpage", "https://www.startpage.com/sp/search?query="), ("Google", "https://www.google.com/search?q=")];
         let radios: String = engines.iter().map(|(n, p)| format!("<label class='opt'><input type='radio' name='se' value='{}'{} onchange='set(\"search_engine\",this.value)'><span>{}</span></label>", p, match c.search_engine == *p { true => " checked", false => "" }, n)).collect();
         let zooms: String = [(0.8, "80%"), (0.9, "90%"), (1.0, "100%"), (1.1, "110%"), (1.25, "125%"), (1.5, "150%")].iter().map(|(z, l)| format!("<option value='{}'{}>{}</option>", z, match (*z - c.default_zoom).abs() < 0.01 { true => " selected", false => "" }, l)).collect();
         let bms: String = match b.bookmarks.is_empty() {
@@ -217,7 +220,7 @@ impl AppState {
             }
             "new_tab" => {
                 let raw = args.get("url").cloned().unwrap_or_else(|| self.home_url());
-                let start = Url::parse(&raw).unwrap_or_else(|_| Url::parse("https://duckduckgo.com").unwrap());
+                let start = Url::parse(&raw).unwrap_or_else(|_| Url::parse("https://html.duckduckgo.com/html/").unwrap());
                 let us = start.as_str().to_string();
                 if media_engine::wants_media_window(&us) {
                     info!("cmd new_tab \u{2192} media engine: {}", us);
@@ -399,6 +402,7 @@ impl AppState {
         let mut all_tabs = tabs;
         all_tabs.extend(media_tabs);
         let zoom = self.tab_zoom.borrow().get(active_idx).copied().unwrap_or(1.0);
+        let theme: serde_json::Value = serde_json::from_str(&self.themes.borrow().active_theme_json()).unwrap_or(serde_json::Value::Null);
         serde_json::json!({
             "url": url,
             "title": title,
@@ -406,6 +410,7 @@ impl AppState {
             "canBack": can_back,
             "canForward": can_forward,
             "tabs": all_tabs,
+            "theme": theme,
             "zoom": zoom,
             "fullscreen": self.is_fullscreen.get(),
             "canReopen": !self.closed_tabs.borrow().is_empty(),
@@ -473,7 +478,7 @@ fn resolve_navigate_input(raw: &str, search_prefix: &str) -> Option<Url> {
     match has_dot && !has_space {
         true => Url::parse(&format!("https://{}", trimmed)).ok(),
         false => {
-            let prefix = match search_prefix.starts_with("http") { true => search_prefix, false => "https://duckduckgo.com/?q=" };
+            let prefix = match search_prefix.starts_with("http") { true => search_prefix, false => "https://html.duckduckgo.com/html/?q=" };
             Url::parse(&format!("{}{}", prefix, urlencoding::encode(trimmed))).ok()
         }
     }
@@ -564,7 +569,7 @@ fn paint_and_present(state: &AppState) {
         let chrome_px = state.chrome_px();
         let content_h = win.height.saturating_sub(chrome_px).max(1);
         let target_rect = DefaultRect::new(
-            DefaultPoint2D::new(0i32, 0i32),
+            DefaultPoint2D::new(0i32, chrome_px as i32),
             DefaultSize2D::new(win.width as i32, content_h as i32),
         );
         state.rendering_context.prepare_for_rendering();
@@ -582,15 +587,15 @@ fn resize_all(state: &AppState, new_size: PhysicalSize<u32>) {
     for c in state.content_webviews.borrow().iter() { c.resize(content); }
     state.window.request_redraw();
 }
-enum App { Initial(Waker, Arc<Mutex<AdBlocker>>, Vec<(String, EngineKind)>, BrowserConfig, BookmarkManager), Running(Rc<AppState>) }
+enum App { Initial(Waker, Arc<Mutex<AdBlocker>>, Vec<(String, EngineKind)>, BrowserConfig, BookmarkManager, ThemeConfig), Running(Rc<AppState>) }
 impl App {
-    fn new(event_loop: &EventLoop<WakerEvent>, ad_blocker: Arc<Mutex<AdBlocker>>, initial_urls: Vec<(String, EngineKind)>, config: BrowserConfig, bookmarks: BookmarkManager) -> Self {
-        Self::Initial(Waker::new(event_loop), ad_blocker, initial_urls, config, bookmarks)
+    fn new(event_loop: &EventLoop<WakerEvent>, ad_blocker: Arc<Mutex<AdBlocker>>, initial_urls: Vec<(String, EngineKind)>, config: BrowserConfig, bookmarks: BookmarkManager, themes: ThemeConfig) -> Self {
+        Self::Initial(Waker::new(event_loop), ad_blocker, initial_urls, config, bookmarks, themes)
     }
 }
 impl ApplicationHandler<WakerEvent> for App {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
-        if let Self::Initial(waker, ad_blocker, initial_urls, config, bookmarks) = self {
+        if let Self::Initial(waker, ad_blocker, initial_urls, config, bookmarks, themes) = self {
             let display_handle = event_loop.display_handle().expect("display handle");
             let window = event_loop.create_window(Window::default_attributes().with_title("Amni Browse \u{2014} Servo")).expect("window");
             let window_handle = window.window_handle().expect("window handle");
@@ -622,6 +627,7 @@ impl ApplicationHandler<WakerEvent> for App {
                 is_fullscreen: Cell::new(false),
                 config: RefCell::new(config.clone()),
                 bookmarks: RefCell::new(bookmarks.clone()),
+                themes: RefCell::new(themes.clone()),
                 cmd_token,
                 self_weak: weak.clone(),
             });
@@ -636,7 +642,7 @@ impl ApplicationHandler<WakerEvent> for App {
             let servo_url = initial_urls.iter().find(|(_, k)| *k == EngineKind::Servo).map(|(u, _)| u.clone())
                 .filter(|u| !u.starts_with("amnibrowse://") && u.starts_with("http"))
                 .unwrap_or_else(|| app_state.home_url());
-            let content_url = Url::parse(&servo_url).unwrap_or_else(|_| Url::parse("https://duckduckgo.com").unwrap());
+            let content_url = Url::parse(&servo_url).unwrap_or_else(|_| Url::parse("https://html.duckduckgo.com/html/").unwrap());
             info!("servo content initial url: {}", content_url);
             let content_webview = WebViewBuilder::new(&app_state.servo, app_state.offscreen_context.clone())
                 .url(content_url)

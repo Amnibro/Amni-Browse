@@ -454,18 +454,8 @@ impl BrowserState {
             IpcMessage::DrmStats => Some(IpcResponse::DrmStatsResp { data: self.drm.stats_json() }),
             IpcMessage::DrmReport => Some(IpcResponse::DrmReportResp { report: self.drm.concessions_report() }),
             IpcMessage::DrmOverride { domain, use_webview } => { self.drm.add_override(&domain, use_webview); info!("DRM override: {} -> {}", domain, if use_webview { "WebView" } else { "Engine" }); None }
-            IpcMessage::AmniAppList => Some(IpcResponse::AmniApps { data: crate::engine::app_launcher::list_apps_json() }),
-            IpcMessage::LaunchApp { id } => {
-                match crate::engine::app_launcher::launch_app(&id) {
-                    Ok(msg) => {
-                        let app = crate::engine::app_launcher::AMNI_APPS.iter().find(|a| a.id == id.as_str());
-                        let is_web = app.map(|a| matches!(a.launch, crate::engine::app_launcher::LaunchType::Web(_))).unwrap_or(false);
-                        if is_web { Some(IpcResponse::AppNavigate { url: msg }) }
-                        else { Some(IpcResponse::AppLaunched { message: msg }) }
-                    }
-                    Err(e) => { error!("App launch failed: {}", e); Some(IpcResponse::Error { message: e }) }
-                }
-            }
+            IpcMessage::AmniAppList => Some(IpcResponse::NavigateTo { url: "https://amni-scient.com".into() }),
+            IpcMessage::LaunchApp { .. } => Some(IpcResponse::NavigateTo { url: "https://amni-scient.com".into() }),
         }
     }
 }

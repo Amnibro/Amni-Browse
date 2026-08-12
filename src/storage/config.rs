@@ -5,8 +5,8 @@ use std::path::PathBuf;
 pub const APP_NAME: &str = "Amni Browse";
 pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_HOME: &str = "amnibrowse://newtab";
-pub const DEFAULT_SEARCH_ENGINE: &str = "https://duckduckgo.com/?q=";
-pub const USER_AGENT: &str = "AmniBrowse/0.3 (Privacy-First; Amni-Scient)";
+pub const DEFAULT_SEARCH_ENGINE: &str = "https://html.duckduckgo.com/html/?q=";
+pub const USER_AGENT: &str = concat!("AmniBrowse/", env!("CARGO_PKG_VERSION"), " (Privacy-First; Amni-Scient)");
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SplitMode { None, Horizontal, Vertical }
 impl Default for SplitMode { fn default() -> Self { Self::None } }

@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 set "GST_ROOT=C:\gstreamer\1.0\msvc_x86_64"
 if not exist "%GST_ROOT%\bin\gstreamer-1.0-0.dll" set "GST_ROOT=C:\Program Files\gstreamer\1.0\msvc_x86_64"
@@ -14,7 +15,7 @@ set "PATH=%PATH%;%GST_ROOT%\bin;C:\ProgramData\chocolatey\bin"
 set "NEED_BUILD=1"
 if exist "target\release\amni-browse.exe" (
     for /f %%s in ('powershell -NoProfile -Command "$exe=(Get-Item 'target\release\amni-browse.exe').LastWriteTime; $src=@(Get-ChildItem -Recurse -File src,build.rs,Cargo.toml,Cargo.lock -ErrorAction SilentlyContinue | Measure-Object -Property LastWriteTime -Maximum).Maximum; if ($src -and $src -gt $exe) { 'stale' } else { 'fresh' }"') do set "BUILD_STATE=%%s"
-    if "%BUILD_STATE%"=="fresh" set "NEED_BUILD=0"
+    if "!BUILD_STATE!"=="fresh" set "NEED_BUILD=0"
 )
 if "%NEED_BUILD%"=="0" (
     echo [Amni-Browse] Prebuilt exe is up to date - skipping rebuild ^(delete target\release\amni-browse.exe to force one^).

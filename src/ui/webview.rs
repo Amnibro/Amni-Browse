@@ -473,12 +473,12 @@ pub fn browser_html(theme: &Theme) -> String {
         </div>
 
         <div style="margin-top:20px;color:var(--text-secondary);font-size:11px;text-align:center;max-width:520px;line-height:1.7;">
-            {e_lock} No telemetry &nbsp;{e_middot}&nbsp; {e_shield} Built-in ad blocker &nbsp;{e_middot}&nbsp; {e_no_entry} No third-party cookies<br>
-            {e_search} DuckDuckGo search &nbsp;{e_middot}&nbsp; {e_key} AES-256 encrypted vault &nbsp;{e_middot}&nbsp; {e_floppy} All data stored locally
+            {e_lock} No telemetry &nbsp;{e_middot}&nbsp; {e_shield} Navigation-layer ad blocker &nbsp;{e_middot}&nbsp; {e_no_entry} Third-party cookies blocked by default<br>
+            {e_search} DuckDuckGo search &nbsp;{e_middot}&nbsp; {e_key} AES-256-GCM vault &nbsp;{e_middot}&nbsp; {e_floppy} Profile data stays on this device
         </div>
 
         <div style="margin-top:10px;font-size:10px;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;">
-            Amni-Scient {e_emdash} Independent Software Studio
+            Amni Browse {ver} {e_emdash} Amni-Scient
         </div>
     </div>
 
@@ -640,14 +640,6 @@ pub fn browser_html(theme: &Theme) -> String {
         <div id="dt-network" style="padding:4px;max-height:calc(100vh - 140px);overflow-y:auto;display:none;"></div>
     </div>
 </div>
-<!-- ===== AMNI APPS PANEL ===== -->
-<div class="slide-panel" id="panel-amniapps">
-    <div class="panel-header"><h2>{e_apps} Amni Apps</h2><button class="panel-close" onclick="closePanel('amniapps')">{e_close}</button></div>
-    <div class="panel-body">
-        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">Launch Amni-Scient software</div>
-        <div id="amni-app-list"></div>
-    </div>
-</div>
 <!-- ===== EXTENSIONS PANEL ===== -->
 <div class="slide-panel" id="panel-extensions">
     <div class="panel-header"><h2>{e_puzzle} Extensions</h2><button class="panel-close" onclick="closePanel('extensions')">{e_close}</button></div>
@@ -702,7 +694,7 @@ pub fn browser_html(theme: &Theme) -> String {
     <button class="ctx-item" onclick="openPanel('history')">{e_clock} History</button>
     <div class="ctx-divider"></div>
     <button class="ctx-item" onclick="openPanel('devtools')">{e_wrench} DevTools</button>
-    <button class="ctx-item" onclick="openPanel('amniapps')">{e_apps} Amni Apps</button>
+    <button class="ctx-item" onclick="navigate('https://amni-scient.com')">{e_apps} Amni Apps</button>
     <button class="ctx-item" onclick="openPanel('extensions')">{e_puzzle} Extensions</button>
     <button class="ctx-item" onclick="openPanel('profiles')">{e_person} Profiles</button>
     <button class="ctx-item" onclick="openPanel('autofill')">{e_memo} Autofill</button>
@@ -822,7 +814,6 @@ pub fn browser_html(theme: &Theme) -> String {
             case 'devtools_network': renderDTNet(JSON.parse(msg.data)); break;
             case 'devtools_state': setStatus('{e_wrench} DevTools ' + (msg.active_panel || 'console') + ' (' + (msg.console_count||0) + ' logs)'); break;
             case 'extensions': renderExts(JSON.parse(msg.data)); break;
-            case 'amni_apps': renderAmniApps(JSON.parse(msg.data)); break;
             case 'app_launched': setStatus('{e_check} ' + msg.message); break;
             case 'app_navigate': sendIpc({{type:'navigate',url:msg.url}}); closeAllPanels(); break;
             case 'profiles': renderProfs(JSON.parse(msg.data)); break;
@@ -1024,7 +1015,7 @@ pub fn browser_html(theme: &Theme) -> String {
         const panel = document.getElementById('panel-' + name);
         if (panel) panel.classList.add('open');
         hideMenu();
-        const m = {{vault:'vault_status',themes:'theme_list',downloads:'download_list',history:'history_list',devtools:'devtools_state',extensions:'ext_list',profiles:'profile_list',autofill:'autofill_list',permissions:'permission_list',amniapps:'amni_app_list'}};
+        const m = {{vault:'vault_status',themes:'theme_list',downloads:'download_list',history:'history_list',devtools:'devtools_state',extensions:'ext_list',profiles:'profile_list',autofill:'autofill_list',permissions:'permission_list'}};
         if (name === 'themes') sendIpc({{type:'theme_get_active'}});
         if (m[name]) sendIpc({{type:m[name]}});
     }}
@@ -1319,23 +1310,6 @@ pub fn browser_html(theme: &Theme) -> String {
             el.appendChild(div);
         }});
     }}
-    function renderAmniApps(apps) {{
-        const el=document.getElementById('amni-app-list'); if(!el) return;
-        const emojiMap={{rocket:'{e_apps}',chart:'{e_chart}',inbox:'{e_download}',palette:'{e_palette}',diamond:'{e_diamond}',globe:'{e_globe}',bolt:'{e_bolt}',xr:'{e_xr}',wrench:'{e_wrench}',crown:'{e_crown}'}};
-        const iconHtml=(a,fb)=>a.icon_src?('<img src="'+a.icon_src+'" style="width:24px;height:24px;object-fit:contain;border-radius:6px;">'):('<div style="font-size:22px;width:36px;text-align:center;">'+(emojiMap[a.emoji]||fb)+'</div>');
-        const locals=(apps||[]).filter(a=>a.category==='Local'),webs=(apps||[]).filter(a=>a.category==='Web');
-        let h='<div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Local Apps</div>';
-        locals.forEach(a=>{{h+='<div style="display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:6px;background:var(--bg-hover);border-radius:var(--radius);border:1px solid var(--border);">'+
-            '<div style="width:36px;display:flex;align-items:center;justify-content:center;">'+iconHtml(a,'{e_apps}')+'</div>'+
-            '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+escapeHtml(a.name)+'</div><div style="font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escapeHtml(a.desc)+'</div></div>'+
-            '<button class="vault-btn" style="font-size:11px;padding:4px 12px;white-space:nowrap;" onclick="sendIpc({{type:\'launch_app\',id:\''+a.id+'\'}})">Launch</button></div>';}});
-        h+='<div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px;">Web Apps</div>';
-        webs.forEach(a=>{{h+='<div style="display:flex;align-items:center;gap:10px;padding:10px;margin-bottom:6px;background:var(--bg-hover);border-radius:var(--radius);border:1px solid var(--border);">'+
-            '<div style="width:36px;display:flex;align-items:center;justify-content:center;">'+iconHtml(a,'{e_globe}')+'</div>'+
-            '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:600;">'+escapeHtml(a.name)+'</div><div style="font-size:11px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escapeHtml(a.desc)+'</div></div>'+
-            '<button class="vault-btn" style="font-size:11px;padding:4px 12px;white-space:nowrap;" onclick="sendIpc({{type:\'launch_app\',id:\''+a.id+'\'}})">Open</button></div>';}});
-        el.innerHTML=h;
-    }}
     function renderProfs(profs) {{
         const el=document.getElementById('prof-list'); if(!el) return; el.innerHTML='';
         (profs||[]).forEach(p => {{
@@ -1471,7 +1445,7 @@ pub fn browser_html(theme: &Theme) -> String {
         {{icon:'{e_book}',label:'Reader Mode',kbd:'',fn:()=>toggleReader()}},
         {{icon:'{e_wrench}',label:'DevTools',kbd:'Ctrl+Shift+I',fn:()=>openPanel('devtools')}},
         {{icon:'{e_puzzle}',label:'Extensions',kbd:'',fn:()=>openPanel('extensions')}},
-        {{icon:'{e_apps}',label:'Amni Apps',kbd:'',fn:()=>openPanel('amniapps')}},
+        {{icon:'{e_apps}',label:'Amni Apps',kbd:'',fn:()=>navigate('https://amni-scient.com')}},
         {{icon:'{e_person}',label:'Profiles',kbd:'',fn:()=>openPanel('profiles')}},
         {{icon:'{e_memo}',label:'Autofill',kbd:'',fn:()=>openPanel('autofill')}},
         {{icon:'{e_shield}',label:'Toggle Ad Blocker',kbd:'',fn:()=>toggleShield()}},

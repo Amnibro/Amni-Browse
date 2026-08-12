@@ -1,6 +1,6 @@
 ****HEAVILY WORK IN PROGRESS****
 
-# Amni Browse v0.7.0
+# Amni Browse v0.11.0
 
 **A privacy-first, zero-telemetry web browser built from the ground up in Rust.**
 **Now with functional web browsing: navigate to real URLs, injected privacy toolbar, ad blocking at navigation level.**
@@ -162,20 +162,7 @@ The Servo-egui backend provides fully native browser chrome via egui/wgpu, indep
 
 ## � Amni Apps
 
-Launch other Amni-Scient software directly from the browser via the **Amni Apps** panel (context menu or command palette):
-
-| App | Type | Description |
-|-----|------|-------------|
-| Amni AI | Local | Qwen3.5-122B AI assistant (Gradio) |
-| Azno v2 | Local | GPU-accelerated trading platform |
-| Amni Mail | Local | Privacy-first email client |
-| Amni Gen | Local | AI image generation (ROCm/ZLUDA) |
-| Amni Calc | Local | Septidecimal WASM calculator |
-| Amni Explore | Local | 3D exoplanet exploration |
-| Amni Miner | Local | Data mining dashboard |
-| Amni Game | Local | Rust game engine |
-| Amni Coder | Web | AI code editor (example.com) |
-| Amni-Scient | Web | Main product site |
+**Amni Apps** (context menu, hamburger menu, or command palette) opens **https://amni-scient.com** — the product site — not a local app inventory.
 
 ## �👤 Multi-Profile
 

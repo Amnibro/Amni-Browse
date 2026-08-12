@@ -1,9 +1,11 @@
-﻿## v0.11.0 — 2026-08-11 (ff18986)
-- Real Settings page on the menu button: search engine, homepage, privacy shield, default zoom, UA override, bookmark management — persisted via BrowserConfig (AppData/amni-browse)
-- Shield button live-toggles ad/tracker blocking; bookmark star is real (BookmarkManager, Ctrl+D)
-- Built-in start page with bookmark tiles when homepage is blank
-- Security: amnibrowse:// command/state channel restricted to the chrome webview or a per-boot token (previously any website could issue browser commands and read tab state)
-- Chrome tightened to 66px, hue-hashed monogram tab icons, tab strip scrolls without growing
+﻿## v0.11.0 — 2026-08-12 (UI parity + release tag)
+- **Version single-source:** `Cargo.toml` 0.11.0; UA `AmniBrowse/0.11`; GitHub tag `v0.11.0`; site download strings match (retires mixed 0.10.3 / 0.7.0 docs noise).
+- **Theme home ↔ external:** shadow chrome seeds live ThemeConfig colors (`danger` included); `__AMNI_SYNC_THEME` applies without reload.
+- **Tabs survive leave-home:** host TabManager → `__AMNI_TAB_SEED` + page-load resync; new/switch/close re-navigates active tab URL.
+- **Chrome geometry:** `tokens::TOTAL_CHROME_H=110` (tabs+nav+bookmarks); host height no longer hardcoded 82 (was clipping bookmarks). Content push 114.
+- **OS title bar:** `WindowBuilder.with_decorations(true)` so release binary keeps the standard frame.
+- **Amni Apps:** menu/ctx/command palette navigate to `https://amni-scient.com` (local app list panel removed).
+- Servo chrome path still 66px settings shell (ff18986): real Settings + start page, live shield/bookmark, token-gated cmd channel.
 # Changelog
 
 ## Unreleased — 2026-08-11
