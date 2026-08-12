@@ -1,6 +1,11 @@
 ﻿# Changelog
 
 ## Unreleased — 2026-08-11
+### Chrome palette + progress + tab strip (a3ddb5b) — v0.10.10
+- **About/Shield pages** now use chrome dark tokens (`--bg:#0a0e1a`, accent cyan) instead of light `#f7f9fc`; shield was a silent unknown cmd, now loads a privacy status data-URL.
+- **Progress bar** finishes to 100% then fades (`finishing`) instead of snapping off at 72%.
+- **Tab strip:** `#tab-list` `overflow-x:auto` + `scrollIntoView` on active/roving; loading tabs pulse the favicon chip. Canary `0.10.10-palette`.
+- **Lock:** `data:` scheme treated as local (About/Shield won't flash insecure).
 ### Chrome tight left cluster (toolbar.html) — v0.10.8
 - **Root cause:** `#url-wrap{flex:1 1 auto}` kept eating the row on ultrawide even after `#nav-end` lost `margin-left:auto` (Servo flex + max-width still left zoom/menu far from the pill).
 - **Fix:** `#url-wrap{flex:0 1 960px}` + `#nav{justify-content:flex-start}` so nav-start | URL | nav-end stay one left cluster; free space sits *after* the menu, not between URL and menu. Canary `0.10.8-cluster`.

@@ -1,13 +1,14 @@
 # Checklist: chrome palette + progress polish (v0.10.10)
 - [x] Backup toolbar.html + servo_real.rs
-- [ ] Dark-theme About (menu) to chrome tokens — kill light-page flash
-- [ ] Shield → privacy status page (same tokens; was silent unknown cmd)
-- [ ] Progress: complete to 100% then fade (was stuck at 70%)
-- [ ] Active tab scrollIntoView after renderTabs
-- [ ] chromeRev `0.10.10-palette`
-- [ ] architecture_map + CHANGELOG
-- [ ] Stage toolbar to release assets; rebuild servo-real for About/Shield
-- [ ] Live relaunch smoke (menu dark, progress, canary)
-- [ ] Commit + push origin/main
-- [ ] Claude: confirm About/Shield palette on live PID
-- [ ] Google: multi-tab scrollIntoView when strip overflows
+- [x] Dark-theme About (menu) to chrome tokens
+- [x] Shield → privacy status page (same tokens)
+- [x] Progress: complete to 100% then fade
+- [x] Active tab scrollIntoView after renderTabs
+- [x] chromeRev `0.10.10-palette`
+- [x] architecture_map + CHANGELOG (Grok verify pass)
+- [x] Commit + push origin/main (`a3ddb5b`)
+- [x] Parked unsafe WIP: stash `wip: settings/newtab + unsafe CHROME_HEIGHT 66` — do not pop without matching `#shell` height
+- [ ] Stage toolbar to release assets; rebuild servo-real for About/Shield (About/Shield need new exe)
+- [ ] Live relaunch smoke (menu dark, progress, canary) — Google dropped; Grok picking up
+- [ ] Claude: confirm About/Shield palette on live PID after rebuild lands
+- [ ] Next seat: multi-tab scrollIntoView overflow smoke when strip is full
