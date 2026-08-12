@@ -30,14 +30,18 @@ const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.ht
 
 fn load_toolbar_html() -> String {
     if let Ok(content) = std::fs::read_to_string("assets/chrome/toolbar.html") {
+        info!("chrome toolbar: loaded from cwd assets/chrome/toolbar.html ({} bytes)", content.len());
         return content;
     }
-    if let Ok(exe_dir) = std::env::current_exe().map(|p| p.parent().unwrap_or(p).to_path_buf()) {
+    if let Ok(exe) = std::env::current_exe() {
+        let exe_dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or(exe);
         let asset_path = exe_dir.join("assets").join("chrome").join("toolbar.html");
-        if let Ok(content) = std::fs::read_to_string(asset_path) {
+        if let Ok(content) = std::fs::read_to_string(&asset_path) {
+            info!("chrome toolbar: loaded from {} ({} bytes)", asset_path.display(), content.len());
             return content;
         }
     }
+    info!("chrome toolbar: using embedded fallback ({} bytes)", TOOLBAR_HTML_EMBEDDED.len());
     TOOLBAR_HTML_EMBEDDED.to_string()
 }
 

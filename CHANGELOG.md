@@ -1,6 +1,18 @@
 ﻿# Changelog
 
 ## Unreleased — 2026-08-11
+### Chrome ultrawide shell pin (toolbar.html) — v0.10.6
+- **`#nav-end{margin-left:auto}`:** URL stays capped at 960px; leftover ultrawide space falls *between* the pill and the zoom/shield/menu cluster so the trailing controls stay on the window’s right edge (desktop browser convention + stable mouse landmarks).
+- **URL flex:** `#url{min-width:0}` prevents the pill from overflowing its cap; lock + actions stay `flex:0`.
+- **Tab close:** 16→22px hit target; close glyph stays visible while the tab has keyboard focus.
+- **Roving:** `setRoving(el, focus)` — poll re-render re-applies tabindex without stealing focus when the user is in the URL bar; `chromeRev:'0.10.6-nav-end'` canary for live disk-load checks.
+
+### Chrome roving + ultrawide travel (toolbar.html)
+- **Nav clusters:** `#nav-start` (back/forward/reload) + `#nav-end` (zoom/shield/menu) so the URL pill caps at `max-width:960px` (end cluster pin completed in v0.10.6).
+- **Tab roving:** single tab stop (`tabindex` 0/-1), ArrowLeft/Right + Home/End move focus and switch; poll `renderTabs` restores focus without `CSS.escape` (Servo-safe); click promotes the clicked tab into the roving set.
+- **Focus rings:** `:focus` + `:focus-visible` on chrome controls (Servo is flaky on `:focus-visible` alone). URL still rings via `#url-wrap:focus-within`.
+- **Loader log:** `load_toolbar_html()` logs cwd / exe-relative / embedded so a Jul-22 prebuilt can't silently fake a "disk UI" pass.
+
 ### Chrome keyboard/mouse travel (toolbar.html)
 - **Hit targets:** `.nav-btn` / `#new-tab` / `#url-wrap` / `#zoom-level` raised 28→32px inside the 36px nav/tab rows (4px gutter, not 8). Nav gap tightened 4→2px so back/forward/reload sit as one cluster.
 - **Focus rings:** `#url` still has `outline:none` (native ring looks broken in the pill) but `#url-wrap:focus-within` + `.focused` now draw accent border + `box-shadow` with `--accent-dim`. `:focus-visible` rings on `.nav-btn`, `#new-tab`, `#zoom-level`, `.tab`.

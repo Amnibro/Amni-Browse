@@ -1,0 +1,11 @@
+# Checklist: toolbar roving + ultrawide (v0.10.5)
+- [x] Backup toolbar.html → backups/toolbar.html.v0.10.5.bak
+- [x] Group #nav-start / #nav-end; cap URL max-width 960px
+- [x] Roving setRoving helper; Home/End; no CSS.escape
+- [x] Focus restore on poll without focus yank
+- [x] :focus + :focus-visible rings (Servo-safe)
+- [x] Loader path logging in servo_real.rs
+- [x] Changelog + architecture_map
+- [ ] Release rebuild so e8aa647 disk loader is in the exe
+- [ ] Relaunch; confirm log line "loaded from cwd" + live chrome
+- [ ] Commit + push origin/main

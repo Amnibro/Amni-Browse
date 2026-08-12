@@ -1,0 +1,12 @@
+# Checklist: nav-end pin + focus polish (v0.10.6)
+- [x] Backup toolbar.html → backups/toolbar.html.v0.10.6.bak
+- [x] `#nav-end{margin-left:auto}` — pin menu/shield to window edge on ultrawide
+- [x] Keep `#url-wrap{max-width:960px}` for input focus length
+- [x] `#url{min-width:0}` so pill flex doesn't overflow
+- [x] Tab close hit target 16→22px; visible on :focus
+- [x] setRoving(el,focus) — poll restore can re-tabindex without yank when focus not on strip
+- [x] chromeRev canary `0.10.6-nav-end`
+- [x] Node static contract checks pass
+- [x] Claude: servo-real rebuild log line `chrome toolbar: loaded from cwd assets/chrome/toolbar.html (11466 bytes)` — PID 63004, 121MB exe
+- [x] Live: resize_all 3440x1369 + _shot5.png — dead space between URL and #nav-end, menu flush right
+- [x] Commit + push origin/main after live verify
