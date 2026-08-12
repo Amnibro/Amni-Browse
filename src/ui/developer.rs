@@ -16,7 +16,7 @@ header{{padding:20px 28px;border-bottom:1px solid var(--border,#1a2332);backgrou
 header h1{{font-size:18px;font-weight:700;letter-spacing:-.3px}}
 header .ver{{color:var(--text-secondary,#6b7d99);font-size:12px}}
 .tabs{{display:flex;gap:4px;padding:12px 28px 0;background:var(--bg-secondary,#0f1419);border-bottom:1px solid var(--border,#1a2332);flex-wrap:wrap}}
-.tab{{background:transparent;border:none;color:var(--text-secondary,#6b7d99);padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer;font:600 13px inherit}}
+.tab{{background:transparent;border:none;color:var(--text-secondary,#6b7d99);padding:10px 14px;border-radius:8px 8px 0 0;cursor:pointer;font-weight:600;font-size:13px;font-family:inherit}}
 .tab:hover{{color:var(--text-primary);background:var(--bg-hover,#1a1f2e)}}
 .tab.on{{color:var(--accent,#00d4ff);border-bottom:2px solid var(--accent,#00d4ff)}}
 main{{max-width:960px;margin:0 auto;padding:24px 28px 48px}}
@@ -27,9 +27,9 @@ p.dim{{color:var(--text-secondary,#6b7d99);font-size:13px;margin-bottom:16px}}
 .card{{background:var(--bg-secondary,#0f1419);border:1px solid var(--border,#1a2332);border-radius:12px;padding:16px;margin-bottom:14px}}
 .row{{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:8px 0}}
 label{{font-size:12px;color:var(--text-secondary);min-width:90px}}
-input[type=text],input[type=search],textarea,select{{flex:1;min-width:180px;background:var(--bg-primary,#0a0e14);border:1px solid var(--border,#1a2332);color:var(--text-primary);border-radius:8px;padding:8px 12px;font:13px inherit}}
+input[type=text],input[type=search],textarea,select{{flex:1;min-width:180px;background:var(--bg-primary,#0a0e14);border:1px solid var(--border,#1a2332);color:var(--text-primary);border-radius:8px;padding:8px 12px;font-size:13px;font-family:inherit}}
 textarea{{min-height:110px;width:100%;resize:vertical}}
-button.btn{{background:var(--accent,#00d4ff);color:#041018;border:none;border-radius:8px;padding:8px 14px;font:600 12px inherit;cursor:pointer}}
+button.btn{{background:var(--accent,#00d4ff);color:#041018;border:none;border-radius:8px;padding:8px 14px;font-weight:600;font-size:12px;font-family:inherit;cursor:pointer}}
 button.btn:hover{{filter:brightness(1.08)}}
 button.btn.ghost{{background:transparent;color:var(--text-primary);border:1px solid var(--border,#1a2332)}}
 button.btn.danger{{background:var(--danger,#ff4757);color:#fff}}

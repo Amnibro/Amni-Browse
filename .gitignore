@@ -58,3 +58,4 @@ _shot*.png
 
 # Session-local launch scratch
 launch_verify.bat
+*.zip

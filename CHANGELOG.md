@@ -406,3 +406,7 @@ F i x :   N a v i g a t i o n   h a n d l e r   b l o c k e d   w e b s i t e s 
 - Default theme retoned to Amni-Scient gold-on-dark tokens (#C89B4E accent, 4px radius, Segoe UI Variable); shadow-chrome palette fallbacks match.
 - Home SPA tab sizing unified with external chrome (fixed 148px), engine badge in status bar, private-tab label fallback fixed.
 - Verified: release build clean, binary launches with header chrome, pushed as 8586602.
+
+## Date: 2026-08-12 (v0.11.4 font fidelity)
+- Fixed invalid `font:<size> inherit` shorthand (silently dropped by CSS parsers) in URL bar (Anthony's toolbar.html fix, now committed) and DevTools panel (tabs/inputs/buttons in developer.rs) - these elements were rendering in UA default font instead of theme font.
+- chromeRev 0.11.4-font-fidelity; Cargo 0.11.4; release zip rebuilt from v0.11.3 payload with fresh exe + toolbar.
