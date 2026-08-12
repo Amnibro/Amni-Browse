@@ -94,7 +94,7 @@ p{color:var(--dim);margin:0 0 40px}
 .tile{display:flex;flex-direction:column;align-items:center;gap:8px;width:108px;padding:16px 6px;background:var(--elev);border:1px solid var(--stroke);border-radius:4px;text-decoration:none;color:var(--text);font-size:12px;transition:border-color .12s}
 .tile:hover{border-color:var(--accent)}
 .mono{width:40px;height:40px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff}
-.tile span{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile span{max-width:100px;overflow:hidden;white-space:nowrap}
 .dim{color:var(--dim);font-size:13px}
 </style></head><body><h1>Amni Browse</h1><p>No Amni telemetry &#183; local profile &#183; search from the bar above</p><div class='grid'>__TILES__</div></body></html>"##;
 fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
@@ -342,8 +342,16 @@ impl AppState {
                 if k == "theme" {
                     self.themes.borrow_mut().set_theme(v);
                     info!("cmd setting_set theme \u{2192} {}", v);
-                    let url_str = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.settings_page_html()));
-                    if let (Ok(parsed), Some(c)) = (Url::parse(&url_str), self.active_content()) { c.load(parsed); }
+                    let settings_data = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.settings_page_html()));
+                    let newtab_data = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.newtab_html()));
+                    let tabs = self.content_webviews.borrow();
+                    for c in tabs.iter() {
+                        let u = c.url().map(|x| x.as_str().to_string()).unwrap_or_default();
+                        if !u.starts_with("data:text/html") { continue; }
+                        let title = c.page_title().unwrap_or_default();
+                        let target = if title.contains("Settings") { settings_data.as_str() } else { newtab_data.as_str() };
+                        if let Ok(parsed) = Url::parse(target) { c.load(parsed); }
+                    }
                     return;
                 }
                 {

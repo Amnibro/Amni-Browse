@@ -11,12 +11,11 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
 /* ── TAB STRIP ─────────────────────────────── */
 #tabs{display:flex;align-items:flex-end;height:32px;padding:3px 6px 0;gap:2px;background:var(--bg-darkest)}
 #tab-list{display:flex;align-items:flex-end;gap:2px;flex:0 1 auto;min-width:0;max-width:calc(100% - 32px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
-#tab-list::-webkit-scrollbar{display:none}
 .tab{display:flex;align-items:center;gap:7px;min-width:96px;max-width:210px;height:28px;padding:0 9px;border:1px solid transparent;border-bottom:none;border-radius:var(--tab-radius);background:var(--tab-inactive);color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;transition:background .12s,color .12s,border-color .12s}
 .tab:hover{background:var(--bg-elev);color:var(--text)}
 .tab.active{background:var(--tab-active);color:var(--text);border-color:var(--stroke);box-shadow:0 2px 0 var(--accent) inset,0 -1px 4px rgba(0,0,0,.2);z-index:2}
 .tab .favicon{width:15px;height:15px;flex:0 0 15px;border-radius:4px;background:var(--accent-dim);display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff}
-.tab .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab .title{flex:1;overflow:hidden;white-space:nowrap}
 .tab .close{opacity:0;pointer-events:none;width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;font-size:13px;color:var(--text-dim);cursor:pointer;flex:0 0 20px;transition:opacity .12s,background .12s}
 .tab:hover .close,.tab.active .close,.tab:focus-visible .close{opacity:1;pointer-events:auto}
 .tab .close:hover{background:var(--danger);color:#fff}
