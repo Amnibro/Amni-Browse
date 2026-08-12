@@ -1,3 +1,9 @@
+## v0.11.12 tab strip mouse polish - 2026-08-12
+- **Wheel-scrolls the tab strip:** #tab-list is overflow-x:auto with the scrollbar hidden (scrollbar-width:none), so once tabs overflowed there was NO mouse path to off-screen tabs (keyboard roving only). Vertical wheel over the strip now pans it horizontally (passive:false, deltaX passthrough untouched).
+- **Double-click empty strip -> new tab** (Chrome/Firefox affordance; cuts travel to the 26px + button). Excludes tabs and the + button itself.
+- **Middle-click empty strip -> new tab** (Firefox affordance), moved the auxclick handler from #tab-list to #tabs so the dead space right of the last tab counts; middle-click-on-tab still closes it.
+- node --check on inline JS clean. Backup: backups/toolbar.html.v0.11.11.bak.
+
 ## v0.11.11 servo backend ship guard - 2026-08-12
 - **Root cause of "no header bar" (round N of the class, now structural):** `default = ["webview"]` + shared target/release path — a plain `cargo build --release` clobbered the servo-real exe at 07:06 and the v0.11.10 zip packed the 9.3MB webview binary. Cold-pulled live zip proof: log says `Backend: WebView (wry/tao)`, zero toolbar-mount lines — the webview backend has no chrome overlay, so no header, no theme radios, none of the 0.11.10 features.
 - **Packer guard shipped:** scripts/package_release.sh refuses any exe not embedding "Real Servo (libservo)" (and refuses any embedding "WebView (wry/tao)") before zipping; zips via python zipfile (forward-slash entries, per v0.11.8 lesson), staging from the previous zip's DLL layout with exe + assets swapped.
