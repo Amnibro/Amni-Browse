@@ -28,7 +28,7 @@ pub fn wants_media_window(url: &str) -> bool {
     route(url) == EngineKind::Media && !is_embed_url(url)
 }
 pub struct MediaWindow { pub window: Window, pub webview: WebView, pub url: String }
-const MEDIA_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 AmniBrowse/0.10";
+const MEDIA_UA: &str = concat!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 AmniBrowse/", env!("CARGO_PKG_VERSION"));
 pub fn spawn_media_window(event_loop: &ActiveEventLoop, url: &str) -> Option<(WindowId, MediaWindow)> {
     configure_privacy_env();
     let attrs = Window::default_attributes()
