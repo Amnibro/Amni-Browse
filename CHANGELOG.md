@@ -1,4 +1,4 @@
-## v0.11.9-pre keyboard travel + hash routing - 2026-08-12
+## v0.11.9 keyboard travel + hash routing - 2026-08-12
 - **Shipped-path shortcuts completed:** injected overlay handled only Ctrl+W/T/Tab/1-9/K on external pages. Added Ctrl+L (focus+select URL bar — the single largest keyboard-travel saver), Ctrl+D (bookmark current page via existing bookmark_add IPC), Ctrl+H / Ctrl+J (history / downloads panels).
 - **Fragment routing bug (root cause, pre-existing):** internal target builder fused fragments into the hostname (`amnibrowse://newtab#history` -> `http://amnibrowse.newtab#history/`), so location.hash arrived as `#history/` and the Developer menu deep-links (#themes/#ext/#bug) silently missed their data-p selector, landing on the default tab. Builder now splits `#frag` off before host/path and reattaches after: `http://amnibrowse.newtab/#history`.
 - **Menu History/Downloads dead-end fixed:** both routed to bare newtab (home, no affordance). Now deep-link `#history`/`#downloads`; home SPA opens the matching panel from location.hash (history/downloads/vault/devtools).

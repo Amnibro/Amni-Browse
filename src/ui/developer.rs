@@ -163,7 +163,7 @@ document.querySelectorAll('.tab').forEach(function(t){{
   }};
 }});
 (function(){{
-  var h=(location.hash||'').replace('#','');
+  var h=(location.hash||'').replace(/^#/,'').replace(/\/$/,'');
   if(h){{var b=document.querySelector('.tab[data-p="'+h+'"]');if(b)b.click();}}
 }})();
 function syncColor(c,t){{c.oninput=function(){{t.value=c.value}};t.oninput=function(){{if(/^#[0-9a-fA-F]{{6}}$/.test(t.value))c.value=t.value}};}}

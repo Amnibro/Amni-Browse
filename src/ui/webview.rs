@@ -1686,7 +1686,7 @@ pub fn browser_html(theme: &Theme) -> String {
     sendIpc({{ type: 'theme_get_active' }});
     sendIpc({{ type: 'doh_status' }});
     setInterval(() => sendIpc({{ type: 'get_stats' }}), 5000);
-    const h0 = (location.hash || '').replace('#', '');
+    const h0 = (location.hash || '').replace(/^#/, '').replace(/\/$/, '');
     ['history', 'downloads', 'vault', 'devtools'].includes(h0) && openPanel(h0);
 </script>
 </body>
