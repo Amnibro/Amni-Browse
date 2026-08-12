@@ -1,4 +1,7 @@
 ﻿# Amni-Browse Architecture Map
+## 2026-08-12 Tab strip hit reliability (WebView chrome)
+- External injected chrome (`src/platform/webview.rs` / `f3eb1c8`): fixed 148×30 tab chips, title cap ~22 chars, fingerprint skip-repaint (`__AMNI_TABS_FP`).
+- Hit path: `pointerdown`+`click` via `bindHit` + `stopImmediatePropagation`; close control `.x`; chrome host uses `popover=manual` top-layer so DRM overlays cannot steal strip clicks; Ctrl+W/T/Tab escape hatches.
 ## 2026-08-12 Content push under chrome (YouTube)
 - Fixed overlay chrome was painting over in-page mastheads (`#masthead-container` top:0). `applyContentPush` rewrites a live `<style id="__amni_push_style">` every ensure: html padding-top = measured host height+4, offsets YouTube fixed chrome (`#masthead-container`, `ytd-masthead`, mini-guide) to `top: var(--amni-chrome-h)`.
 ## 2026-08-12 Developer hub + security + bug report
