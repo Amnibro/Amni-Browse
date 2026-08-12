@@ -51,6 +51,9 @@
 - `src/ui/chrome.rs`: `truncate` now char-based (byte slice panicked on multibyte titles); Ctrl+Tab cycling via tabs_json in `handle_keyboard`.
 - Backups: `backups/{{webview,chrome}}.rs.v0.11.0-tabkeys.bak`. Checklist: `docs/checklists/checklist_tab_polish_v1.md`. cargo check clean both default + servo-engine; release binary launch-verified.
 
+## 2026-08-12 Release ship gate (0.11.2)
+- Public truth is **0.11.2**: crate version, README, chrome canary `0.11.2-settings`, GitHub Latest = `v0.11.2` asset `amni-browse-v0.11.2-win64.zip`, site tags. Severity chips/safebar are theme-native (`color-mix` over palette `p`; `warning` token threaded Rust->JS). Older tags stay as history.
+
 ## 2026-08-12 Release ship gate (0.11.1)
 - Public truth is **0.11.1** only: crate `CARGO_PKG_VERSION`, README, chrome canary `0.11.1-settings`, site tags (product/index/about/faq), GitHub Latest = `v0.11.1` asset `amni-browse-v0.11.1-win64.zip`. Leave `v0.11.0` / older tags as history (0.11.0 zip is pre-polish).
 - WebView chrome: `tokens` TAB38+NAV44+BOOK28 = TOTAL 110 / push 114; shadow DOM toolbar mounts on external http(s); SPA home keeps tab/nav/bookmarks bars; OS decorations on.

@@ -1,3 +1,9 @@
+## v0.11.2 - 2026-08-12 (severity palette goes theme-native)
+- **secchip/safebar theme tokens:** `.secchip.safe/low/medium/high`, `#_safebar`, and `.ab` badge were hardcoded dark-theme hex (`#143d28`, `#3d3a1a`, `#2a1518`, `#ff4757`, `#04140a`) injected regardless of active theme — dark lozenges on light chrome. Now derived via `color-mix` over `p.ok`/`p.warn`/`p.danger`/`p.bg`/`p.border`; single rule set serves dark + light.
+- **`warning` token threaded** Rust `Theme` -> JS palette (`p.warn`, fallback `#E8B04B`); tab-close hover text also mixed off `p.danger` instead of fixed `#fff`.
+- Public truth = 0.11.2: Cargo.toml, README, chromeRev `0.11.2-settings`, GitHub Latest `amni-browse-v0.11.2-win64.zip`, site tags.
+- Backup: `backups/webview.rs.v0.11.1-pre-secchip-theme.bak`. Launch-verified: v0.11.2 boots, chrome host up, tab restore + navigate clean, zero leaked processes.
+
 ## v0.11.1 - 2026-08-12 (version single-source + polished chrome ship)
 - **Public truth = 0.11.1:** Cargo.toml, chromeRev `0.11.1-settings`, README, GitHub Latest `amni-browse-v0.11.1-win64.zip`, site download + index tag. v0.11.0 zip left as pre-polish history (no clobber).
 - **End-user path verified:** fresh GH download → toolbar canary present; exe boots with window title + responding chrome host.
