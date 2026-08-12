@@ -30,7 +30,7 @@ use crate::storage::config::{BrowserConfig, DEFAULT_SEARCH_ENGINE, LITE_DDG_HOME
 const CHROME_HEIGHT_CSS: f32 = 66.0;
 const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
 /// Rewrite full Next.js DuckDuckGo URLs to the lite HTML endpoint Servo can paint.
-fn prefer_prefer_servo_friendly_url(raw: &str) -> String {
+fn prefer_servo_friendly_url(raw: &str) -> String {
     let trimmed = raw.trim();
     let Ok(u) = Url::parse(trimmed) else { return trimmed.to_string() };
     let host = u.host_str().unwrap_or("");
