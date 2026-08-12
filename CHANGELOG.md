@@ -1,6 +1,12 @@
-# Changelog
+﻿# Changelog
 
 ## Unreleased — 2026-08-11
+### Chrome keyboard/mouse travel (toolbar.html)
+- **Hit targets:** `.nav-btn` / `#new-tab` / `#url-wrap` / `#zoom-level` raised 28→32px inside the 36px nav/tab rows (4px gutter, not 8). Nav gap tightened 4→2px so back/forward/reload sit as one cluster.
+- **Focus rings:** `#url` still has `outline:none` (native ring looks broken in the pill) but `#url-wrap:focus-within` + `.focused` now draw accent border + `box-shadow` with `--accent-dim`. `:focus-visible` rings on `.nav-btn`, `#new-tab`, `#zoom-level`, `.tab`.
+- **Keyboard:** zoom reset is `tabindex=0` + Enter/Space; tabs are `role=tab`/`tabindex=0` with Enter/Space switch and Delete/Backspace close (delegated on `#tab-list`).
+- Dropped duplicate `#zoom-level:hover` rule.
+
 ### Launchers no longer hard-fail when GStreamer isn't in Program Files
 - **Bug:** `run.bat` / `run-fast.bat` hardcoded `C:\Program Files\gstreamer\1.0\msvc_x86_64` and bailed with "GStreamer not found"; bypassing the check produced a Windows loader dialog because `gstreamer-1.0-0.dll` was missing everywhere on the machine.
 - **Fix:** both launchers now probe `C:\gstreamer\1.0\msvc_x86_64` first, fall back to the Program Files path, and test for `bin\gstreamer-1.0-0.dll` (not just `bin\`) so a symbols-only devel extract can't pass the check.
