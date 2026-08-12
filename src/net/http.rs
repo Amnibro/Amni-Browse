@@ -55,7 +55,7 @@ impl AmniClient {
             cache: Arc::new(RwLock::new(HashMap::new())),
             dnt: true,
             block_3pc: true,
-            user_agent: format!("AmniBrowse/{} (Privacy-First; +https://amniscient.dev)", env!("CARGO_PKG_VERSION")),
+            user_agent: format!("AmniBrowse/{} (Privacy-First; +https://amni-scient.com)", env!("CARGO_PKG_VERSION")),
             default_auth: None,
         }
     }

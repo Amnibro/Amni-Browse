@@ -1,3 +1,8 @@
+## v0.11.8 asset repack + claims audit - 2026-08-12
+- **Zip packaging fix (asset clobbered in place, same tag):** Compress-Archive wrote one entry (assets/chrome/toolbar.html) with backslash separators - Info-ZIP/7-zip extraction dropped it as a flat root file, so the toolbar never hot-loaded = the "no header bar" failure class. Rewrote all 170 entries with forward slashes, gh release upload --clobber, live asset re-pulled + Info-ZIP cold-extracted + smoke-launched clean (header mounts, 0 strays). Future zips: python zipfile, never Compress-Archive.
+- **Home-page claims audited TRUE against source:** no telemetry/analytics SDK or phone-home (only outbound Amni URL is navigation to amni-scient.com); adblocker.rs domain+pattern stripping; DEFAULT_SEARCH_ENGINE=DDG (storage/config.rs); Aes256Gcm + PBKDF2-HMAC-SHA256 600_000 iters matches vault panel copy; no profile sync/upload paths; cookie line correctly hedged to system WebView policy.
+- UA plug domain fixed amniscient.dev -> amni-scient.com (net/http.rs); stray "src/crypto/* (copy).rs" cruft moved to backups/.
+
 ## v0.11.8 - 2026-08-12 (text_secondary parity: dev hub dim == home SPA dim)
 - **Last derivation mismatch killed:** hub built text_secondary via shade(tx,-40) (additive -102/channel, clamps to 0, hue-crushes saturated text) while home SPA uses dim(text,40) (multiplicative x0.6, hue-preserving). Identical only for pure-white text; e.g. gold #E8C55A -> hub #825f00 vs SPA #8b7636. Hub now carries the SPA's dim() verbatim.
 - Proven on the cold-pulled shipped v0.11.7 zip (not source): all other fields already parity (positive shade == lighten), glow ac+'26' both surfaces, cyan canary 0.
