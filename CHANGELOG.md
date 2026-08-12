@@ -1,4 +1,10 @@
-﻿# Changelog
+﻿## v0.11.0 — 2026-08-11 (ff18986)
+- Real Settings page on the menu button: search engine, homepage, privacy shield, default zoom, UA override, bookmark management — persisted via BrowserConfig (AppData/amni-browse)
+- Shield button live-toggles ad/tracker blocking; bookmark star is real (BookmarkManager, Ctrl+D)
+- Built-in start page with bookmark tiles when homepage is blank
+- Security: amnibrowse:// command/state channel restricted to the chrome webview or a per-boot token (previously any website could issue browser commands and read tab state)
+- Chrome tightened to 66px, hue-hashed monogram tab icons, tab strip scrolls without growing
+# Changelog
 
 ## Unreleased — 2026-08-11
 ### Chrome palette + progress + tab strip (a3ddb5b) — v0.10.10
