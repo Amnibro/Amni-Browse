@@ -1,4 +1,8 @@
 # Amni-Browse Architecture Map
+## 2026-08-12 v0.11.9-pre keyboard travel + internal hash routing
+- Injected overlay keydown (platform/webview.rs, shipped WebView2 path): + Ctrl+L focus/select URL bar, Ctrl+D bookmark_add, Ctrl+H/Ctrl+J -> newtab#history/#downloads (was only W/T/Tab/1-9/K).
+- Internal URL builder splits #frag before host/path: amnibrowse://x#y -> http://amnibrowse.x/#y (fragment previously fused into hostname; developer#themes deep-links silently landed on default tab).
+- Home SPA (ui/webview.rs): location.hash -> openPanel(history|downloads|vault|devtools) on load; menu History/Downloads now deep-link instead of dead-ending on home.
 ## 2026-08-12 v0.11.8 text_secondary parity (developer.rs dim == ui/webview.rs dim)
 - Hub saveTheme text_secondary shade(tx,-40) -> dim(tx,40); dim() ported verbatim from webview.rs. Public truth: Cargo 0.11.8 / GH Latest v0.11.8, v0.11.7 demoted to Pre-release.
 ## 2026-08-12 v0.11.7 custom-theme parity (developer.rs == ui/webview.rs)

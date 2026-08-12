@@ -182,8 +182,9 @@ impl Browser {
                                 } else {
                                     let raw = if nav_url.starts_with("amnibrowse://") { nav_url.clone() } else { "amnibrowse://newtab/".to_string() };
                                     let rest = &raw["amnibrowse://".len()..];
-                                    let (host, path) = match rest.find('/') { Some(i) => (&rest[..i], &rest[i..]), None => (rest, "/") };
-                                    let target = format!("http://amnibrowse.{}{}", host, path);
+                                    let (base, frag) = match rest.find('#') { Some(i) => (&rest[..i], &rest[i..]), None => (rest, "") };
+                                    let (host, path) = match base.find('/') { Some(i) => (&base[..i], &base[i..]), None => (base, "/") };
+                                    let target = format!("http://amnibrowse.{}{}{}", host, path, frag);
                                     if let Err(e) = webview.load_url(&target) {
                                         error!("Failed to load internal page '{}' (from '{}'): {}", target, raw, e);
                                     }
@@ -542,8 +543,8 @@ function wireHandlers(host){{
           : act === 'themes' ? ipc({{ type:'navigate', url:'amnibrowse://developer#themes' }})
           : act === 'extensions' ? ipc({{ type:'navigate', url:'amnibrowse://developer#ext' }})
           : act === 'report' ? ipc({{ type:'navigate', url:'amnibrowse://developer#bug' }})
-          : act === 'history' ? ipc({{ type:'navigate', url:'amnibrowse://newtab' }})
-          : act === 'downloads' ? ipc({{ type:'navigate', url:'amnibrowse://newtab' }})
+          : act === 'history' ? ipc({{ type:'navigate', url:'amnibrowse://newtab#history' }})
+          : act === 'downloads' ? ipc({{ type:'navigate', url:'amnibrowse://newtab#downloads' }})
           : null;
       }};
     }});
@@ -794,6 +795,10 @@ function start(){{
       var tabs = orderedTabs(window.__AMNI_TAB_SEED || []);
       if (k === 'w') {{ stopHit(e); var cur = tabs.filter(function(t){{ return t.is_active; }})[0]; if (cur && cur.id) ipc({{ type:'close_tab', id:cur.id }}); }}
       else if (k === 't') {{ stopHit(e); ipc({{ type:'new_tab', url:'amnibrowse://newtab' }}); }}
+      else if (k === 'l') {{ stopHit(e); var r0 = amniRoot(); var u0 = r0 && r0.getElementById('_au'); if (u0) {{ u0.focus(); u0.select(); }} }}
+      else if (k === 'd') {{ stopHit(e); ipc({{ type:'bookmark_add', title:document.title || location.href, url:location.href }}); }}
+      else if (k === 'h') {{ stopHit(e); ipc({{ type:'navigate', url:'amnibrowse://newtab#history' }}); }}
+      else if (k === 'j') {{ stopHit(e); ipc({{ type:'navigate', url:'amnibrowse://newtab#downloads' }}); }}
       else if (k === 'tab') {{
         stopHit(e);
         if (!tabs.length) return;
