@@ -55,3 +55,6 @@ __pycache__/
 
 # Screenshots
 _shot*.png
+
+# Session-local launch scratch
+launch_verify.bat
