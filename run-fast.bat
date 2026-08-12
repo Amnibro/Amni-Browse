@@ -2,9 +2,10 @@
 rem Launch-only: starts the already-built Amni-Browse without recompiling Servo.
 rem Use run.bat for the first build; use this for instant launches afterward.
 cd /d "%~dp0"
-set "GST_ROOT=C:\Program Files\gstreamer\1.0\msvc_x86_64"
-if not exist "%GST_ROOT%\bin" (
-    echo [Amni-Browse] GStreamer not found at "%GST_ROOT%".
+set "GST_ROOT=C:\gstreamer\1.0\msvc_x86_64"
+if not exist "%GST_ROOT%\bin\gstreamer-1.0-0.dll" set "GST_ROOT=C:\Program Files\gstreamer\1.0\msvc_x86_64"
+if not exist "%GST_ROOT%\bin\gstreamer-1.0-0.dll" (
+    echo [Amni-Browse] GStreamer runtime DLLs not found at "%GST_ROOT%".
     echo Run ^(elevated^): scripts\install_build_deps.ps1
     pause
     exit /b 1

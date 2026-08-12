@@ -48,3 +48,10 @@ vault.json
 downloads.json
 autofill.json
 permissions.json
+
+# Python scratch
+__pycache__/
+*.pyc
+
+# Screenshots
+_shot*.png

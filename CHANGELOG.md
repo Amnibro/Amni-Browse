@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — 2026-08-11
+### Launchers no longer hard-fail when GStreamer isn't in Program Files
+- **Bug:** `run.bat` / `run-fast.bat` hardcoded `C:\Program Files\gstreamer\1.0\msvc_x86_64` and bailed with "GStreamer not found"; bypassing the check produced a Windows loader dialog because `gstreamer-1.0-0.dll` was missing everywhere on the machine.
+- **Fix:** both launchers now probe `C:\gstreamer\1.0\msvc_x86_64` first, fall back to the Program Files path, and test for `bin\gstreamer-1.0-0.dll` (not just `bin\`) so a symbols-only devel extract can't pass the check.
+- Verified: prebuilt `amni-browse.exe` launches, Servo renders duckduckgo.com, window title tracks the live page title.
+- Licence holder corrected to Amniscient, LLC; `Cargo.lock` synced to 0.10.3.
+
 ## v0.10.3 — 2026-07-22
 ### Window resize finally works (never had, since v0.10.0)
 - **Bug:** stretching the window left chrome, content, and GL surface frozen at launch size with white void beyond — reproduced via Win32 `MoveWindow` probe + screenshots.
