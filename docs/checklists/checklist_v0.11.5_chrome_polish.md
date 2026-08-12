@@ -6,9 +6,9 @@
 - [x] Close-tab glyph gets title + aria-label (was role=presentation, unlabeled)
 - [x] Menu button aria-haspopup
 - [x] chromeRev -> 0.11.5-chrome-polish, Cargo.toml -> 0.11.5
-- [ ] cargo build --release (servo-real) clean
-- [ ] Exe smoke launch, zero stray processes after kill
-- [ ] Package amni-browse-v0.11.5-win64.zip (exe + DLLs + assets/chrome/toolbar.html)
-- [ ] gh release v0.11.5 published as Latest
-- [ ] Site literals 0.11.4 -> 0.11.5 flipped AFTER asset live, curl 200 verified
-- [ ] changelog.md + architecture_map.md updated
+- [x] cargo build --release (servo-real) clean
+- [x] Exe smoke launch, zero stray processes after kill
+- [x] Package amni-browse-v0.11.5-win64.zip (exe + DLLs + assets/chrome/toolbar.html)
+- [x] gh release v0.11.5 published as Latest
+- [x] Site literals 0.11.4 -> 0.11.5 flipped AFTER asset live, curl 200 verified
+- [x] changelog.md + architecture_map.md updated
