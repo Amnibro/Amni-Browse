@@ -1,11 +1,19 @@
 ﻿# Changelog
 
 ## Unreleased — 2026-08-11
-### Chrome ultrawide shell pin (toolbar.html) — v0.10.6
-- **`#nav-end{margin-left:auto}`:** URL stays capped at 960px; leftover ultrawide space falls *between* the pill and the zoom/shield/menu cluster so the trailing controls stay on the window’s right edge (desktop browser convention + stable mouse landmarks).
-- **URL flex:** `#url{min-width:0}` prevents the pill from overflowing its cap; lock + actions stay `flex:0`.
-- **Tab close:** 16→22px hit target; close glyph stays visible while the tab has keyboard focus.
-- **Roving:** `setRoving(el, focus)` — poll re-render re-applies tabindex without stealing focus when the user is in the URL bar; `chromeRev:'0.10.6-nav-end'` canary for live disk-load checks.
+### Chrome tight left cluster (toolbar.html) — v0.10.8
+- **Root cause:** `#url-wrap{flex:1 1 auto}` kept eating the row on ultrawide even after `#nav-end` lost `margin-left:auto` (Servo flex + max-width still left zoom/menu far from the pill).
+- **Fix:** `#url-wrap{flex:0 1 960px}` + `#nav{justify-content:flex-start}` so nav-start | URL | nav-end stay one left cluster; free space sits *after* the menu, not between URL and menu. Canary `0.10.8-cluster`.
+- **Lock:** scheme-driven classes (`.secure` / `.insecure` / `.local`); `setLock(url.value)` on boot so https pages don’t flash a dim/local glyph; default color is dim until classed.
+### Chrome cluster + lock + ghost-close (toolbar.html) — v0.10.7
+- **`#nav-end` un-pinned** from frame edge (travel fix vs v0.10.6 auto-margin pin).
+- **Lock indicator:** `setLock()` from URL scheme (was hardcoded green forever).
+- **Ghost close:** `.tab .close` is `pointer-events:none` until hover/focus so background-tab X hits switch the tab instead of closing.
+- **Bookmark star:** 26px inside the 30px pill content box (was overflowing).
+- **Zoom hover:** `.off` class instead of inline `style.color` so hover isn’t dead.
+### Chrome ultrawide shell pin (toolbar.html) — v0.10.6 (superseded by 0.10.7/0.10.8)
+- Had `#nav-end{margin-left:auto}` right-edge pin — wrong travel on 3440px. Replaced by left cluster.
+- **URL flex:** `#url{min-width:0}`; tab close 16→22px; `setRoving(el, focus)` poll-safe.
 
 ### Chrome roving + ultrawide travel (toolbar.html)
 - **Nav clusters:** `#nav-start` (back/forward/reload) + `#nav-end` (zoom/shield/menu) so the URL pill caps at `max-width:960px` (end cluster pin completed in v0.10.6).

@@ -1,0 +1,12 @@
+# Checklist: left cluster flex fix (v0.10.8)
+- [x] Backup toolbar.html
+- [x] `#url-wrap{flex:0 1 960px}` (was flex:1 — still ate the row after 0.10.7 unpin)
+- [x] `#nav{justify-content:flex-start}`
+- [x] `#lock.secure` + dim default; `setLock(url.value)` on boot
+- [x] chromeRev `0.10.8-cluster`
+- [x] Live relaunch log `loaded from cwd … (12271 bytes)`
+- [x] Ultrawide 3440 shot: empty space after menu, not between URL and nav-end
+- [x] Claude 0.10.7 contracts still present (ghost close, 26px star, zoom .off)
+- [x] Commit + push origin/main
+- [ ] Google: http host lock flips to warn (needs state.url on nav commit)
+- [ ] Claude: multi-tab Arrow/Home/End smoke on live PID
