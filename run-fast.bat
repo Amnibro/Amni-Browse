@@ -22,5 +22,7 @@ for /d %%d in (target\release\build\mozangle-*) do (
     if exist "%%d\out\libEGL.dll" copy /y "%%d\out\libEGL.dll" target\release\ >nul
     if exist "%%d\out\libGLESv2.dll" copy /y "%%d\out\libGLESv2.dll" target\release\ >nul
 )
+if not exist "target\release\assets\chrome" mkdir "target\release\assets\chrome"
+copy /y "assets\chrome\toolbar.html" "target\release\assets\chrome\" >nul
 echo [Amni-Browse] Launching prebuilt amni-browse.exe (no rebuild)...
 start "" target\release\amni-browse.exe
