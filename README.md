@@ -2,8 +2,8 @@
 
 # Amni Browse v0.11.0
 
-**A privacy-first, zero-telemetry web browser built from the ground up in Rust.**
-**Now with functional web browsing: navigate to real URLs, injected privacy toolbar, ad blocking at navigation level.**
+**A privacy-first web browser built from the ground up in Rust — no Amni product telemetry.**
+**Functional browsing: real URLs, injected chrome toolbar, navigation-level URL cleaning. DRM/media uses a separate system-WebView window with its own bar.**
 
 ![Rust](https://img.shields.io/badge/Built%20with-Rust-orange)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-00d4ff)
@@ -15,17 +15,16 @@
 
 ## 🔒 Privacy by Default
 
-Amni Browse is designed with a single principle: **your browsing is yours.**
+Amni Browse is designed with a single principle: **your browsing is yours.** Truthful scope for the default **WebView** backend:
 
-- ✅ **Zero telemetry** — no data ever leaves your device
-- ✅ **Built-in ad & tracker blocker** — no extensions needed
-- ✅ **Tracking parameter stripping** — UTM, fbclid, gclid, etc. are auto-removed
-- ✅ **No third-party cookies** by default
-- ✅ **Do Not Track** header sent by default
+- ✅ **No Amni product telemetry** — we do not phone home analytics
+- ✅ **Navigation URL cleaning** — ad/tracker query junk stripped on navigate (UTM, fbclid, gclid, …)
 - ✅ **DuckDuckGo** as default search engine
-- ✅ **Local-only storage** — bookmarks, settings, everything stays on your machine
+- ✅ **Local-only Amni profile** — bookmarks, settings, vault ciphertext stay on your machine
 - ✅ **Private browsing tabs** — no history recorded for private tabs
-- ✅ **DNS-over-HTTPS** — encrypted DNS with Cloudflare/Google/Quad9 providers
+- ⚠️ **Cookies** — system WebView (WebView2 / WKWebView / WebKitGTK) policy, **not** an Amni-forced third-party cookie block on the default backend
+- ⚠️ **DNS-over-HTTPS** — resolver exists for the custom pipeline; system WebView DNS is OS-controlled
+- ⚠️ **Full resource ad blocking** — shield/rules are strongest on the custom/Servo path; WebView relies on URL clean + site CSP
 
 ## 🚀 Getting Started
 
@@ -64,7 +63,7 @@ cargo build --release
 cargo build --release --no-default-features --features servo-engine
 ```
 
-## Architecture (v0.5.0 — Functional Navigation Pipeline)
+## Architecture (v0.11.0 — WebView chrome + Servo hybrid)
 
 ```
 src/

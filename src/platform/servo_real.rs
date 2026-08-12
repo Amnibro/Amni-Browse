@@ -94,7 +94,7 @@ p{color:#8a92a6;margin:0 0 40px}
 .mono{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;color:#fff}
 .tile span{max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dim{color:#8a92a6;font-size:13px}
-</style></head><body><h1>Amni Browse</h1><p>Private by default &#8212; search from the bar above</p><div class='grid'>__TILES__</div></body></html>"##;
+</style></head><body><h1>Amni Browse</h1><p>No Amni telemetry &#183; local profile &#183; search from the bar above</p><div class='grid'>__TILES__</div></body></html>"##;
 fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
 fn chrome_height_px(scale: f32) -> u32 { (CHROME_HEIGHT_CSS * scale).round().max(1.0) as u32 }
 fn content_size(window_size: PhysicalSize<u32>, chrome_px: u32) -> PhysicalSize<u32> {
@@ -552,6 +552,7 @@ fn drain_pending_media(event_loop: &winit::event_loop::ActiveEventLoop, state: &
             state.media_windows.borrow_mut().insert(id, mw);
         }
     }
+    media_engine::drain_close_requests(&mut state.media_windows.borrow_mut());
 }
 static LAST_MISMATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn paint_and_present(state: &AppState) {

@@ -2,6 +2,7 @@ use crate::ui::theme::{Theme, ThemeConfig};
 use crate::ui::emoji::eh;
 pub fn browser_html(theme: &Theme) -> String {
     let css_vars = ThemeConfig::theme_to_css_vars(theme);
+    let ver = env!("CARGO_PKG_VERSION");
     let e_back = eh("back");
     let e_forward = eh("forward");
     let e_refresh = eh("refresh");
@@ -21,7 +22,6 @@ pub fn browser_html(theme: &Theme) -> String {
     let e_middot = eh("middot");
     let e_lock = eh("lock");
     let e_search = eh("search");
-    let e_no_entry = eh("no_entry");
     let e_floppy = eh("floppy");
     let e_emdash = eh("emdash");
     let e_gear = eh("gear");
@@ -472,9 +472,9 @@ pub fn browser_html(theme: &Theme) -> String {
             </div>
         </div>
 
-        <div style="margin-top:20px;color:var(--text-secondary);font-size:11px;text-align:center;max-width:520px;line-height:1.7;">
-            {e_lock} No telemetry &nbsp;{e_middot}&nbsp; {e_shield} Navigation-layer ad blocker &nbsp;{e_middot}&nbsp; {e_no_entry} Third-party cookies blocked by default<br>
-            {e_search} DuckDuckGo search &nbsp;{e_middot}&nbsp; {e_key} AES-256-GCM vault &nbsp;{e_middot}&nbsp; {e_floppy} Profile data stays on this device
+        <div style="margin-top:20px;color:var(--text-secondary);font-size:11px;text-align:center;max-width:560px;line-height:1.7;">
+            {e_lock} No Amni product telemetry &nbsp;{e_middot}&nbsp; {e_shield} URL-bar ad/tracker stripping &nbsp;{e_middot}&nbsp; {e_search} DuckDuckGo default<br>
+            {e_key} AES-256-GCM vault &nbsp;{e_middot}&nbsp; {e_floppy} Profile data stays on this device &nbsp;{e_middot}&nbsp; Cookies follow system WebView policy
         </div>
 
         <div style="margin-top:10px;font-size:10px;color:var(--text-secondary);letter-spacing:1px;text-transform:uppercase;">
@@ -492,7 +492,7 @@ pub fn browser_html(theme: &Theme) -> String {
     </div>
     <div class="status-right">
         <span id="xr-status" title="WebXR Status">{e_xr} XR</span>
-        <span>{e_shield} Private</span>
+        <span>{e_shield} Local profile</span>
         <span id="status-url"></span>
     </div>
 </div>
@@ -598,7 +598,7 @@ pub fn browser_html(theme: &Theme) -> String {
             <div class="clear-option"><label>Restore Session on Start</label><div class="toggle-switch on" id="toggle-session" onclick="this.classList.toggle('on')"></div></div>
         </div>
         <div style="margin-top:24px;color:var(--text-secondary);font-size:11px;text-align:center;">
-            All data stored locally {e_middot} No telemetry {e_middot} No tracking<br>
+            Profile data local {e_middot} No Amni analytics {e_middot} System WebView cookies (not Amni-forced 3P block)<br>
             Amni-Scient {e_emdash} Independent Software Studio
         </div>
     </div>
@@ -1512,12 +1512,12 @@ pub fn browser_html(theme: &Theme) -> String {
         e_split = e_split, e_key = e_key, e_palette = e_palette, e_download = e_download,
         e_clock = e_clock, e_book = e_book, e_menu = e_menu, e_close = e_close,
         e_up = e_up, e_down = e_down, e_middot = e_middot, e_lock = e_lock,
-        e_search = e_search, e_no_entry = e_no_entry, e_floppy = e_floppy,
+        e_search = e_search, e_floppy = e_floppy,
         e_emdash = e_emdash, e_gear = e_gear, e_wrench = e_wrench, e_puzzle = e_puzzle,
         e_person = e_person, e_memo = e_memo, e_chart = e_chart, e_private = e_private,
         e_trash = e_trash, e_clipboard = e_clipboard, e_check = e_check, e_cross = e_cross,
         e_xr = e_xr, e_arrow_left = e_arrow_left, e_arrow_right = e_arrow_right,
         e_pause = e_pause, e_new_doc = e_new_doc, e_reset = e_reset,
-        e_broom = e_broom, e_warning = e_warning
+        e_broom = e_broom, e_warning = e_warning, ver = ver
     )
 }

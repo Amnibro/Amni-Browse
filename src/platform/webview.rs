@@ -16,6 +16,16 @@ pub struct Browser;
 impl Browser {
     pub fn new() -> Self { Self }
     pub fn run(self) {
+        #[cfg(target_os = "windows")]
+        {
+            let args = "--disable-features=msEdgeSmartScreen,InterestGroupStorage,BrowsingTopics --disable-background-networking --disable-sync --disable-breakpad --no-default-browser-check --no-first-run";
+            std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args);
+            if let Some(dir) = dirs::config_dir() {
+                let ud = dir.join("amni-browse").join("webview2-data");
+                std::fs::create_dir_all(&ud).ok();
+                std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", ud);
+            }
+        }
         let state = Rc::new(RefCell::new(BrowserState::new()));
         let acts: Rc<RefCell<Vec<Act>>> = Rc::new(RefCell::new(Vec::new()));
         let loaded_url = Rc::new(RefCell::new(String::from("amnibrowse://newtab")));
@@ -29,7 +39,7 @@ impl Browser {
             s.async_notify = Some(Arc::new(move || { px_notify.send_event(()).ok(); }));
         }
         let window = WindowBuilder::new()
-            .with_title(format!("{} v{} — Privacy First", APP_NAME, APP_VERSION))
+            .with_title(format!("{} v{} — Local Profile", APP_NAME, APP_VERSION))
             .with_decorations(true)
             .with_inner_size(tao::dpi::LogicalSize::new(1400.0, 900.0))
             .with_min_inner_size(tao::dpi::LogicalSize::new(640.0, 400.0))
@@ -174,7 +184,7 @@ impl Browser {
                                     }
                                 }
                                 if nav_url.starts_with("amnibrowse://") {
-                                    window.set_title(&format!("{} v{} — Privacy First", APP_NAME, APP_VERSION));
+                                    window.set_title(&format!("{} v{} — Local Profile", APP_NAME, APP_VERSION));
                                 }
                             }
                             Act::Js(js) => { webview.evaluate_script(&js).ok(); }
@@ -417,12 +427,16 @@ function wireHandlers(host){{
 function ensureToolbar(){{
   try {{
     var d = document;
-    if (!d.documentElement || !d.head || !d.body) return false;
+    if (!d.documentElement) return false;
+    var mount = d.body || d.documentElement;
     var host = d.getElementById('__atb_host');
+    var hostCss = 'position:fixed!important;top:0!important;left:0!important;right:0!important;height:{chrome_h}px!important;z-index:2147483647!important;pointer-events:auto!important;display:block!important;visibility:visible!important;opacity:1!important;transform:none!important;';
     if (!host || !host.shadowRoot) {{
+      if (host) try {{ host.remove(); }} catch(_){{}}
       host = d.createElement('div');
       host.id = '__atb_host';
-      host.style.cssText = 'position:fixed;top:0;left:0;right:0;height:{chrome_h}px;z-index:2147483647;pointer-events:auto;';
+      host.setAttribute('data-amni','chrome');
+      host.style.cssText = hostCss;
       var root = host.attachShadow({{ mode:'open' }});
       var style = d.createElement('style');
       style.id = '_ath_css';
@@ -450,22 +464,29 @@ function ensureToolbar(){{
         + '</div>'
         + '<div id="_bookmarks"></div>';
       root.appendChild(bar);
-      d.body.prepend(host);
+      mount.prepend(host);
       applyTheme(T);
       var seed = (window.__AMNI_TAB_SEED && window.__AMNI_TAB_SEED.length) ? window.__AMNI_TAB_SEED : SEED;
       paintTabs(Array.isArray(seed) && seed.length ? seed : SEED);
+    }} else {{
+      host.style.cssText = hostCss;
+      if (!mount.contains(host)) mount.prepend(host);
     }}
+    var head = d.head || d.documentElement;
     if (!d.getElementById('__amni_push_style')) {{
       var s = d.createElement('style');
       s.id = '__amni_push_style';
       s.textContent = 'html{{margin-top:{push_h}px!important}}';
-      d.head.appendChild(s);
+      head.appendChild(s);
     }}
     wireHandlers(host);
-    ipc({{ type:'get_tabs' }});
-    ipc({{ type:'get_stats' }});
-    ipc({{ type:'theme_get_active' }});
-    ipc({{ type:'bookmark_list' }});
+    if (!window.__AMNI_CHROME_POLL) {{
+      window.__AMNI_CHROME_POLL = true;
+      ipc({{ type:'get_tabs' }});
+      ipc({{ type:'get_stats' }});
+      ipc({{ type:'theme_get_active' }});
+      ipc({{ type:'bookmark_list' }});
+    }}
     return true;
   }} catch(_) {{ return false; }}
 }}
@@ -503,13 +524,17 @@ window.__amni_receive = function(msg){{
   }}
 }};
 function start(){{
-  if (!ensureToolbar()) {{
-    var tries = 0;
-    var tid = setInterval(function(){{ tries++; if (ensureToolbar() || tries > 80) clearInterval(tid); }}, 50);
+  ensureToolbar();
+  if (!window.__AMNI_CHROME_WATCH) {{
+    window.__AMNI_CHROME_WATCH = true;
+    setInterval(function(){{ ensureToolbar(); }}, 400);
+    try {{
+      var observer = new MutationObserver(function(){{ ensureToolbar(); }});
+      observer.observe(document.documentElement || document, {{ childList:true, subtree:true }});
+    }} catch(_) {{}}
+    window.addEventListener('pageshow', function(){{ ensureToolbar(); }});
+    window.addEventListener('focus', function(){{ ensureToolbar(); }});
   }}
-  var observer = new MutationObserver(function(){{ ensureToolbar(); }});
-  observer.observe(document.documentElement || document, {{ childList:true, subtree:true }});
-  window.addEventListener('pageshow', function(){{ ensureToolbar(); }});
 }}
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, {{ once:true }});
 else start();

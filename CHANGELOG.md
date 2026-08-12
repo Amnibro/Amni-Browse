@@ -1,4 +1,8 @@
-﻿## v0.11.0 — 2026-08-12 (UI parity + release tag)
+﻿## v0.11.0 — 2026-08-12 (DRM chrome + honest privacy copy)
+- **DRM/media window chrome:** `media_engine` injects a persistent top bar (Back to Amni / Home / close) + OS decorations; IPC `amni_media_close` drains the media window so tabs remain reachable.
+- **External chrome watchdog:** shadow toolbar re-attaches if sites strip the host; 400ms interval + MutationObserver (no 80-try bail).
+- **Truthful privacy claims:** home/settings/README no longer claim “third-party cookies blocked by default” on WebView — cookies follow system WebView policy; Amni telemetry remains none; URL-bar stripping is what we ship on navigate.
+## v0.11.0 — 2026-08-12 (UI parity + release tag)
 - **Version single-source:** `Cargo.toml` 0.11.0; UA `AmniBrowse/0.11`; GitHub tag `v0.11.0`; site download strings match (retires mixed 0.10.3 / 0.7.0 docs noise).
 - **Theme home ↔ external:** shadow chrome seeds live ThemeConfig colors (`danger` included); `__AMNI_SYNC_THEME` applies without reload.
 - **Tabs survive leave-home:** host TabManager → `__AMNI_TAB_SEED` + page-load resync; new/switch/close re-navigates active tab URL.

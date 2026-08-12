@@ -1,4 +1,8 @@
 ﻿# Amni-Browse Architecture Map
+## 2026-08-12 DRM chrome + privacy copy truth
+- Media/DRM `spawn_media_window` no longer bare: init-script bar + `amni_media_close` + decorations; `drain_close_requests` in servo_real.
+- WebView external chrome: remount watchdog (400ms), force fixed styles, re-prepend if host detached (streaming sites).
+- Home SPA + README + settings footer: drop false “3P cookies blocked by default”; state system WebView cookie policy + URL-bar stripping + no Amni telemetry.
 ## 2026-08-12 Release ship gate (0.11.0)
 - Public truth is **0.11.0** only: crate `CARGO_PKG_VERSION`, README, chrome canary `0.11.0-settings`, site tags, GitHub Latest release.
 - WebView chrome: `tokens` TAB38+NAV44+BOOK28 = TOTAL 110 / push 114; shadow DOM toolbar mounts on external http(s); SPA home keeps tab/nav/bookmarks bars; OS decorations on.

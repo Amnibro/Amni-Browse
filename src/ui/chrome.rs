@@ -381,7 +381,7 @@ impl BrowserChrome {
         ui.add_space(16.0);
         ui.separator();
         ui.centered_and_justified(|ui| {
-            ui.label(egui::RichText::new("Amni Browse — Amni-Scient\nAll data stored locally · Zero telemetry").small());
+            ui.label(egui::RichText::new("Amni Browse — Amni-Scient\nLocal profile · No Amni product telemetry").small());
         });
     }
     fn render_themes_panel(&mut self, ui: &mut egui::Ui) {
