@@ -12,9 +12,9 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
 #tabs{display:flex;align-items:flex-end;height:32px;padding:3px 6px 0;gap:2px;background:var(--bg-darkest)}
 #tab-list{display:flex;align-items:flex-end;gap:2px;flex:0 1 auto;min-width:0;max-width:calc(100% - 32px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 #tab-list::-webkit-scrollbar{display:none}
-.tab{display:flex;align-items:center;gap:7px;min-width:96px;max-width:210px;height:28px;padding:0 9px;border-radius:var(--tab-radius);background:var(--tab-inactive);color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;transition:background .12s,color .12s}
+.tab{display:flex;align-items:center;gap:7px;min-width:96px;max-width:210px;height:28px;padding:0 9px;border:1px solid transparent;border-bottom:none;border-radius:var(--tab-radius);background:var(--tab-inactive);color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;transition:background .12s,color .12s,border-color .12s}
 .tab:hover{background:var(--bg-elev);color:var(--text)}
-.tab.active{background:var(--tab-active);color:var(--text);border:1px solid var(--stroke);border-bottom:none;box-shadow:0 2px 0 var(--accent) inset,0 -1px 4px rgba(0,0,0,.2);z-index:2}
+.tab.active{background:var(--tab-active);color:var(--text);border-color:var(--stroke);box-shadow:0 2px 0 var(--accent) inset,0 -1px 4px rgba(0,0,0,.2);z-index:2}
 .tab .favicon{width:15px;height:15px;flex:0 0 15px;border-radius:4px;background:var(--accent-dim);display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff}
 .tab .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tab .close{opacity:0;pointer-events:none;width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;font-size:13px;color:var(--text-dim);cursor:pointer;flex:0 0 20px;transition:opacity .12s,background .12s}
@@ -69,7 +69,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
 <body>
 <div id="shell">
   <div id="tabs">
-    <div id="tab-list" role="tablist"><div class="tab active" data-id="t0" tabindex="0" role="tab" aria-selected="true"><span class="favicon">A</span><span class="title">Amni Browse</span><span class="close ico" role="presentation">&#215;</span><span class="engine-badge"></span></div></div>
+    <div id="tab-list" role="tablist"><div class="tab active" data-id="t0" tabindex="0" role="tab" aria-selected="true"><span class="favicon">A</span><span class="title">Amni Browse</span><span class="close ico" title="Close tab" aria-label="Close tab">&#215;</span><span class="engine-badge"></span></div></div>
     <button id="new-tab" class="ico" title="New tab (Ctrl+T)">+</button>
   </div>
   <div id="nav">
@@ -90,7 +90,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
       <span id="zoom-level" title="Reset zoom (Ctrl+0)" tabindex="0" role="button">100%</span>
       <button class="nav-btn ico" id="zoom-in" title="Zoom in (Ctrl+=)">&#43;</button>
       <button class="nav-btn ico" id="shield" title="Shield: blocking ads &amp; trackers">&#9960;</button>
-      <button class="nav-btn ico" id="menu" title="Menu">&#9776;</button>
+      <button class="nav-btn ico" id="menu" title="Menu" aria-haspopup="true">&#9776;</button>
     </div>
   </div>
   <div id="progress"><div id="progress-bar"></div></div>
@@ -103,7 +103,8 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
   let finishTimer=null;
   function setProgress(loading){if(finishTimer){clearTimeout(finishTimer);finishTimer=null}if(loading){prog.classList.remove('finishing');prog.classList.add('loading');bar.style.width='72%';return}if(!prog.classList.contains('loading')&&!prog.classList.contains('finishing')){bar.style.width='0%';return}prog.classList.remove('loading');prog.classList.add('finishing');bar.style.width='100%';finishTimer=setTimeout(()=>{prog.classList.remove('finishing');bar.style.width='0%';finishTimer=null},220)}
   function setLock(v){const s=String(v||'').toLowerCase();const local=!s||s.startsWith('about:')||s.startsWith('amnibrowse:')||s.startsWith('file:')||s.startsWith('data:');const secure=s.startsWith('https://');lock.className='ico'+(local?' local':secure?' secure':' insecure');lock.textContent=local?'●':secure?'🔒':'⚠';lock.title=local?'Local page':secure?'Connection is secure':'Not secure'}
-  function setUrl(v){setLock(v);if(document.activeElement!==url&&url.value!==v)url.value=v}
+  let lastUrl='';
+  function setUrl(v){setLock(v);lastUrl=v||'';if(document.activeElement!==url&&url.value!==v)url.value=v}
   function setNavDisabled(b,f){back.classList.toggle('disabled',!b);forward.classList.toggle('disabled',!f);}
   function setShield(on){shieldBtn.classList.toggle('off',!on);shieldBtn.setAttribute('aria-pressed',on?'true':'false');shieldBtn.title=on?'Shield: blocking ads & trackers':'Shield OFF — click to re-enable'}
   function setBookmarked(on){bmBtn.classList.toggle('on',!!on);bmBtn.setAttribute('aria-pressed',on?'true':'false');bmBtn.innerHTML=on?'&#9733;':'&#9734;';bmBtn.title=on?'Bookmarked — click to remove (Ctrl+D)':'Bookmark (Ctrl+D)'}
@@ -112,14 +113,14 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
   function tabs(){return[...tabList.querySelectorAll('.tab')]}
   function setRoving(el,focus){if(!el)return;tabs().forEach(t=>t.setAttribute('tabindex',t===el?'0':'-1'));if(focus!==false)el.focus();try{el.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}}
   function findTab(id){return tabs().find(t=>t.dataset.id===id)||null}
-  function renderTabs(list){const html=(list||[]).map(t=>{const m=mono(t.title&&t.title!=='New Tab'?t.title:t.url);return`<div class="tab ${t.active?'active':''} ${t.engine==='media'?'media':''} ${t.loading?'loading':''}" data-id="${esc(t.id)}" tabindex="${t.active?0:-1}" role="tab" aria-selected="${t.active?'true':'false'}" title="${esc(t.title||'New Tab')}"><span class="favicon" style="background:hsl(${m.hue},45%,38%)">${esc(m.ch)}</span><span class="title">${esc(t.title||'New Tab')}</span><span class="close ico" role="presentation">&#215;</span><span class="engine-badge"></span></div>`}).join('');if(tabList.innerHTML===html){const a=tabList.querySelector('.tab.active');if(a)try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}return}const ae=document.activeElement;const onTab=tabList.contains(ae)&&ae.classList.contains('tab');const keep=onTab?ae.dataset.id:null;tabList.innerHTML=html;if(keep){const r=findTab(keep)||tabList.querySelector('.tab[tabindex="0"]')||tabList.querySelector('.tab');if(r)setRoving(r,true)}else{const a=tabList.querySelector('.tab.active')||tabList.querySelector('.tab');if(a){setRoving(a,false);try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}}}}
+  function renderTabs(list){const html=(list||[]).map(t=>{const m=mono(t.title&&t.title!=='New Tab'?t.title:t.url);return`<div class="tab ${t.active?'active':''} ${t.engine==='media'?'media':''} ${t.loading?'loading':''}" data-id="${esc(t.id)}" tabindex="${t.active?0:-1}" role="tab" aria-selected="${t.active?'true':'false'}" title="${esc(t.title||'New Tab')}"><span class="favicon" style="background:hsl(${m.hue},45%,38%)">${esc(m.ch)}</span><span class="title">${esc(t.title||'New Tab')}</span><span class="close ico" title="Close tab" aria-label="Close tab">&#215;</span><span class="engine-badge"></span></div>`}).join('');if(tabList.innerHTML===html){const a=tabList.querySelector('.tab.active');if(a)try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}return}const ae=document.activeElement;const onTab=tabList.contains(ae)&&ae.classList.contains('tab');const keep=onTab?ae.dataset.id:null;tabList.innerHTML=html;if(keep){const r=findTab(keep)||tabList.querySelector('.tab[tabindex="0"]')||tabList.querySelector('.tab');if(r)setRoving(r,true)}else{const a=tabList.querySelector('.tab.active')||tabList.querySelector('.tab');if(a){setRoving(a,false);try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}}}}
   function setZoom(z){const pct=Math.round((z||1)*100);if(zoomLevel.textContent!==pct+'%')zoomLevel.textContent=pct+'%';zoomLevel.classList.toggle('off',pct!==100)}
   function applyTheme(th){if(!th||typeof th!=='object')return;const r=document.documentElement.style;const m={'--bg-darkest':th.bg_secondary,'--bg':th.bg_primary,'--bg-focus':th.bg_tertiary,'--bg-elev':th.bg_tertiary,'--bg-hover':th.bg_hover,'--bg-active':th.bg_hover,'--stroke':th.border,'--text':th.text_primary,'--text-dim':th.text_secondary,'--accent':th.accent,'--accent-dim':th.accent_hover,'--danger':th.danger,'--success':th.success,'--accent-warn':th.warning,'--glow':th.accent_glow,'--tab-active':th.tab_active,'--tab-inactive':th.tab_inactive,'--font':th.font_family,'--radius':th.border_radius};Object.entries(m).forEach(([k,v])=>{if(v)r.setProperty(k,v)})}
   function applyState(s){setUrl(s.url||'');setProgress(!!s.loading);setNavDisabled(!!s.canBack,!!s.canForward);renderTabs(s.tabs||[]);setZoom(s.zoom);setShield(s.shield!==false);setBookmarked(!!s.bookmarked);applyTheme(s.theme)}
   async function poll(){try{const r=await fetch('amnibrowse://state',{cache:'no-store'});if(!r.ok)return;applyState(await r.json())}catch(e){}}
   url.addEventListener('focus',()=>{wrap.classList.add('focused');url.select()});
   url.addEventListener('blur',()=>wrap.classList.remove('focused'));
-  url.addEventListener('keydown',e=>{if(e.key==='Enter'){cmd('navigate',{url:url.value});url.blur()}if(e.key==='Escape')url.blur()});
+  url.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=url.value.trim();if(v)cmd('navigate',{url:v});url.blur()}if(e.key==='Escape'){url.value=lastUrl;url.blur()}});
   const buttons={'back':'back','forward':'forward','reload':'reload','bookmark':'bookmark','shield':'shield','menu':'menu','new-tab':'new_tab','zoom-in':'zoom_in','zoom-out':'zoom_out'};
   Object.entries(buttons).forEach(([id,c])=>{const el=$('#'+id);el&&el.addEventListener('click',()=>cmd(c))});
   zoomLevel.addEventListener('click',()=>cmd('zoom_reset'));
@@ -127,7 +128,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
   tabList.addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;if(e.target.classList.contains('close')){cmd('close_tab',{id:t.dataset.id});e.stopPropagation()}else{setRoving(t);cmd('switch_tab',{id:t.dataset.id})}});
   tabList.addEventListener('keydown',e=>{const t=e.target.closest('.tab');if(!t)return;const all=tabs(),i=all.indexOf(t);if(e.key==='Enter'||e.key===' '){e.preventDefault();cmd('switch_tab',{id:t.dataset.id});return}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();cmd('close_tab',{id:t.dataset.id});return}let n=null;if(e.key==='ArrowRight')n=all[(i+1)%all.length];if(e.key==='ArrowLeft')n=all[(i+all.length-1)%all.length];if(e.key==='Home')n=all[0];if(e.key==='End')n=all[all.length-1];if(n){e.preventDefault();setRoving(n);cmd('switch_tab',{id:n.dataset.id})}});
   tabList.addEventListener('auxclick',e=>{if(e.button!==1)return;const t=e.target.closest('.tab');if(t){cmd('close_tab',{id:t.dataset.id});e.preventDefault()}});
-  window.__amni={setProgress,setUrl,setLock,chromeRev:'0.11.4-font-fidelity'};
+  window.__amni={setProgress,setUrl,setLock,chromeRev:'0.11.5-chrome-polish'};
   setLock(url.value);poll();setInterval(poll,250);
 })();
 </script>

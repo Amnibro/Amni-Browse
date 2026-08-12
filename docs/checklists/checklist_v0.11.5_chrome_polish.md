@@ -1,0 +1,14 @@
+# Checklist v0.11.5 - chrome polish (top-tier pass, Anthony standing order)
+- [x] Backup toolbar.html + Cargo.toml to backups/ (.v0.11.5.bak)
+- [x] Kill active-tab 2px layout jiggle (transparent border on all tabs, active recolors only)
+- [x] Escape in URL bar reverts typed text to current page URL instantly (no 250ms poll flicker)
+- [x] Enter on empty/whitespace URL bar no longer fires navigate
+- [x] Close-tab glyph gets title + aria-label (was role=presentation, unlabeled)
+- [x] Menu button aria-haspopup
+- [x] chromeRev -> 0.11.5-chrome-polish, Cargo.toml -> 0.11.5
+- [ ] cargo build --release (servo-real) clean
+- [ ] Exe smoke launch, zero stray processes after kill
+- [ ] Package amni-browse-v0.11.5-win64.zip (exe + DLLs + assets/chrome/toolbar.html)
+- [ ] gh release v0.11.5 published as Latest
+- [ ] Site literals 0.11.4 -> 0.11.5 flipped AFTER asset live, curl 200 verified
+- [ ] changelog.md + architecture_map.md updated

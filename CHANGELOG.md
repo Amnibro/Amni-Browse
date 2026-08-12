@@ -1,3 +1,10 @@
+## v0.11.5 - 2026-08-12 (chrome polish + changelog encoding repair)
+- **Active-tab 2px layout jiggle killed:** all tabs now carry a transparent 1px border; activation only recolors it (was: border added on .active, shifting every tab 2px on switch).
+- **URL bar Escape reverts instantly** to the live page URL (tracked lastUrl) instead of leaving typed text on screen until the next 250ms poll; Enter on empty/whitespace input no longer fires navigate.
+- Close-tab glyph gets title + aria-label (was unlabeled role=presentation); menu button aria-haspopup.
+- **changelog.md encoding repaired:** PowerShell `>>` had appended UTF-16LE blocks into the UTF-8 file (grep saw binary); tail transcoded byte-wise, v0.7.1/v0.11.0/v0.11.4 entries recovered.
+- chromeRev 0.11.5-chrome-polish; Cargo 0.11.5. Backups: backups/toolbar.html.v0.11.5.bak, Cargo.toml.v0.11.5.bak, changelog.md.v0.11.5.bak.
+
 ## v0.11.3 - 2026-08-12 (toolbar chrome = full theme-token fidelity)
 - **`applyTheme` in `assets/chrome/toolbar.html` dropped four tokens the state endpoint already ships:** `font_family` (Paper Sunset serif / Mint Matrix mono changed pages but never the chrome), `accent_glow` (focus ring was a loud 2px solid `accent_hover`; now the designed 3px glow matching internal pages), `tab_active`/`tab_inactive` (custom themes can now style tab fills; builtins render identically).
 - New `:root` vars `--font`/`--glow`/`--tab-active`/`--tab-inactive` seeded with amni-dark values (no flash if poll fails); chromeRev `0.11.3-theme-tokens`.
@@ -392,9 +399,9 @@
 - README fully rewritten with all features documented
 ## v0.2.0
 - Initial release with tabs, bookmarks, ad blocker, password vault, themes, split view
-F i x :   N a v i g a t i o n   h a n d l e r   b l o c k e d   w e b s i t e s . 
- 
- 2026-03-17 v0.7.1 - Fixed logic issue in adblocker's Wry navigation handler that caused all websites to be blocked.
+Fix: Navigation handler blocked websites.
+
+2026-03-17 v0.7.1 - Fixed logic issue in adblocker's Wry navigation handler that caused all websites to be blocked.
 
 ## Date: 2026-03-18
 - Rerouted HTTP navigation to use the internal RenderPipeline over Webview's native loader to prevent UI override and bypass X-Frame-Options
