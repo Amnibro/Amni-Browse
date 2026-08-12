@@ -3,6 +3,8 @@
 - **Double-click empty strip -> new tab** (Chrome/Firefox affordance; cuts travel to the 26px + button). Excludes tabs and the + button itself.
 - **Middle-click empty strip -> new tab** (Firefox affordance), moved the auxclick handler from #tab-list to #tabs so the dead space right of the last tab counts; middle-click-on-tab still closes it.
 - node --check on inline JS clean. Backup: backups/toolbar.html.v0.11.11.bak.
+- **Poll-loop rubber band fixed (would have killed wheel pan):** renderTabs' unchanged-HTML early return called scrollIntoView(active) EVERY 250ms poll — any wheel pan snapped back to the active tab within a quarter second. Now scrollIntoView fires only when the active tab id actually changes (covers scroll-into-view on create/activate).
+- **Close-neighborhood scroll stability:** innerHTML swap reset scrollLeft to 0 on every strip change (close, title update, loading flag). scrollLeft now preserved across the swap, so the tab under the cursor stays put after a close.
 
 ## v0.11.11 servo backend ship guard - 2026-08-12
 - **Root cause of "no header bar" (round N of the class, now structural):** `default = ["webview"]` + shared target/release path — a plain `cargo build --release` clobbered the servo-real exe at 07:06 and the v0.11.10 zip packed the 9.3MB webview binary. Cold-pulled live zip proof: log says `Backend: WebView (wry/tao)`, zero toolbar-mount lines — the webview backend has no chrome overlay, so no header, no theme radios, none of the 0.11.10 features.
