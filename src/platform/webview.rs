@@ -527,17 +527,7 @@ function ensureToolbar(){{
       if (host.parentNode !== mount) mount.appendChild(host);
       if (host.nextSibling) mount.appendChild(host);
     }}
-    var head = d.head || d.documentElement;
-    var push = d.getElementById('__amni_push_style');
-    if (!push) {{
-      push = d.createElement('style');
-      push.id = '__amni_push_style';
-      push.textContent = 'html{{scroll-padding-top:{push_h}px!important}}html,body{{margin-top:0!important}}#__atb_host{{position:fixed!important;top:0!important;z-index:2147483647!important}}';
-      head.appendChild(push);
-    }}
-    try {{
-      d.documentElement.style.setProperty('padding-top', '{push_h}px', 'important');
-    }} catch(_){{}}
+    applyContentPush(host);
     wireHandlers(host);
     if (!window.__AMNI_CHROME_POLL) {{
       window.__AMNI_CHROME_POLL = true;
@@ -551,6 +541,51 @@ function ensureToolbar(){{
     try {{ console.warn('[amni-chrome]', err && err.message ? err.message : err); }} catch(_){{}}
     return false;
   }}
+}}
+function contentPushPx(host){{
+  try {{
+    var h = host && host.offsetHeight ? host.offsetHeight : {chrome_h};
+    return Math.max({chrome_h}, h) + 4;
+  }} catch(_) {{ return {push_h}; }}
+}}
+function applyContentPush(host){{
+  try {{
+    var d = document;
+    if (!d.documentElement) return;
+    var ph = contentPushPx(host || d.getElementById('__atb_host'));
+    var head = d.head || d.documentElement;
+    var push = d.getElementById('__amni_push_style');
+    if (!push) {{
+      push = d.createElement('style');
+      push.id = '__amni_push_style';
+      head.appendChild(push);
+    }}
+    push.textContent = ''
+      + ':root{{--amni-chrome-h:' + ph + 'px!important}}'
+      + 'html{{padding-top:' + ph + 'px!important;scroll-padding-top:' + ph + 'px!important;box-sizing:border-box!important;min-height:100%!important}}'
+      + 'html,body{{margin-top:0!important}}'
+      + 'body{{padding-top:0!important;box-sizing:border-box!important}}'
+      + '#__atb_host{{position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:2147483647!important}}'
+      + '#masthead-container,ytd-masthead,#masthead,#header-bar,header#header,#header,tp-yt-app-header,#gb,header[role="banner"],.ytSearchboxComponentHost,.ytSearchboxComponentInputBox{{top:' + ph + 'px!important}}'
+      + '#masthead-container{{position:fixed!important;left:0!important;right:0!important;width:100%!important;z-index:2020!important}}'
+      + 'ytd-mini-guide-renderer,ytd-guide-renderer#guide,tp-yt-app-drawer#guide{{top:' + ph + 'px!important;height:calc(100vh - ' + ph + 'px)!important;max-height:calc(100vh - ' + ph + 'px)!important}}'
+      + '#guide-button,ytd-mini-guide-renderer{{margin-top:0!important}}'
+      + 'ytd-app{{--ytd-masthead-height:56px;min-height:calc(100vh - ' + ph + 'px)!important}}'
+      + '#page-manager,ytd-page-manager{{box-sizing:border-box!important}}'
+      + '#content.ytd-app,ytd-app #content{{padding-top:0!important}}'
+      + 'ytd-watch-flexy,ytd-browse,ytd-search{{scroll-margin-top:' + ph + 'px!important}}'
+      + '@supports (height:100dvh){{ytd-mini-guide-renderer,ytd-guide-renderer#guide{{height:calc(100dvh - ' + ph + 'px)!important;max-height:calc(100dvh - ' + ph + 'px)!important}}}}';
+    try {{
+      d.documentElement.style.setProperty('padding-top', ph + 'px', 'important');
+      d.documentElement.style.setProperty('--amni-chrome-h', ph + 'px', 'important');
+    }} catch(_){{}}
+    try {{
+      if (d.body) {{
+        d.body.style.setProperty('margin-top', '0px', 'important');
+        d.body.style.setProperty('padding-top', '0px', 'important');
+      }}
+    }} catch(_){{}}
+  }} catch(_){{}}
 }}
 window.__AMNI_ENSURE = ensureToolbar;
 window.__AMNI_SAFETY = function(rep){{

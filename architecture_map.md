@@ -1,4 +1,6 @@
 ﻿# Amni-Browse Architecture Map
+## 2026-08-12 Content push under chrome (YouTube)
+- Fixed overlay chrome was painting over in-page mastheads (`#masthead-container` top:0). `applyContentPush` rewrites a live `<style id="__amni_push_style">` every ensure: html padding-top = measured host height+4, offsets YouTube fixed chrome (`#masthead-container`, `ytd-masthead`, mini-guide) to `top: var(--amni-chrome-h)`.
 ## 2026-08-12 Developer hub + security + bug report
 - Internal page `amnibrowse://developer` (tabs: Themes, Extensions, Security, Bug report).
 - Themes: pick/save custom, export/import JSON IPC (`theme_export` / `theme_import`).
