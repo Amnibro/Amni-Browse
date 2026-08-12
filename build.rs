@@ -1,6 +1,7 @@
 use std::{env, fs, path::{Path, PathBuf}};
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=assets/chrome/toolbar.html");
     println!("cargo:rerun-if-env-changed=GSTREAMER_1_0_ROOT_MSVC_X86_64");
     #[cfg(target_os = "windows")]
     {
