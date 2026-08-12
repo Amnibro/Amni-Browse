@@ -349,3 +349,10 @@ F i x :   N a v i g a t i o n   h a n d l e r   b l o c k e d   w e b s i t e s 
 ## Date: 2026-03-18
 - Rerouted HTTP navigation to use the internal RenderPipeline over Webview's native loader to prevent UI override and bypass X-Frame-Options
 - Upgraded the JS hydration layer to properly inject and sandbox PageRendered payloads using element manipulation on the #engine-viewer.
+
+## Date: 2026-08-12 (v0.11.0 polish)
+- Tab groups: right-click any tab (home SPA or injected chrome) to name a group; strip sorts grouped tabs together with gold group labels; new `tab_set_group` IPC + `TabManager::set_tab_group`.
+- Tab titles derived from URL host (`Tab::title_from_url`) instead of persistent "New Tab"; page `document.title` reported back on load via `update_title`; titles capped at 80 chars.
+- Default theme retoned to Amni-Scient gold-on-dark tokens (#C89B4E accent, 4px radius, Segoe UI Variable); shadow-chrome palette fallbacks match.
+- Home SPA tab sizing unified with external chrome (fixed 148px), engine badge in status bar, private-tab label fallback fixed.
+- Verified: release build clean, binary launches with header chrome, pushed as 8586602.
