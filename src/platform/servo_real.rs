@@ -26,9 +26,24 @@ use crate::engine::tabs::TabEngine;
 use crate::platform::media_engine::{self, EngineKind, MediaWindow};
 use crate::platform::servo_keys::keyboard_event_from_winit;
 const CHROME_HEIGHT_CSS: f32 = 74.0;
-const TOOLBAR_HTML: &str = include_str!("../../assets/chrome/toolbar.html");
+const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
+
+fn load_toolbar_html() -> String {
+    if let Ok(content) = std::fs::read_to_string("assets/chrome/toolbar.html") {
+        return content;
+    }
+    if let Ok(exe_dir) = std::env::current_exe().map(|p| p.parent().unwrap_or(p).to_path_buf()) {
+        let asset_path = exe_dir.join("assets").join("chrome").join("toolbar.html");
+        if let Ok(content) = std::fs::read_to_string(asset_path) {
+            return content;
+        }
+    }
+    TOOLBAR_HTML_EMBEDDED.to_string()
+}
+
 fn chrome_data_url() -> Url {
-    let encoded = urlencoding::encode(TOOLBAR_HTML);
+    let html = load_toolbar_html();
+    let encoded = urlencoding::encode(&html);
     Url::parse(&format!("data:text/html;charset=utf-8,{}", encoded)).expect("chrome data url")
 }
 fn chrome_height_px(scale: f32) -> u32 { (CHROME_HEIGHT_CSS * scale).round().max(1.0) as u32 }
