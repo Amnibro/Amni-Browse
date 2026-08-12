@@ -27,9 +27,10 @@ use crate::platform::media_engine::{self, EngineKind, MediaWindow};
 use crate::platform::servo_keys::keyboard_event_from_winit;
 use crate::storage::bookmarks::BookmarkManager;
 use crate::storage::config::{BrowserConfig, DEFAULT_SEARCH_ENGINE, LITE_DDG_HOME};
-/// Must match `#shell{height:NNpx}` in `assets/chrome/toolbar.html` (74 = 36 tab + 36 nav + 2 progress).
-/// edca787 parked an unsafe 66-vs-74 split — never change one without the other.
-const CHROME_HEIGHT_CSS: f32 = 74.0;
+/// Must match `#shell{height:NNpx}` in `assets/chrome/toolbar.html` (66 = 32 tab + 32 nav + 2 progress).
+/// Current tree is deliberately 66/66 — do not "fix" by reverting to 74 (edca787 park was about
+/// mismatched pairs, not that 66 is wrong when HTML matches).
+const CHROME_HEIGHT_CSS: f32 = 66.0;
 const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
 /// Rewrite full Next.js DuckDuckGo URLs to the lite HTML endpoint Servo can paint.
 fn prefer_servo_friendly_url(raw: &str) -> String {
@@ -613,30 +614,68 @@ fn drain_pending_media(event_loop: &winit::event_loop::ActiveEventLoop, state: &
     }
 }
 static LAST_MISMATCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static LAST_OFFSCREEN_DRIFT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn paint_and_present(state: &AppState) {
+    // Servoshell binds the GL context before every composite. Without this, ANGLE/surfman
+    // can leave the wrong context current after input/wake → clear/blit become no-ops and
+    // present shows a cleared (black) or untouched (white) content band.
+    if let Err(e) = state.rendering_context.make_current() {
+        log::warn!("paint_and_present: make_current failed: {:?}", e);
+    }
+
     let win_now = state.window_size();
     let ctx_now = state.rendering_context.size();
     let key = ((win_now.width as u64) << 32) | win_now.height as u64;
     if (ctx_now.width, ctx_now.height) != (win_now.width, win_now.height) && LAST_MISMATCH.swap(key, std::sync::atomic::Ordering::Relaxed) != key {
         info!("paint mismatch: ctx {}x{} vs win {}x{}", ctx_now.width, ctx_now.height, win_now.width, win_now.height);
     }
+
+    let chrome_px = state.chrome_px();
+    let expected_content = content_size(win_now, chrome_px);
+    let off_now = state.offscreen_context.size();
+    if (off_now.width, off_now.height) != (expected_content.width, expected_content.height) {
+        let off_key = ((off_now.width as u64) << 32) | off_now.height as u64;
+        if LAST_OFFSCREEN_DRIFT.swap(off_key, std::sync::atomic::Ordering::Relaxed) != off_key {
+            info!(
+                "offscreen size drift {}x{} vs expected content {}x{} (chrome_px={}) — resizing webviews",
+                off_now.width, off_now.height, expected_content.width, expected_content.height, chrome_px
+            );
+        }
+        // WebView::resize drives OffscreenRenderingContext::resize (do not pre-resize contexts).
+        if let Some(chrome) = state.chrome_webview.borrow().as_ref() { chrome.resize(win_now); }
+        for c in state.content_webviews.borrow().iter() { c.resize(expected_content); }
+    }
+
     let chrome_opt = state.chrome_webview.borrow().clone();
     let content_opt = state.active_content();
     if let Some(chrome) = chrome_opt.as_ref() { chrome.paint(); }
     if let Some(content) = content_opt.as_ref() { content.paint(); }
-    if let Some(callback) = state.offscreen_context.render_to_parent_callback() {
-        let win = state.window_size();
-        let chrome_px = state.chrome_px();
-        let content_h = win.height.saturating_sub(chrome_px).max(1);
-        // Window/y-down coords: content sits below the chrome strip. (GL blit
-        // destination uses the same origin as WindowRenderingContext — top-left.)
-        let target_rect = DefaultRect::new(
-            DefaultPoint2D::new(0i32, chrome_px as i32),
-            DefaultSize2D::new(win.width as i32, content_h as i32),
-        );
-        state.rendering_context.prepare_for_rendering();
-        let gl = state.rendering_context.glow_gl_api();
-        callback(&gl, target_rect);
+
+    // v0.10.1 invariant: after content.paint() the offscreen FB is the DRAW target. Servo's
+    // blit callback scissor-clears *before* rebinding, so we must rebind the window FB first
+    // or the clear blacks the source → black content void (_shot_nav.png).
+    state.rendering_context.prepare_for_rendering();
+
+    let content_h = win_now.height.saturating_sub(chrome_px).max(1);
+    // GL framebuffer origin is BOTTOM-LEFT (servoshell uses clip.from_bottom_px). Content
+    // lives under the top chrome strip ⇒ target_rect.y = 0, height = content_h. Using
+    // y=chrome_px here would wipe chrome and leave a blank band at the bottom.
+    let target_rect = DefaultRect::new(
+        DefaultPoint2D::new(0i32, 0i32),
+        DefaultSize2D::new(win_now.width.max(1) as i32, content_h as i32),
+    );
+    match state.offscreen_context.render_to_parent_callback() {
+        Some(callback) => {
+            let gl = state.rendering_context.glow_gl_api();
+            callback(&gl, target_rect);
+        }
+        None => {
+            // framebuffer_id==0 → FBO never created (context not current at offscreen init).
+            log::warn!(
+                "paint_and_present: render_to_parent_callback=None (offscreen FBO missing) — content void; offscreen={}x{} win={}x{}",
+                off_now.width, off_now.height, win_now.width, win_now.height
+            );
+        }
     }
     state.rendering_context.present();
 }
