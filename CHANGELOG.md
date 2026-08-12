@@ -1,3 +1,9 @@
+## v0.11.3 - 2026-08-12 (toolbar chrome = full theme-token fidelity)
+- **`applyTheme` in `assets/chrome/toolbar.html` dropped four tokens the state endpoint already ships:** `font_family` (Paper Sunset serif / Mint Matrix mono changed pages but never the chrome), `accent_glow` (focus ring was a loud 2px solid `accent_hover`; now the designed 3px glow matching internal pages), `tab_active`/`tab_inactive` (custom themes can now style tab fills; builtins render identically).
+- New `:root` vars `--font`/`--glow`/`--tab-active`/`--tab-inactive` seeded with amni-dark values (no flash if poll fails); chromeRev `0.11.3-theme-tokens`.
+- Toolbar hot-loads from disk — live on relaunch; release rebuild keeps `include_str!` fallback in parity. cargo check clean.
+- Backup: `backups/toolbar.html.v0.11.2.bak`.
+
 ## v0.11.2 - 2026-08-12 (severity palette goes theme-native)
 - **secchip/safebar theme tokens:** `.secchip.safe/low/medium/high`, `#_safebar`, and `.ab` badge were hardcoded dark-theme hex (`#143d28`, `#3d3a1a`, `#2a1518`, `#ff4757`, `#04140a`) injected regardless of active theme — dark lozenges on light chrome. Now derived via `color-mix` over `p.ok`/`p.warn`/`p.danger`/`p.bg`/`p.border`; single rule set serves dark + light.
 - **`warning` token threaded** Rust `Theme` -> JS palette (`p.warn`, fallback `#E8B04B`); tab-close hover text also mixed off `p.danger` instead of fixed `#fff`.

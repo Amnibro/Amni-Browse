@@ -4,17 +4,17 @@
 <meta charset="utf-8">
 <title>Amni Chrome</title>
 <style>
-:root{--bg-darkest:#0D0F12;--bg:#08090B;--bg-focus:#111418;--bg-elev:#111418;--bg-hover:#161A20;--bg-active:#161A20;--stroke:#20242B;--text:#EDEFF2;--text-dim:#A7ADB6;--accent:#C89B4E;--accent-dim:#E2BC7C;--danger:#FF6B6B;--success:#4ADE80;--accent-warn:#E8B04B;--radius:4px;--tab-radius:calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0}
+:root{--bg-darkest:#0D0F12;--bg:#08090B;--bg-focus:#111418;--bg-elev:#111418;--bg-hover:#161A20;--bg-active:#161A20;--stroke:#20242B;--text:#EDEFF2;--text-dim:#A7ADB6;--accent:#C89B4E;--accent-dim:#E2BC7C;--danger:#FF6B6B;--success:#4ADE80;--accent-warn:#E8B04B;--glow:rgba(200,155,78,.18);--tab-active:#08090B;--tab-inactive:transparent;--font:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;--radius:4px;--tab-radius:calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0}
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--text);background:transparent;user-select:none;-webkit-user-select:none;pointer-events:none}
+html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text);background:transparent;user-select:none;-webkit-user-select:none;pointer-events:none}
 #shell{height:66px;display:flex;flex-direction:column;background:var(--bg);pointer-events:auto}
 /* ── TAB STRIP ─────────────────────────────── */
 #tabs{display:flex;align-items:flex-end;height:32px;padding:3px 6px 0;gap:2px;background:var(--bg-darkest)}
 #tab-list{display:flex;align-items:flex-end;gap:2px;flex:0 1 auto;min-width:0;max-width:calc(100% - 32px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
 #tab-list::-webkit-scrollbar{display:none}
-.tab{display:flex;align-items:center;gap:7px;min-width:96px;max-width:210px;height:28px;padding:0 9px;border-radius:var(--tab-radius);background:transparent;color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;transition:background .12s,color .12s}
+.tab{display:flex;align-items:center;gap:7px;min-width:96px;max-width:210px;height:28px;padding:0 9px;border-radius:var(--tab-radius);background:var(--tab-inactive);color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;transition:background .12s,color .12s}
 .tab:hover{background:var(--bg-elev);color:var(--text)}
-.tab.active{background:var(--bg);color:var(--text);border:1px solid var(--stroke);border-bottom:none;box-shadow:0 2px 0 var(--accent) inset,0 -1px 4px rgba(0,0,0,.2);z-index:2}
+.tab.active{background:var(--tab-active);color:var(--text);border:1px solid var(--stroke);border-bottom:none;box-shadow:0 2px 0 var(--accent) inset,0 -1px 4px rgba(0,0,0,.2);z-index:2}
 .tab .favicon{width:15px;height:15px;flex:0 0 15px;border-radius:4px;background:var(--accent-dim);display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;color:#fff}
 .tab .title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tab .close{opacity:0;pointer-events:none;width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;font-size:13px;color:var(--text-dim);cursor:pointer;flex:0 0 20px;transition:opacity .12s,background .12s}
@@ -36,7 +36,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
 #nav-start{display:flex;align-items:center;gap:2px;flex:0 0 auto}
 #url-wrap{flex:0 1 960px;min-width:140px;max-width:960px;display:flex;align-items:center;height:26px;margin:0 5px;padding:0 9px;background:var(--bg-elev);border:1px solid var(--stroke);border-radius:13px;transition:border-color .12s,background .12s,box-shadow .12s}
 #url-wrap:hover{background:var(--bg-hover)}
-#url-wrap.focused,#url-wrap:focus-within{border-color:var(--accent);background:var(--bg-focus);box-shadow:0 0 0 2px var(--accent-dim)}
+#url-wrap.focused,#url-wrap:focus-within{border-color:var(--accent);background:var(--bg-focus);box-shadow:0 0 0 3px var(--glow)}
 #lock{color:var(--text-dim);font-size:11px;margin-right:6px;flex:0 0 auto;line-height:1;transition:color .12s}
 #lock.secure{color:var(--success)}
 #lock.insecure{color:var(--accent-warn)}
@@ -114,7 +114,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
   function findTab(id){return tabs().find(t=>t.dataset.id===id)||null}
   function renderTabs(list){const html=(list||[]).map(t=>{const m=mono(t.title&&t.title!=='New Tab'?t.title:t.url);return`<div class="tab ${t.active?'active':''} ${t.engine==='media'?'media':''} ${t.loading?'loading':''}" data-id="${esc(t.id)}" tabindex="${t.active?0:-1}" role="tab" aria-selected="${t.active?'true':'false'}" title="${esc(t.title||'New Tab')}"><span class="favicon" style="background:hsl(${m.hue},45%,38%)">${esc(m.ch)}</span><span class="title">${esc(t.title||'New Tab')}</span><span class="close ico" role="presentation">&#215;</span><span class="engine-badge"></span></div>`}).join('');if(tabList.innerHTML===html){const a=tabList.querySelector('.tab.active');if(a)try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}return}const ae=document.activeElement;const onTab=tabList.contains(ae)&&ae.classList.contains('tab');const keep=onTab?ae.dataset.id:null;tabList.innerHTML=html;if(keep){const r=findTab(keep)||tabList.querySelector('.tab[tabindex="0"]')||tabList.querySelector('.tab');if(r)setRoving(r,true)}else{const a=tabList.querySelector('.tab.active')||tabList.querySelector('.tab');if(a){setRoving(a,false);try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}}}}
   function setZoom(z){const pct=Math.round((z||1)*100);if(zoomLevel.textContent!==pct+'%')zoomLevel.textContent=pct+'%';zoomLevel.classList.toggle('off',pct!==100)}
-  function applyTheme(th){if(!th||typeof th!=='object')return;const r=document.documentElement.style;const m={'--bg-darkest':th.bg_secondary,'--bg':th.bg_primary,'--bg-focus':th.bg_tertiary,'--bg-elev':th.bg_tertiary,'--bg-hover':th.bg_hover,'--bg-active':th.bg_hover,'--stroke':th.border,'--text':th.text_primary,'--text-dim':th.text_secondary,'--accent':th.accent,'--accent-dim':th.accent_hover,'--danger':th.danger,'--success':th.success,'--accent-warn':th.warning,'--radius':th.border_radius};Object.entries(m).forEach(([k,v])=>{if(v)r.setProperty(k,v)})}
+  function applyTheme(th){if(!th||typeof th!=='object')return;const r=document.documentElement.style;const m={'--bg-darkest':th.bg_secondary,'--bg':th.bg_primary,'--bg-focus':th.bg_tertiary,'--bg-elev':th.bg_tertiary,'--bg-hover':th.bg_hover,'--bg-active':th.bg_hover,'--stroke':th.border,'--text':th.text_primary,'--text-dim':th.text_secondary,'--accent':th.accent,'--accent-dim':th.accent_hover,'--danger':th.danger,'--success':th.success,'--accent-warn':th.warning,'--glow':th.accent_glow,'--tab-active':th.tab_active,'--tab-inactive':th.tab_inactive,'--font':th.font_family,'--radius':th.border_radius};Object.entries(m).forEach(([k,v])=>{if(v)r.setProperty(k,v)})}
   function applyState(s){setUrl(s.url||'');setProgress(!!s.loading);setNavDisabled(!!s.canBack,!!s.canForward);renderTabs(s.tabs||[]);setZoom(s.zoom);setShield(s.shield!==false);setBookmarked(!!s.bookmarked);applyTheme(s.theme)}
   async function poll(){try{const r=await fetch('amnibrowse://state',{cache:'no-store'});if(!r.ok)return;applyState(await r.json())}catch(e){}}
   url.addEventListener('focus',()=>{wrap.classList.add('focused');url.select()});
@@ -127,7 +127,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
   tabList.addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;if(e.target.classList.contains('close')){cmd('close_tab',{id:t.dataset.id});e.stopPropagation()}else{setRoving(t);cmd('switch_tab',{id:t.dataset.id})}});
   tabList.addEventListener('keydown',e=>{const t=e.target.closest('.tab');if(!t)return;const all=tabs(),i=all.indexOf(t);if(e.key==='Enter'||e.key===' '){e.preventDefault();cmd('switch_tab',{id:t.dataset.id});return}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();cmd('close_tab',{id:t.dataset.id});return}let n=null;if(e.key==='ArrowRight')n=all[(i+1)%all.length];if(e.key==='ArrowLeft')n=all[(i+all.length-1)%all.length];if(e.key==='Home')n=all[0];if(e.key==='End')n=all[all.length-1];if(n){e.preventDefault();setRoving(n);cmd('switch_tab',{id:n.dataset.id})}});
   tabList.addEventListener('auxclick',e=>{if(e.button!==1)return;const t=e.target.closest('.tab');if(t){cmd('close_tab',{id:t.dataset.id});e.preventDefault()}});
-  window.__amni={setProgress,setUrl,setLock,chromeRev:'0.11.2-settings'};
+  window.__amni={setProgress,setUrl,setLock,chromeRev:'0.11.3-theme-tokens'};
   setLock(url.value);poll();setInterval(poll,250);
 })();
 </script>
