@@ -31,7 +31,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
 .nav-btn:active{background:var(--bg-active)}
 .nav-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px;background:var(--bg-elev);color:var(--text)}
 .nav-btn.disabled{opacity:.35;pointer-events:none}
-#url-wrap{flex:1;display:flex;align-items:center;height:32px;margin:0 4px;padding:0 10px;background:var(--bg-elev);border:1px solid var(--stroke);border-radius:16px;transition:border-color .12s,background .12s,box-shadow .12s}
+#url-wrap{flex:1 1 auto;max-width:1080px;display:flex;align-items:center;height:32px;margin:0 4px;padding:0 10px;background:var(--bg-elev);border:1px solid var(--stroke);border-radius:16px;transition:border-color .12s,background .12s,box-shadow .12s}
 #url-wrap:hover{background:var(--bg-hover)}
 #url-wrap.focused,#url-wrap:focus-within{border-color:var(--accent);background:var(--bg-focus);box-shadow:0 0 0 2px var(--accent-dim)}
 #lock{color:var(--success);font-size:11px;margin-right:8px}
@@ -55,7 +55,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
 <body>
 <div id="shell">
   <div id="tabs">
-    <div id="tab-list"><div class="tab active" data-id="t0" tabindex="0" role="tab"><span class="favicon"></span><span class="title">Amni Browse</span><span class="close ico">&#215;</span><span class="engine-badge"></span></div></div>
+    <div id="tab-list" role="tablist"><div class="tab active" data-id="t0" tabindex="0" role="tab" aria-selected="true"><span class="favicon"></span><span class="title">Amni Browse</span><span class="close ico">&#215;</span><span class="engine-badge"></span></div></div>
     <button id="new-tab" class="ico" title="New tab">+</button>
   </div>
   <div id="nav">
@@ -86,7 +86,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
   function setUrl(v){if(document.activeElement!==url&&url.value!==v)url.value=v;}
   function setNavDisabled(b,f){back.classList.toggle('disabled',!b);forward.classList.toggle('disabled',!f);}
   function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-  function renderTabs(tabs){const html=tabs.map(t=>`<div class="tab ${t.active?'active':''} ${t.engine==='media'?'media':''}" data-id="${esc(t.id)}" tabindex="0" role="tab"><span class="favicon"></span><span class="title">${esc(t.title||'New Tab')}</span><span class="close ico">&#215;</span><span class="engine-badge"></span></div>`).join('');if(tabList.innerHTML!==html)tabList.innerHTML=html;}
+  function renderTabs(tabs){const html=tabs.map(t=>`<div class="tab ${t.active?'active':''} ${t.engine==='media'?'media':''}" data-id="${esc(t.id)}" tabindex="${t.active?0:-1}" role="tab" aria-selected="${t.active?'true':'false'}"><span class="favicon"></span><span class="title">${esc(t.title||'New Tab')}</span><span class="close ico">&#215;</span><span class="engine-badge"></span></div>`).join('');if(tabList.innerHTML!==html){const had=tabList.contains(document.activeElement)&&document.activeElement.closest('.tab');const id=had&&had.dataset.id;tabList.innerHTML=html;if(id){const r=tabList.querySelector(`.tab[data-id="${CSS.escape(id)}"]`)||tabList.querySelector('.tab');if(r){r.setAttribute('tabindex','0');r.focus();}}}}
   function setZoom(z){const pct=Math.round((z||1)*100);if(zoomLevel.textContent!==pct+'%')zoomLevel.textContent=pct+'%';zoomLevel.style.color=(pct===100)?'var(--text-dim)':'var(--accent)';}
   function applyState(s){setUrl(s.url||'');setProgress(!!s.loading);setNavDisabled(!!s.canBack,!!s.canForward);renderTabs(s.tabs||[]);setZoom(s.zoom);}
   async function poll(){try{const r=await fetch('amnibrowse://state',{cache:'no-store'});if(!r.ok)return;applyState(await r.json());}catch(e){}}
@@ -98,7 +98,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 -apple-system,"Segoe UI",Rob
   zoomLevel.addEventListener('click',()=>cmd('zoom_reset'));
   zoomLevel.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();cmd('zoom_reset');}});
   tabList.addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;if(e.target.classList.contains('close')){cmd('close_tab',{id:t.dataset.id});e.stopPropagation();}else{cmd('switch_tab',{id:t.dataset.id});}});
-  tabList.addEventListener('keydown',e=>{const t=e.target.closest('.tab');if(!t)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();cmd('switch_tab',{id:t.dataset.id});}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();cmd('close_tab',{id:t.dataset.id});}});
+  tabList.addEventListener('keydown',e=>{const t=e.target.closest('.tab');if(!t)return;if(e.key==='Enter'||e.key===' '){e.preventDefault();cmd('switch_tab',{id:t.dataset.id});}if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();cmd('close_tab',{id:t.dataset.id});}if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();const all=[...tabList.querySelectorAll('.tab')],i=all.indexOf(t),n=all[(i+(e.key==='ArrowRight'?1:all.length-1))%all.length];if(n){n.setAttribute('tabindex','0');t.setAttribute('tabindex','-1');n.focus();cmd('switch_tab',{id:n.dataset.id});}}});
   tabList.addEventListener('auxclick',e=>{if(e.button!==1)return;const t=e.target.closest('.tab');if(t){cmd('close_tab',{id:t.dataset.id});e.preventDefault();}});
   window.__amni={setProgress,setUrl};
   poll();setInterval(poll,250);
