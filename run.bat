@@ -11,12 +11,21 @@ if not exist "%GST_ROOT%\bin\gstreamer-1.0-0.dll" (
 set "GSTREAMER_1_0_ROOT_MSVC_X86_64=%GST_ROOT%\"
 set "PKG_CONFIG_PATH=%GST_ROOT%\lib\pkgconfig"
 set "PATH=%PATH%;%GST_ROOT%\bin;C:\ProgramData\chocolatey\bin"
-echo [Amni-Browse] Building full Servo engine ^(first build ~30 min, incremental after^)...
-cargo build --release --no-default-features --features servo-real
-if errorlevel 1 (
-    echo [Amni-Browse] Build FAILED - not launching stale binary.
-    pause
-    exit /b 1
+set "NEED_BUILD=1"
+if exist "target\release\amni-browse.exe" (
+    for /f %%s in ('powershell -NoProfile -Command "$exe=(Get-Item 'target\release\amni-browse.exe').LastWriteTime; $src=@(Get-ChildItem -Recurse -File src,build.rs,Cargo.toml,Cargo.lock -ErrorAction SilentlyContinue | Measure-Object -Property LastWriteTime -Maximum).Maximum; if ($src -and $src -gt $exe) { 'stale' } else { 'fresh' }"') do set "BUILD_STATE=%%s"
+    if "%BUILD_STATE%"=="fresh" set "NEED_BUILD=0"
+)
+if "%NEED_BUILD%"=="0" (
+    echo [Amni-Browse] Prebuilt exe is up to date - skipping rebuild ^(delete target\release\amni-browse.exe to force one^).
+) else (
+    echo [Amni-Browse] Building full Servo engine ^(first build ~30 min, incremental after^)...
+    cargo build --release --no-default-features --features servo-real
+    if errorlevel 1 (
+        echo [Amni-Browse] Build FAILED - not launching stale binary.
+        pause
+        exit /b 1
+    )
 )
 echo [Amni-Browse] Staging ANGLE DLLs next to exe...
 for /d %%d in (target\release\build\mozangle-*) do (
