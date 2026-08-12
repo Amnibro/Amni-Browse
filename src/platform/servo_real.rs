@@ -28,7 +28,8 @@ use crate::platform::servo_keys::keyboard_event_from_winit;
 use crate::storage::bookmarks::BookmarkManager;
 use crate::storage::config::BrowserConfig;
 use crate::ui::theme::ThemeConfig;
-const CHROME_HEIGHT_CSS: f32 = 66.0;
+use crate::ui::tokens;
+const CHROME_HEIGHT_CSS: f32 = tokens::SERVO_CHROME_HEIGHT_CSS as f32;
 const TOOLBAR_HTML_EMBEDDED: &str = include_str!("../../assets/chrome/toolbar.html");
 
 fn load_toolbar_html() -> String {

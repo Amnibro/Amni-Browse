@@ -37,24 +37,28 @@ impl Browser {
         let boot_theme = state.borrow().themes.active_theme();
         let boot_tabs = state.borrow().tabs.to_json();
         let last_tabs = Rc::new(RefCell::new(boot_tabs.clone()));
-        let newtab_html = spa::browser_html(&boot_theme);
+        let last_theme = Rc::new(RefCell::new(state.borrow().themes.active_theme_json()));
         let s1 = Rc::clone(&state);
         let a1 = Rc::clone(&acts);
         let lu1 = Rc::clone(&loaded_url);
         let lt1 = Rc::clone(&last_tabs);
+        let lth1 = Rc::clone(&last_theme);
         let px1 = proxy.clone();
-        let proto_html = newtab_html.into_bytes();
+        let s_proto = Rc::clone(&state);
         let a_load = Rc::clone(&acts);
         let lt_load = Rc::clone(&last_tabs);
+        let lth_load = Rc::clone(&last_theme);
         let px_load = proxy.clone();
         let webview = WebViewBuilder::new()
             .with_custom_protocol("amnibrowse".to_string(), move |_, _request| {
+                let theme = s_proto.borrow().themes.active_theme();
+                let html = spa::browser_html(&theme).into_bytes();
                 wry::http::Response::builder()
                     .header("Content-Type", "text/html; charset=utf-8")
                     .header("Cache-Control", "no-cache, no-store, must-revalidate")
                     .header("Pragma", "no-cache")
                     .header("Expires", "0")
-                    .body(Cow::Owned(proto_html.clone()))
+                    .body(Cow::Owned(html))
                     .unwrap()
             })
             .with_url("amnibrowse://newtab/")
@@ -65,10 +69,13 @@ impl Browser {
                 if !matches!(ev, PageLoadEvent::Started | PageLoadEvent::Finished) { return; }
                 if url.contains("amnibrowse.") { return; }
                 let t = lt_load.borrow().clone();
-                if t.is_empty() || t == "[]" { return; }
+                let th = lth_load.borrow().clone();
+                if (t.is_empty() || t == "[]") && (th.is_empty() || th == "{}") { return; }
+                let tabs = if t.is_empty() { "[]".to_string() } else { t };
+                let theme = if th.is_empty() { "{}".to_string() } else { th };
                 a_load.borrow_mut().push(Act::Js(format!(
-                    "(function(){{try{{window.__AMNI_TAB_SEED={0};if(window.__AMNI_SYNC_TABS)window.__AMNI_SYNC_TABS({0});}}catch(_){{}}}})()",
-                    t
+                    "(function(){{try{{var tabs={0};window.__AMNI_TAB_SEED=tabs;window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS(tabs);var th={1};window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME(th);}}catch(_){{}}}})()",
+                    tabs, theme
                 )));
                 px_load.send_event(()).ok();
             })
@@ -84,14 +91,16 @@ impl Browser {
                         if let Some(resp) = s.handle_command(m) {
                             let tabs_json = s.tabs.to_json();
                             *lt1.borrow_mut() = tabs_json.clone();
+                            let theme_json = s.themes.active_theme_json();
+                            *lth1.borrow_mut() = theme_json.clone();
                             let active_url = s.tabs.active_tab().map(|t| t.url.clone());
                             drop(s);
                             match &resp {
                                 IpcResponse::NavigateTo { url } => {
                                     a1.borrow_mut().push(Act::Js(resp.to_js_call()));
                                     a1.borrow_mut().push(Act::Js(format!(
-                                        "window.__AMNI_TAB_SEED={0};window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS({0})",
-                                        tabs_json
+                                        "window.__AMNI_TAB_SEED={0};window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS({0});window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME({1})",
+                                        tabs_json, theme_json
                                     )));
                                     a1.borrow_mut().push(Act::Nav(url.clone()));
                                     a1.borrow_mut().push(Act::Title(url.clone()));
@@ -99,8 +108,8 @@ impl Browser {
                                 IpcResponse::TabsUpdated { .. } => {
                                     a1.borrow_mut().push(Act::Js(resp.to_js_call()));
                                     a1.borrow_mut().push(Act::Js(format!(
-                                        "window.__AMNI_TAB_SEED={0};window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS({0})",
-                                        tabs_json
+                                        "window.__AMNI_TAB_SEED={0};window.__AMNI_SYNC_TABS&&window.__AMNI_SYNC_TABS({0});window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME({1})",
+                                        tabs_json, theme_json
                                     )));
                                     if tab_nav {
                                         if let Some(u) = active_url {
@@ -113,6 +122,7 @@ impl Browser {
                                     }
                                 }
                                 IpcResponse::ActiveTheme { data } => {
+                                    *lth1.borrow_mut() = data.clone();
                                     a1.borrow_mut().push(Act::Js(resp.to_js_call()));
                                     a1.borrow_mut().push(Act::Js(format!(
                                         "window.__AMNI_SYNC_THEME&&window.__AMNI_SYNC_THEME({})",
