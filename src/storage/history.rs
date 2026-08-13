@@ -97,4 +97,13 @@ impl HistoryManager {
         let recent: Vec<&HistoryEntry> = self.recent(limit);
         serde_json::to_string(&recent).unwrap_or_else(|_| "[]".to_string())
     }
+    pub fn omnibox_json(&self, query: &str, extra: &[(&str, &str)], limit: usize) -> String {
+        use crate::engine::daily_driver::omnibox_rank;
+        let mut rows: Vec<(i64, String, String)> = self.entries.iter().map(|e| (omnibox_rank(query, &e.url, &e.title, e.visit_count), e.url.clone(), e.title.clone())).collect();
+        for (u, t) in extra { rows.push((omnibox_rank(query, u, t, 8), (*u).to_string(), (*t).to_string())); }
+        rows.sort_by(|a, b| b.0.cmp(&a.0));
+        rows.dedup_by(|a, b| a.1 == b.1);
+        let out: Vec<serde_json::Value> = rows.into_iter().filter(|(s, _, _)| *s > 0 || query.is_empty()).take(limit).map(|(_, u, t)| serde_json::json!({"url": u, "title": t})).collect();
+        serde_json::to_string(&out).unwrap_or_else(|_| "[]".into())
+    }
 }

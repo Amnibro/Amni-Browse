@@ -1,3 +1,14 @@
+## 2026-08-12 v0.12.1 click-install + auto-update + BYO password manager
+- Install: `scripts/AmniBrowse-Setup.cmd` / `scripts/install.ps1` downloads latest zip from `https://amni-scient.com/browse/latest.json` then GitHub `Amnibro/Amni-Browse` releases, extracts to `%LOCALAPPDATA%\AmniBrowse`, Start Menu + Desktop shortcuts, registers HTTP/HTTPS, launches. Host `docs/latest.json` on the site. NSIS stub `scripts/amni-browse.nsi`. Uninstall: `scripts/uninstall.ps1`.
+- In-app updater (`src/net/updater.rs`): startup check (if `check_updates`), Settings Check/Install, chrome ↑ badge. Applies zip over install dir via `apply-update.cmd` then exits.
+- BYO passwords (`src/crypto/pm.rs`): Amni vault, Bitwarden `bw`, 1Password `op`, KeePassXC CLI. Unlock in Settings. Key icon in URL bar lists matches; one-match autofill on load (toggle). Chrome-style fill via injected form script. CSV parse helper for Chrome exports.
+- Config: `password_provider`, `pm_cli_path`, `pm_keepass_db`, `autofill_on_load`, `check_updates`, `update_feed` (serde defaults so old config.json still loads).
+## 2026-08-12 v0.12.0 servo default + daily-driver chrome
+- Cargo `default = ["servo-real"]`. Plain `cargo build --release` is libservo. WebView stub is `--no-default-features --features webview`. `run.bat` builds `--features servo-real` without stripping defaults.
+- `BrowserConfig::config_dir_root` vs `config_dir` (AMNI_PROFILE). Profile switch relaunches with that env.
+- Servo path: history record on URL change; downloads on file/PDF nav; PDF viewer page + system open; find-in-page via `window.find`; print; omnibox `amnibrowse://suggest`; downloads/history flyouts; vault unlock + autofill inject; extension content scripts/CSS on load complete; `window.open` → new tab; CLI start URL; Windows default-browser registry + Settings.
+- Chrome overlay hit region (`cmd overlay`) so suggest/panels receive mouse below the 84px shell. Toolbar: find bar, suggest, Ctrl+F/P/S/J/H, Ctrl+Shift+N.
+- New: `src/engine/daily_driver.rs`, `src/platform/os_default.rs`. Backups: `backups/*.v0.11.13.bak`.
 ## 2026-08-12 v0.11.13 content blit fix + glass polish (SHIPPED)
 - `src/platform/servo_real.rs` paint_and_present: GL target_rect origin (0,chrome_px)->(0,0) — bottom-left GL origin meant the old offset pushed content UP over the chrome band; this was the remaining "no header bar" pixel cause. Newtab footer `v{ver} · Real Servo · Amni-Scient`; theme_root_vars emits dual aliases (--bg/--bg-primary, --dim/--text-muted, --chrome, tab tokens).
 - Chrome contract 84px (SERVO_TAB_H 40 + NAV 42 + progress 2) in `src/ui/tokens.rs` + `assets/chrome/toolbar.html`; CLOSE_HITBOX 28 (28×28 .close); NAV_HIT 36; url bar hides data:/about:blank/amnibrowse://newtab. Gates: scripts/run_glass_gates.ps1 4/4 pass on cold zip extract. Release v0.11.13 sole Latest, live asset md5 == local; site about/index/amni-browse/faq flipped + Pages build 773435e2 verified live.

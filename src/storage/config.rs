@@ -33,7 +33,21 @@ pub struct BrowserConfig {
     pub default_zoom: f64,
     pub enable_reader_mode: bool,
     pub downloads_dir: Option<String>,
+    #[serde(default = "default_pm")]
+    pub password_provider: String,
+    #[serde(default)]
+    pub pm_cli_path: Option<String>,
+    #[serde(default)]
+    pub pm_keepass_db: Option<String>,
+    #[serde(default = "default_true")]
+    pub autofill_on_load: bool,
+    #[serde(default = "default_true")]
+    pub check_updates: bool,
+    #[serde(default)]
+    pub update_feed: Option<String>,
 }
+fn default_true() -> bool { true }
+fn default_pm() -> String { "amni".into() }
 
 impl Default for BrowserConfig {
     fn default() -> Self {
@@ -59,16 +73,34 @@ impl Default for BrowserConfig {
             default_zoom: 1.0,
             enable_reader_mode: true,
             downloads_dir: None,
+            password_provider: default_pm(),
+            pm_cli_path: None,
+            pm_keepass_db: None,
+            autofill_on_load: true,
+            check_updates: true,
+            update_feed: None,
         }
     }
 }
 
 impl BrowserConfig {
-    pub fn config_dir() -> PathBuf {
+    pub fn config_dir_root() -> PathBuf {
         let base = dirs::config_dir().unwrap_or_else(|| PathBuf::from("."));
         let dir = base.join("amni-browse");
         fs::create_dir_all(&dir).ok();
         dir
+    }
+    pub fn config_dir() -> PathBuf {
+        let root = Self::config_dir_root();
+        match std::env::var("AMNI_PROFILE") {
+            Ok(id) if !id.is_empty() && id != "default" => {
+                let clean: String = id.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_').collect();
+                let dir = root.join("profiles").join(if clean.is_empty() { "p".into() } else { clean });
+                fs::create_dir_all(&dir).ok();
+                dir
+            }
+            _ => root,
+        }
     }
     pub fn cache_dir() -> PathBuf {
         let base = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("."));

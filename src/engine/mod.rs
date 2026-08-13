@@ -40,3 +40,4 @@ pub mod indexeddb;
 pub mod webrtc;
 pub mod pwa;
 pub mod cache_api;
+pub mod daily_driver;

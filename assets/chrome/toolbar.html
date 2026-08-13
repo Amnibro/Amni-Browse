@@ -7,7 +7,17 @@
 :root{--bg-darkest:#0D0F12;--bg:#08090B;--bg-focus:#111418;--bg-elev:#111418;--bg-hover:#161A20;--bg-active:#161A20;--stroke:#20242B;--text:#EDEFF2;--text-dim:#A7ADB6;--accent:#C89B4E;--accent-dim:#E2BC7C;--danger:#FF6B6B;--success:#4ADE80;--accent-warn:#E8B04B;--glow:rgba(200,155,78,.18);--tab-active:#08090B;--tab-inactive:transparent;--font:-apple-system,"Segoe UI",Roboto,Arial,sans-serif;--radius:4px;--tab-radius:calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text);background:transparent;user-select:none;-webkit-user-select:none;pointer-events:none}
-#shell{height:84px;display:flex;flex-direction:column;background:var(--bg);pointer-events:auto;border-bottom:1px solid var(--stroke)}
+#shell{height:84px;display:flex;flex-direction:column;background:var(--bg);pointer-events:auto;border-bottom:1px solid var(--stroke);position:relative}
+#find{display:none;position:absolute;left:0;right:0;top:40px;height:42px;align-items:center;gap:6px;padding:0 10px;background:var(--bg);border-top:1px solid var(--stroke);z-index:5}
+#find.on{display:flex}
+#find input{flex:1;min-width:0;height:28px;border:1px solid var(--stroke);border-radius:14px;background:var(--bg-elev);color:var(--text);padding:0 12px;font:13px var(--font);outline:none}
+#find input:focus{border-color:var(--accent)}
+#suggest,#panel{display:none;position:absolute;left:8px;right:8px;top:84px;max-height:240px;overflow:auto;background:var(--bg-elev);border:1px solid var(--stroke);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);pointer-events:auto;z-index:6}
+#suggest.on,#panel.on{display:block}
+#suggest button,#panel button.row{display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--text);padding:8px 12px;font:12px var(--font);cursor:pointer}
+#suggest button:hover,#panel button.row:hover{background:var(--bg-hover)}
+#suggest .sub,#panel .sub{color:var(--text-dim);font-size:11px;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+#panel h3{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);padding:8px 12px 4px}
 #tabs{display:flex;align-items:flex-end;height:40px;padding:4px 8px 0;gap:3px;background:var(--bg-darkest)}
 #tab-list{display:flex;align-items:flex-end;gap:2px;flex:0 1 auto;min-width:0;max-width:calc(100% - 40px);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:var(--stroke) transparent}
 .tab{display:flex;align-items:center;gap:7px;min-width:120px;max-width:240px;height:32px;padding:0 10px;border:1px solid transparent;border-bottom:none;border-radius:var(--tab-radius);background:var(--tab-inactive);color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;transition:background .12s,color .12s,border-color .12s}
@@ -79,6 +89,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
       <span id="lock" class="ico">&#9673;</span>
       <input id="url" type="text" spellcheck="false" autocomplete="off" placeholder="Search or enter URL&#8230;" value="">
       <div id="url-actions">
+        <button class="nav-btn ico" id="logins" title="Passwords" aria-pressed="false" style="display:none">&#128273;</button>
         <button class="nav-btn ico" id="bookmark" title="Bookmark (Ctrl+D)">&#9734;</button>
       </div>
     </div>
@@ -86,12 +97,17 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
       <button class="nav-btn ico" id="zoom-out" title="Zoom out (Ctrl+-)">&#8722;</button>
       <span id="zoom-level" title="Reset zoom (Ctrl+0)" tabindex="0" role="button">100%</span>
       <button class="nav-btn ico" id="zoom-in" title="Zoom in (Ctrl+=)">&#43;</button>
+      <button class="nav-btn ico" id="upd" title="Update available" style="display:none">&#8593;</button>
       <button class="nav-btn ico" id="shield" title="Shield: blocking ads &amp; trackers">&#9960;</button>
+      <button class="nav-btn ico" id="find-btn" title="Find (Ctrl+F)">&#9906;</button>
       <button class="nav-btn ico" id="menu" title="Menu" aria-haspopup="true">&#9776;</button>
     </div>
   </div>
   <div id="progress"><div id="progress-bar"></div></div>
+  <div id="find"><input id="find-q" type="text" placeholder="Find in page" spellcheck="false"><button class="nav-btn ico" id="find-prev" title="Previous">&#8593;</button><button class="nav-btn ico" id="find-next" title="Next">&#8595;</button><button class="nav-btn ico" id="find-x" title="Close">&#215;</button></div>
 </div>
+<div id="suggest" role="listbox"></div>
+<div id="panel"></div>
 <script>
 (function(){
   const $=s=>document.querySelector(s);
@@ -114,11 +130,32 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
   function renderTabs(list){const html=(list||[]).map(t=>{const m=mono(t.title&&t.title!=='New Tab'?t.title:t.url);return`<div class="tab ${t.active?'active':''} ${t.engine==='media'?'media':''} ${t.loading?'loading':''}" data-id="${esc(t.id)}" tabindex="${t.active?0:-1}" role="tab" aria-selected="${t.active?'true':'false'}" title="${esc(t.title||'New Tab')}"><span class="favicon" style="background:hsl(${m.hue},45%,38%)">${esc(m.ch)}</span><span class="title">${esc(t.title||'New Tab')}</span><span class="close ico" title="Close tab" aria-label="Close tab">&#215;</span><span class="engine-badge"></span></div>`}).join('');const activeId=((list||[]).find(t=>t.active)||{}).id||null;const activeChanged=activeId!==lastActiveId;lastActiveId=activeId;if(tabList.innerHTML===html){if(activeChanged){const a=tabList.querySelector('.tab.active');if(a)try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}}return}const ae=document.activeElement;const onTab=tabList.contains(ae)&&ae.classList.contains('tab');const keep=onTab?ae.dataset.id:null;const sl=tabList.scrollLeft;tabList.innerHTML=html;tabList.scrollLeft=sl;if(keep){const r=findTab(keep)||tabList.querySelector('.tab[tabindex="0"]')||tabList.querySelector('.tab');if(r)setRoving(r,true)}else{const a=tabList.querySelector('.tab.active')||tabList.querySelector('.tab');if(a){setRoving(a,false);if(activeChanged)try{a.scrollIntoView({inline:'nearest',block:'nearest'})}catch(e){}}}}
   function setZoom(z){const pct=Math.round((z||1)*100);if(zoomLevel.textContent!==pct+'%')zoomLevel.textContent=pct+'%';zoomLevel.classList.toggle('off',pct!==100)}
   function applyTheme(th){if(!th||typeof th!=='object')return;const r=document.documentElement.style;const m={'--bg-darkest':th.bg_secondary,'--bg':th.bg_primary,'--bg-primary':th.bg_primary,'--bg-focus':th.bg_tertiary,'--bg-elev':th.bg_tertiary,'--bg-tertiary':th.bg_tertiary,'--bg-hover':th.bg_hover,'--bg-active':th.bg_hover,'--stroke':th.border,'--border':th.border,'--text':th.text_primary,'--text-primary':th.text_primary,'--text-dim':th.text_secondary,'--text-secondary':th.text_secondary,'--text-muted':th.text_secondary,'--accent':th.accent,'--accent-dim':th.accent_hover,'--danger':th.danger,'--success':th.success,'--accent-warn':th.warning,'--glow':th.accent_glow,'--tab-active':th.tab_active,'--tab-inactive':th.tab_inactive,'--chrome':th.bg_secondary,'--font':th.font_family,'--radius':th.border_radius};Object.entries(m).forEach(([k,v])=>{if(v)r.setProperty(k,v)})}
-  function applyState(s){setUrl(s.url||'');setProgress(!!s.loading);setNavDisabled(!!s.canBack,!!s.canForward);renderTabs(s.tabs||[]);setZoom(s.zoom);setShield(s.shield!==false);setBookmarked(!!s.bookmarked);applyTheme(s.theme)}
+  const loginBtn=$('#logins'),updBtn=$('#upd');
+  function applyState(s){setUrl(s.url||'');setProgress(!!s.loading);setNavDisabled(!!s.canBack,!!s.canForward);renderTabs(s.tabs||[]);setZoom(s.zoom);setShield(s.shield!==false);setBookmarked(!!s.bookmarked);applyTheme(s.theme);const logs=s.logins||[];if(loginBtn){loginBtn.style.display=logs.length?'inline-flex':'none';loginBtn.title=(s.pm||'Passwords')+' · '+logs.length+' on this page';loginBtn.dataset.n=String(logs.length)}if(updBtn){updBtn.style.display=s.update?'inline-flex':'none';if(s.update)updBtn.title='Update '+s.update.version+' from '+s.update.source}}
   async function poll(){try{const r=await fetch('amnibrowse://state',{cache:'no-store'});if(!r.ok)return;applyState(await r.json())}catch(e){}}
   url.addEventListener('focus',()=>{wrap.classList.add('focused');url.select()});
   url.addEventListener('blur',()=>wrap.classList.remove('focused'));
-  url.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=url.value.trim();if(v)cmd('navigate',{url:v});url.blur()}if(e.key==='Escape'){url.value=lastUrl;url.blur()}});
+  const suggest=$('#suggest'),panel=$('#panel'),findBar=$('#find'),findQ=$('#find-q');
+  function overlay(h){cmd('overlay',{h:String(h||0)})}
+  function hideFly(){suggest.classList.remove('on');panel.classList.remove('on');overlay(0)}
+  let sugTimer=null;
+  async function showSuggest(q){try{const r=await fetch('amnibrowse://suggest?q='+encodeURIComponent(q||''),{cache:'no-store'});const list=await r.json();if(!Array.isArray(list)||!list.length){suggest.classList.remove('on');overlay(findBar.classList.contains('on')?0:0);return}suggest.innerHTML=list.map(it=>'<button type="button" data-url="'+esc(it.url)+'"><span>'+esc(it.title||it.url)+'</span><span class="sub">'+esc(it.url)+'</span></button>').join('');suggest.classList.add('on');panel.classList.remove('on');overlay(Math.min(240,list.length*44+8))}catch(e){suggest.classList.remove('on')}}
+  url.addEventListener('input',()=>{clearTimeout(sugTimer);const v=url.value.trim();sugTimer=setTimeout(()=>{v?showSuggest(v):hideFly()},80)});
+  url.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=url.value.trim();if(v)cmd('navigate',{url:v});url.blur();hideFly()}if(e.key==='Escape'){url.value=lastUrl;url.blur();hideFly()}});
+  suggest.addEventListener('mousedown',e=>{const b=e.target.closest('button');if(!b)return;e.preventDefault();cmd('navigate',{url:b.dataset.url});hideFly();url.blur()});
+  function showFind(){findBar.classList.add('on');findQ.focus();findQ.select()}
+  function hideFind(){findBar.classList.remove('on');cmd('find',{q:'',dir:'1'})}
+  $('#find-btn').addEventListener('click',()=>findBar.classList.contains('on')?hideFind():showFind());
+  findQ.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();cmd('find',{q:findQ.value,dir:e.shiftKey?'-1':'1'})}if(e.key==='Escape')hideFind()});
+  $('#find-next').addEventListener('click',()=>cmd('find',{q:findQ.value,dir:'1'}));
+  $('#find-prev').addEventListener('click',()=>cmd('find',{q:findQ.value,dir:'-1'}));
+  $('#find-x').addEventListener('click',hideFind);
+  async function showPanel(kind){hideFly();try{const path=kind==='dl'?'downloads':'history';const r=await fetch('amnibrowse://'+path,{cache:'no-store'});const list=await r.json();const title=kind==='dl'?'Downloads':'History';const rows=(list||[]).slice(0,20).map(it=>{const u=it.url||'';const t=it.title||it.filename||u;return '<button type="button" class="row" data-url="'+esc(u)+'"><span>'+esc(t)+'</span><span class="sub">'+esc(u||it.status||'')+'</span></button>'}).join('')||'<p class="sub" style="padding:10px 12px">Nothing here yet.</p>';panel.innerHTML='<h3>'+title+'</h3>'+rows;panel.classList.add('on');overlay(Math.min(240,48+(list||[]).length*40))}catch(e){}}
+  panel.addEventListener('mousedown',e=>{const b=e.target.closest('button');if(!b)return;e.preventDefault();if(b.dataset.fill){cmd('fill_login',{id:b.dataset.fill});hideFly();return}if(b.dataset.url){cmd('navigate',{url:b.dataset.url});hideFly()}});
+  function showLogins(list){hideFly();const rows=(list||[]).map(it=>'<button type="button" class="row" data-fill="'+esc(it.id)+'"><span>'+esc(it.username||it.id)+'</span><span class="sub">'+esc((it.source||'')+' · '+(it.site||''))+'</span></button>').join('')||'<p class="sub" style="padding:10px 12px">Unlock your password manager in Settings.</p>';panel.innerHTML='<h3>Fill login</h3>'+rows;panel.classList.add('on');overlay(Math.min(240,48+(list||[]).length*40))}
+  loginBtn&&loginBtn.addEventListener('click',async()=>{try{const r=await fetch('amnibrowse://state',{cache:'no-store'});const s=await r.json();showLogins(s.logins||[])}catch(e){}});
+  updBtn&&updBtn.addEventListener('click',()=>cmd('menu'));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideFly();hideFind()}});
   const buttons={'back':'back','forward':'forward','reload':'reload','bookmark':'bookmark','shield':'shield','menu':'menu','new-tab':'new_tab','zoom-in':'zoom_in','zoom-out':'zoom_out'};
   Object.entries(buttons).forEach(([id,c])=>{const el=$('#'+id);el&&el.addEventListener('click',()=>cmd(c))});
   zoomLevel.addEventListener('click',()=>cmd('zoom_reset'));
@@ -128,7 +165,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.2 var(--font);color:var(--text
   $('#tabs').addEventListener('auxclick',e=>{if(e.button!==1)return;e.preventDefault();const t=e.target.closest('.tab');t?cmd('close_tab',{id:t.dataset.id}):e.target.closest('#new-tab')||cmd('new_tab')});
   tabList.addEventListener('wheel',e=>{if(!e.deltaY||e.deltaX)return;e.preventDefault();tabList.scrollLeft+=e.deltaY},{passive:false});
   $('#tabs').addEventListener('dblclick',e=>{if(!e.target.closest('.tab')&&!e.target.closest('#new-tab'))cmd('new_tab')});
-  window.__amni={setProgress,setUrl,setLock,chromeRev:'__CHROMEREV__'};
+  window.__amni={setProgress,setUrl,setLock,showFind,showPanel,chromeRev:'__CHROMEREV__'};
   setLock(url.value);poll();setInterval(poll,250);
 })();
 </script>

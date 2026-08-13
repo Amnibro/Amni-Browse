@@ -1,6 +1,6 @@
 ****HEAVILY WORK IN PROGRESS****
 
-# Amni Browse v0.11.13
+# Amni Browse v0.12.1
 
 **A privacy-first web browser built from the ground up in Rust — no Amni product telemetry.**
 **Functional browsing: real URLs, injected chrome toolbar, navigation-level URL cleaning. DRM/media uses a separate system-WebView window with its own bar.**
@@ -41,6 +41,22 @@ Amni Browse is designed with a single principle: **your browsing is yours.** Tru
 - GPU with Vulkan, DX12, or Metal support
 - No system WebView required
 
+### Install (Windows, one click)
+
+Double-click `scripts/AmniBrowse-Setup.cmd` or run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install.ps1
+```
+
+That pulls the latest zip from **https://amni-scient.com/browse/latest.json** (falls back to GitHub `Amnibro/Amni-Browse` releases), installs to `%LOCALAPPDATA%\AmniBrowse`, adds Start Menu + Desktop shortcuts, and registers as a browser. Uninstall: `scripts\uninstall.ps1`.
+
+Host `docs/latest.json` on the site whenever you ship a GitHub release so the feed and the zip stay in sync. In-app: Settings → Updates (or the ↑ chip) checks the same feeds and can apply over an installed copy.
+
+### Password managers
+
+Settings → Password manager: **Amni vault**, **Bitwarden** (`bw` on PATH), **1Password** (`op`, signed into the desktop app), or **KeePassXC** (`keepassxc-cli` + `.kdbx` path). Unlock once. A key icon appears in the URL bar when the page has matches — pick a login to fill, same idea as Chrome. One match can autofill on load (toggle).
+
 ### Build & Run
 
 ```bash
@@ -57,9 +73,9 @@ cargo run --release
 # Create desktop shortcut (Windows, pinnable to taskbar)
 powershell scripts/create_shortcut.ps1
 
-# Release build — SHIPPING backend is servo-real (real Servo engine).
-# Plain `cargo build --release` produces the webview stub; `servo-engine` is the legacy egui stub.
-cargo build --release --no-default-features --features servo-real
+# Release build — default feature is servo-real (libservo).
+# Light WebView stub: cargo build --release --no-default-features --features webview
+cargo build --release
 ```
 
 ## Architecture (v0.11.13 — WebView chrome + Servo hybrid)
@@ -103,8 +119,8 @@ src/
 
 | Backend | Feature Flag | Rendering | Dependencies |
 |---------|-------------|-----------|-------------|
-| **WebView** (default) | `webview` | System WebView (Chromium/WebKit) | tao, wry |
-| **Servo-real** (shipping) | `servo-real` | Real Servo engine (libservo) | servo, winit, surfman |
+| **Servo-real** (default / shipping) | `servo-real` | Real Servo engine (libservo) | servo, winit, surfman |
+| **WebView** (stub) | `webview` | System WebView (Chromium/WebKit) | tao, wry |
 | **Servo-egui** (legacy) | `servo-engine` | Custom wgpu + egui | winit, wgpu, egui, egui-wgpu |
 
 The Servo-egui backend provides fully native browser chrome via egui/wgpu, independent of any system WebView. This is the foundation for the planned **AmniShunt** rendering engine (v0.5+).
@@ -127,6 +143,8 @@ The Servo-egui backend provides fully native browser chrome via egui/wgpu, indep
 | `Ctrl+Shift+P` | Password vault |
 | `Ctrl+Shift+I` | Developer tools |
 | `Ctrl+Shift+N` | New private tab |
+| `Ctrl+P` | Print |
+| `Ctrl+S` | Download / save URL |
 | `Alt+←` | Go back |
 | `Alt+→` | Go forward |
 | `Esc` | Close panel / find bar |

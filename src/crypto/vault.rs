@@ -249,6 +249,17 @@ impl PasswordManager {
             .collect()
     }
 
+    pub fn matches_for_url(&self, url: &str) -> Vec<CredentialSummary> {
+        let host = url::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_default();
+        if host.is_empty() { return vec![]; }
+        self.vault.credentials.iter().filter(|c| {
+            let s = c.site.to_lowercase();
+            s.contains(&host) || host.contains(&s) || url.to_lowercase().contains(&s)
+        }).map(|c| CredentialSummary {
+            id: c.id.clone(), site: c.site.clone(), username: c.username.clone(),
+            category: c.category.clone(), created_at: c.created_at.clone(),
+        }).collect()
+    }
     pub fn search_credentials(&self, query: &str) -> Vec<CredentialSummary> {
         let q = query.to_lowercase();
         self.vault

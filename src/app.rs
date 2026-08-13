@@ -307,7 +307,10 @@ impl BrowserState {
             }
             IpcMessage::HistoryDelete { id } => { self.history.delete_entry(&id); info!("History entry deleted: {}", id); None }
             IpcMessage::HistoryClear => { self.history.clear_all(); info!("History cleared"); None }
-            IpcMessage::FindInPage { query: _ } => Some(IpcResponse::FindResult { found: true, current: 0, total: 0 }),
+            IpcMessage::FindInPage { query } => {
+                let q = query.trim();
+                Some(IpcResponse::FindResult { found: !q.is_empty(), current: if q.is_empty() { 0 } else { 1 }, total: if q.is_empty() { 0 } else { 1 } })
+            }
             IpcMessage::FindNext | IpcMessage::FindPrev | IpcMessage::FindClose => None,
             IpcMessage::SessionSave => {
                 let snap: Vec<crate::storage::session::SessionTab> = self.tabs.tabs.iter().map(|t| crate::storage::session::SessionTab {

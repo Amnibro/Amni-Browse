@@ -37,6 +37,7 @@ pub struct Extension {
 pub struct ExtensionRegistry {
     pub extensions: Vec<Extension>,
 }
+#[derive(Clone)]
 pub struct ExtensionManager {
     registry: ExtensionRegistry,
 }

@@ -15,10 +15,16 @@ fn main() {
     info!("Amni Browse v{} starting up...", storage::config::APP_VERSION);
     info!("  by Amni-Scient | Privacy: ALWAYS ON | Telemetry: DISABLED");
     info!("  Vault: AES-256-GCM/PBKDF2-SHA256 | DoH: Ready | Extensions: Ready");
+    let mut state = app::BrowserState::new();
+    if let Some(arg) = std::env::args().skip(1).find(|a| !a.starts_with('-')) {
+        let url = if arg.contains("://") { arg } else { format!("https://{}", arg) };
+        info!("CLI start url: {}", url);
+        if let Some(t) = state.tabs.active_tab_mut() { t.navigate(&url); } else { state.tabs.new_tab(&url); }
+    }
     #[cfg(feature = "servo-real")]
-    { info!("  Backend: Real Servo (libservo)"); platform::servo_real::run(app::BrowserState::new()); return; }
-    #[cfg(feature = "webview")]
-    { info!("  Backend: WebView (wry/tao)"); platform::webview::Browser::new().run(); }
+    { info!("  Backend: Real Servo (libservo)"); platform::servo_real::run(state); return; }
+    #[cfg(all(feature = "webview", not(feature = "servo-real")))]
+    { let _ = state; info!("  Backend: WebView (wry/tao)"); platform::webview::Browser::new().run(); }
     #[cfg(all(feature = "servo-engine", not(feature = "webview"), not(feature = "servo-real")))]
-    { info!("  Backend: Servo Engine (winit/wgpu/egui)"); platform::servo::run(app::BrowserState::new()); }
+    { info!("  Backend: Servo Engine (winit/wgpu/egui)"); platform::servo::run(state); }
 }

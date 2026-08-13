@@ -1,3 +1,16 @@
+## v0.12.1 click-install + updates + BYO vault - 2026-08-12
+- One-click Windows install from site feed then GitHub Latest (`scripts/install.ps1`, `AmniBrowse-Setup.cmd`) into `%LOCALAPPDATA%\AmniBrowse`.
+- Auto-update check (site JSON → GitHub) in Settings + toolbar badge; Install replaces the installed copy and relaunches.
+- Bring-your-own password manager: Amni / Bitwarden / 1Password / KeePassXC. Key icon fills the focused login like Chrome. Autofill-on-load when exactly one match.
+- Publish `docs/latest.json` to `https://amni-scient.com/browse/latest.json` when you cut a release.
+## v0.12.0 servo-core daily driver - 2026-08-12
+- Default Cargo feature is `servo-real` (libservo). WebView is the opt-in stub.
+- Downloads fire on archive/office/PDF navigations; PDF gets an in-tab opener page plus Downloads copy.
+- Find in page (Ctrl+F), print (Ctrl+P), save/download (Ctrl+S), history/downloads flyouts (Ctrl+H/J), private tab (Ctrl+Shift+N).
+- Omnibox suggestions from history + bookmarks. Vault unlock in Settings autofills matching logins. Local extension scripts inject on load.
+- Windows “Set as default…” registers AmniBrowseHTML + StartMenuInternet and opens Settings.
+- Profiles create/switch (relaunch with `AMNI_PROFILE`). CLI URL/`%1` opens in the first tab. `window.open` becomes a tab.
+- Backups: `backups/*.v0.11.13.bak`.
 ## v0.11.14-dev webview stub hit parity - 2026-08-12
 - Webview stub .tab-close 18px -> 28px matching CLOSE_HITBOX=28 (tab 32px, same geometry as shipping toolbar). Non-shipping backend (packer refuses it); src hygiene only. Backup: backups/webview.rs.v0.11.13.bak.
 

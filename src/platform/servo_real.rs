@@ -7,7 +7,7 @@ use euclid::default::{Point2D as DefaultPoint2D, Rect as DefaultRect, Size2D as 
 use servo::{
     DevicePixel, EventLoopWaker, InputEvent, LoadStatus, MouseButton as ServoMouseButton, MouseButtonAction,
     MouseButtonEvent, MouseLeftViewportEvent, MouseMoveEvent, NavigationRequest, OffscreenRenderingContext,
-    Preferences, RenderingContext, Servo, ServoBuilder, WebResourceLoad, WebResourceResponse, WebView, WebViewBuilder,
+    CreateNewWebViewRequest, Preferences, RenderingContext, Servo, ServoBuilder, WebResourceLoad, WebResourceResponse, WebView, WebViewBuilder,
     WebViewDelegate, WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
 };
 use url::Url;
@@ -21,12 +21,21 @@ use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use winit::window::{Fullscreen, Window, WindowId};
 use log::info;
 use crate::app::BrowserState;
+use crate::crypto::pm::{self, PmState};
+use crate::crypto::vault::PasswordManager;
+use crate::net::updater;
 use crate::engine::adblocker::AdBlocker;
+use crate::engine::daily_driver;
+use crate::engine::extensions::ExtensionManager;
 use crate::engine::tabs::TabEngine;
 use crate::platform::media_engine::{self, EngineKind, MediaWindow};
+use crate::platform::os_default;
 use crate::platform::servo_keys::keyboard_event_from_winit;
 use crate::storage::bookmarks::BookmarkManager;
 use crate::storage::config::BrowserConfig;
+use crate::storage::downloads::DownloadManager;
+use crate::storage::history::HistoryManager;
+use crate::storage::profiles::ProfileManager;
 use crate::ui::theme::ThemeConfig;
 use crate::ui::tokens;
 const CHROME_HEIGHT_CSS: f32 = tokens::SERVO_CHROME_HEIGHT_CSS as f32;
@@ -79,6 +88,10 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padd
 <h2>Appearance</h2><label>Default zoom for new tabs<select onchange='set("default_zoom",this.value)'>__ZOOMS__</select></label>
 <h2>Advanced</h2><label>User-agent override<input type='text' value='__UA__' placeholder='(Servo default)' onchange='set("custom_user_agent",this.value)'></label><p class='note'>Some sites gate features on UA. Takes effect after restart.</p>
 <h2>Bookmarks</h2><div>__BMS__</div>
+<h2>System</h2><label class='switch'><span>Windows default browser</span></label><p class='note'>Registers Amni, then opens Windows Settings so you can pick HTTP/HTTPS.</p><p><button class='x' onclick='set("default_browser","1")'>Set as default…</button></p>
+<h2>Password manager</h2><div>__PMRADIOS__</div><p class='dim'>__VAULT__ &#183; __PMLABEL__</p><input type='password' placeholder='unlock (Amni / Bitwarden / KeePass)' onchange='set("vault_pw",this.value)'><input type='text' value='__PMCLI__' placeholder='CLI path (optional, bw / op / keepassxc-cli)' onchange='set("pm_cli_path",this.value)'><input type='text' value='__PMDB__' placeholder='KeePass .kdbx path' onchange='set("pm_keepass_db",this.value)'><label class='switch'><input type='checkbox'__AUTOFILL__ onchange='set("autofill_on_load",this.checked)'><span>Autofill when one login matches</span></label><p class='note'>Bring your own: Bitwarden <code>bw</code>, 1Password <code>op</code> (desktop signed-in), KeePassXC CLI. Same key-icon fill as Chrome.</p>
+<h2>Updates</h2><p class='dim'>This copy: v__VER__ &#183; __UPD__</p><label class='switch'><input type='checkbox'__CHKUPD__ onchange='set("check_updates",this.checked)'><span>Check amni-scient.com / GitHub for updates</span></label><p><button class='x' onclick='set("update_check","1")'>Check now</button> <button class='x' onclick='set("update_now","1")'>Install update</button></p>
+<h2>Profiles</h2><div>__PROFS__</div><input type='text' placeholder='new profile name' onchange='set("profile_new",this.value)'>
 <h2>Shortcuts</h2><p class='dim'><kbd>Ctrl+L</kbd> URL bar &#183; <kbd>Ctrl+D</kbd> bookmark &#183; <kbd>Ctrl+T</kbd>/<kbd>W</kbd> tabs &#183; <kbd>Ctrl+=</kbd>/<kbd>-</kbd>/<kbd>0</kbd> zoom &#183; <kbd>Ctrl+1&#8230;9</kbd>/<kbd>Ctrl+Tab</kbd> switch &#183; <kbd>Ctrl+Shift+T</kbd> reopen &#183; <kbd>F11</kbd> fullscreen</p>
 <script>
 const T='__TOK__';
@@ -150,9 +163,20 @@ struct AppState {
     themes: RefCell<ThemeConfig>,
     cmd_token: String,
     self_weak: Weak<AppState>,
+    history: RefCell<HistoryManager>,
+    downloads: RefCell<DownloadManager>,
+    vault: RefCell<PasswordManager>,
+    pm: RefCell<PmState>,
+    update: Arc<Mutex<Option<updater::ReleaseInfo>>>,
+    extensions: RefCell<ExtensionManager>,
+    profiles: RefCell<ProfileManager>,
+    find_query: RefCell<String>,
+    chrome_overlay_px: Cell<u32>,
+    pending_relaunch: RefCell<Option<String>>,
 }
 impl AppState {
     fn chrome_px(&self) -> u32 { chrome_height_px(self.scale_factor.get()) }
+    fn hit_chrome_px(&self) -> f32 { (self.chrome_px() + self.chrome_overlay_px.get()) as f32 }
     fn window_size(&self) -> PhysicalSize<u32> { self.window.inner_size() }
     fn active_content(&self) -> Option<WebView> {
         let tabs = self.content_webviews.borrow();
@@ -212,7 +236,43 @@ impl AppState {
         let active_id = th.active_theme().id;
         let themes: String = th.all_themes().iter().map(|t| format!("<label class='opt'><input type='radio' name='th' value='{}'{} onchange='set(\"theme\",this.value)'><span>{}</span></label>", esc_html(&t.id), match t.id == active_id { true => " checked", false => "" }, esc_html(&t.name))).collect();
         drop(th);
-        SETTINGS_TPL.replace("__THEME__", &self.theme_root_vars()).replace("__THEMES__", &themes).replace("__VER__", env!("CARGO_PKG_VERSION")).replace("__RADIOS__", &radios).replace("__HOME__", &esc_html(match c.home_page.starts_with("http") { true => c.home_page.as_str(), false => "" })).replace("__SHIELD__", match c.block_ads { true => " checked", false => "" }).replace("__ZOOMS__", &zooms).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__BMS__", &bms).replace("__TOK__", &self.cmd_token)
+        let pms = self.pm.borrow();
+        let vault_on = pms.unlocked(&self.vault.borrow());
+        let pm_kind = pms.kind.clone();
+        let pm_label = pms.label().to_string();
+        drop(pms);
+        let pm_radios: String = [("amni","Amni vault"),("bitwarden","Bitwarden"),("onepassword","1Password"),("keepassxc","KeePassXC")].iter().map(|(id,n)| format!("<label class='opt'><input type='radio' name='pm' value='{}'{} onchange='set(\"password_provider\",this.value)'><span>{}</span></label>", id, match pm_kind == *id { true => " checked", false => "" }, n)).collect();
+        let upd = match self.update.lock() {
+            Ok(g) => match g.as_ref() { Some(r) => format!("update {} available ({})", r.version, r.source), None => "up to date (or not checked)".into() },
+            Err(_) => "update state busy".into(),
+        };
+        let pmgr = self.profiles.borrow();
+        let active_pid = pmgr.active_id.clone();
+        let profs: String = pmgr.profiles.iter().map(|p| format!("<div class='row'><span>{}{}</span><button class='x' onclick='set(\"profile_switch\",\"{}\")'>use</button></div>", esc_html(&p.name), match p.id == active_pid { true => " · active", false => "" }, esc_html(&p.id))).collect();
+        drop(pmgr);
+        SETTINGS_TPL.replace("__THEME__", &self.theme_root_vars()).replace("__THEMES__", &themes).replace("__VER__", env!("CARGO_PKG_VERSION")).replace("__RADIOS__", &radios).replace("__HOME__", &esc_html(match c.home_page.starts_with("http") { true => c.home_page.as_str(), false => "" })).replace("__SHIELD__", match c.block_ads { true => " checked", false => "" }).replace("__ZOOMS__", &zooms).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__BMS__", &bms).replace("__TOK__", &self.cmd_token).replace("__VAULT__", match vault_on { true => " unlocked", false => " locked" }).replace("__PROFS__", &profs).replace("__PMRADIOS__", &pm_radios).replace("__PMLABEL__", &esc_html(&pm_label)).replace("__PMCLI__", &esc_html(c.pm_cli_path.as_deref().unwrap_or(""))).replace("__PMDB__", &esc_html(c.pm_keepass_db.as_deref().unwrap_or(""))).replace("__AUTOFILL__", match c.autofill_on_load { true => " checked", false => "" }).replace("__CHKUPD__", match c.check_updates { true => " checked", false => "" }).replace("__UPD__", &esc_html(&upd))
+    }
+    fn load_pdf_viewer(&self, webview: &WebView, url: &str) {
+        self.downloads.borrow_mut().start_download(url);
+        let html = daily_driver::pdf_viewer_html(url, &self.theme_root_vars(), &self.cmd_token);
+        if let Ok(parsed) = Url::parse(&format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&html))) { webview.load(parsed); }
+    }
+    fn inject_after_load(&self, webview: &WebView, url: &str) {
+        if url.starts_with("data:") || url.starts_with("amnibrowse:") { return; }
+        let auto = self.config.borrow().autofill_on_load;
+        let hits = {
+            let mut pm = self.pm.borrow_mut();
+            pm::matches_for_url(&mut pm, &self.vault.borrow(), url)
+        };
+        if auto && hits.len() == 1 {
+            if let Ok((u, p)) = pm::secret_for(&self.pm.borrow(), &self.vault.borrow(), &hits[0].id) {
+                webview.evaluate_javascript(daily_driver::autofill_script(&u, &p), |_| {});
+            }
+        }
+        for (_id, scripts, css) in self.extensions.borrow().get_content_scripts(url) {
+            for sheet in css { webview.evaluate_javascript(daily_driver::inject_css_script(&sheet), |_| {}); }
+            for js in scripts { webview.evaluate_javascript(js, |_| {}); }
+        }
     }
     fn execute_command(&self, name: &str, args: &std::collections::HashMap<String, String>) {
         match name {
@@ -227,6 +287,8 @@ impl AppState {
                         let us = u.as_str().to_string();
                         match media_engine::wants_media_window(&us) {
                             true => { info!("cmd navigate \u{2192} media engine: {}", us); self.pending_media_urls.borrow_mut().push(us); }
+                            false if daily_driver::is_pdf_url(&us) => { if let Some(c) = self.active_content() { self.load_pdf_viewer(&c, &us); } }
+                            false if daily_driver::is_download_url(&us) => { self.downloads.borrow_mut().start_download(&us); info!("cmd navigate \u{2192} download {}", us); }
                             false => { if let Some(c) = self.active_content() { info!("cmd navigate \u{2192} {}", u); c.load(u); } }
                         }
                     }
@@ -366,6 +428,57 @@ impl AppState {
                         "block_ads" => { c.block_ads = v == "true"; c.block_trackers = c.block_ads; }
                         "default_zoom" => c.default_zoom = v.parse().unwrap_or(1.0),
                         "custom_user_agent" => c.custom_user_agent = match v.trim().is_empty() { true => None, false => Some(v.trim().to_string()) },
+                        "default_browser" => { drop(c); match os_default::register_browser() { Ok(m) => info!("{}", m), Err(e) => info!("default browser: {}", e) }; return; }
+                        "vault_pw" => {
+                            drop(c);
+                            let mut vlt = self.vault.borrow_mut();
+                            let mut pm = self.pm.borrow_mut();
+                            match pm::unlock(&mut pm, v, &mut vlt) { Ok(m) => info!("{}", m), Err(e) => info!("pm unlock: {}", e) }
+                            return;
+                        }
+                        "password_provider" => {
+                            c.password_provider = pm::normalize_kind(v);
+                            c.save();
+                            drop(c);
+                            let cfg = self.config.borrow();
+                            *self.pm.borrow_mut() = PmState::from_config(&cfg.password_provider, cfg.pm_cli_path.clone(), cfg.pm_keepass_db.clone());
+                            info!("password provider → {}", v);
+                            return;
+                        }
+                        "pm_cli_path" => { c.pm_cli_path = match v.trim().is_empty() { true => None, false => Some(v.trim().into()) }; self.pm.borrow_mut().cli = c.pm_cli_path.clone(); }
+                        "pm_keepass_db" => { c.pm_keepass_db = match v.trim().is_empty() { true => None, false => Some(v.trim().into()) }; self.pm.borrow_mut().keepass_db = c.pm_keepass_db.clone(); }
+                        "autofill_on_load" => { c.autofill_on_load = v == "true"; }
+                        "check_updates" => { c.check_updates = v == "true"; }
+                        "update_feed" => { c.update_feed = match v.trim().is_empty() { true => None, false => Some(v.trim().into()) }; }
+                        "update_check" => {
+                            drop(c);
+                            let feed = self.config.borrow().update_feed.clone();
+                            match updater::check_for_update(env!("CARGO_PKG_VERSION"), feed.as_deref()) {
+                                Ok(Some(r)) => { info!("update available {}", r.version); if let Ok(mut g) = self.update.lock() { *g = Some(r); } }
+                                Ok(None) => info!("no update"),
+                                Err(e) => info!("update check: {}", e),
+                            }
+                            return;
+                        }
+                        "update_now" => {
+                            drop(c);
+                            let rel = self.update.lock().ok().and_then(|g| g.clone());
+                            match rel {
+                                Some(r) => match updater::apply_update(&r) { Ok(m) => { info!("{}", m); *self.pending_relaunch.borrow_mut() = Some("__update__".into()); } Err(e) => info!("update apply: {}", e) },
+                                None => info!("no cached update — check first"),
+                            }
+                            return;
+                        }
+                        "profile_new" => {
+                            drop(c);
+                            if !v.trim().is_empty() { self.profiles.borrow_mut().create_profile(v.trim(), "#C89B4E"); info!("profile created {}", v); }
+                            return;
+                        }
+                        "profile_switch" => {
+                            drop(c);
+                            if self.profiles.borrow_mut().switch_profile(v) { *self.pending_relaunch.borrow_mut() = Some(v.clone()); info!("profile switch queued {}", v); }
+                            return;
+                        }
                         other => { info!("setting_set: unknown key {}", other); return; }
                     }
                     c.save();
@@ -375,6 +488,45 @@ impl AppState {
             "bookmark_remove" => {
                 let Some(id) = args.get("id") else { return };
                 if self.bookmarks.borrow_mut().remove(id) { info!("cmd bookmark_remove {}", id); }
+            }
+            "overlay" => {
+                let h: u32 = args.get("h").and_then(|s| s.parse().ok()).unwrap_or(0);
+                self.chrome_overlay_px.set(h.min(480));
+            }
+            "find" => {
+                let q = args.get("q").cloned().unwrap_or_default();
+                let dir: i32 = args.get("dir").and_then(|s| s.parse().ok()).unwrap_or(1);
+                *self.find_query.borrow_mut() = q.clone();
+                if let Some(c) = self.active_content() { c.evaluate_javascript(daily_driver::find_script(&q, dir), |_| {}); }
+            }
+            "print" => { if let Some(c) = self.active_content() { c.evaluate_javascript(daily_driver::print_script(), |_| {}); } }
+            "download" => {
+                let url = args.get("url").cloned().or_else(|| self.active_content().and_then(|c| c.url().map(|u| u.as_str().to_string()))).unwrap_or_default();
+                if !url.is_empty() { self.downloads.borrow_mut().start_download(&url); info!("cmd download {}", url); }
+            }
+            "open_download" => {
+                let Some(url) = args.get("url") else { return };
+                self.downloads.borrow_mut().start_download(url);
+                let name = url.rsplit('/').next().unwrap_or("download").split('?').next().unwrap_or("download");
+                let path = crate::storage::downloads::DownloadManager::downloads_dir().join(name);
+                let _ = os_default::open_path(&path.to_string_lossy());
+            }
+            "fill_login" => {
+                let Some(id) = args.get("id") else { return };
+                match pm::secret_for(&self.pm.borrow(), &self.vault.borrow(), id) {
+                    Ok((u, p)) => { if let Some(c) = self.active_content() { c.evaluate_javascript(daily_driver::autofill_script(&u, &p), |_| {}); info!("filled login {}", id); } }
+                    Err(e) => info!("fill_login: {}", e),
+                }
+            }
+            "private_tab" => {
+                let start = Url::parse(&self.home_url()).unwrap_or_else(|_| Url::parse("https://html.duckduckgo.com/html/").unwrap());
+                let wv = self.spawn_content_webview(start);
+                let mut tabs = self.content_webviews.borrow_mut();
+                tabs.push(wv);
+                self.tab_zoom.borrow_mut().push(self.default_zoom());
+                self.active_content_index.set(tabs.len() - 1);
+                info!("cmd private_tab");
+                self.window.request_redraw();
             }
             "menu" | "settings" => {
                 let url_str = format!("data:text/html;charset=utf-8,{}", urlencoding::encode(&self.settings_page_html()));
@@ -446,6 +598,13 @@ impl AppState {
             "canReopen": !self.closed_tabs.borrow().is_empty(),
             "shield": self.config.borrow().block_ads,
             "bookmarked": !url.is_empty() && self.bookmarks.borrow().find_by_url(&url).is_some(),
+            "vault": self.pm.borrow().unlocked(&self.vault.borrow()),
+            "downloads": self.downloads.borrow().downloads.len(),
+            "profile": self.profiles.borrow().active_profile().name,
+            "find": self.find_query.borrow().clone(),
+            "pm": self.pm.borrow().label(),
+            "logins": self.pm.borrow().last,
+            "update": self.update.lock().ok().and_then(|g| g.as_ref().map(|r| serde_json::json!({"version": r.version, "source": r.source, "notes": r.notes}))),
         }).to_string()
     }
 }
@@ -483,6 +642,27 @@ fn handle_shortcut(key_event: &KeyEvent, state: &AppState) -> bool {
             true
         }
         (Key::Character(c), true, false) if c.eq_ignore_ascii_case("d") => { state.execute_command("bookmark", &empty); true }
+        (Key::Character(c), true, false) if c.eq_ignore_ascii_case("f") => {
+            if let Some(chrome) = state.chrome_webview.borrow().as_ref() {
+                let _ = chrome.evaluate_javascript("window.__amni&&window.__amni.showFind&&window.__amni.showFind()", |_| {});
+            }
+            true
+        }
+        (Key::Character(c), true, false) if c.eq_ignore_ascii_case("p") => { state.execute_command("print", &empty); true }
+        (Key::Character(c), true, false) if c.eq_ignore_ascii_case("s") => { state.execute_command("download", &empty); true }
+        (Key::Character(c), true, false) if c.eq_ignore_ascii_case("j") => {
+            if let Some(chrome) = state.chrome_webview.borrow().as_ref() {
+                let _ = chrome.evaluate_javascript("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('dl')", |_| {});
+            }
+            true
+        }
+        (Key::Character(c), true, false) if c.eq_ignore_ascii_case("h") => {
+            if let Some(chrome) = state.chrome_webview.borrow().as_ref() {
+                let _ = chrome.evaluate_javascript("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('hist')", |_| {});
+            }
+            true
+        }
+        (Key::Character(c), true, true) if c.eq_ignore_ascii_case("n") => { state.execute_command("private_tab", &empty); true }
         (Key::Character(c), true, _) if c.as_str() == "+" || c.as_str() == "=" => { state.execute_command("zoom_in", &empty); true }
         (Key::Character(c), true, _) if c.as_str() == "-" || c.as_str() == "_" => { state.execute_command("zoom_out", &empty); true }
         (Key::Character(c), true, false) if c.as_str() == "0" => { state.execute_command("zoom_reset", &empty); true }
@@ -552,6 +732,36 @@ impl WebViewDelegate for AppState {
                     intercepted.finish();
                     return;
                 }
+                "suggest" => {
+                    let q = req_url.query_pairs().find(|(k, _)| k == "q").map(|(_, v)| v.into_owned()).unwrap_or_default();
+                    let bms: Vec<(String, String)> = self.bookmarks.borrow().bookmarks.iter().map(|b| (b.url.clone(), b.title.clone())).collect();
+                    let extra: Vec<(&str, &str)> = bms.iter().map(|(u, t)| (u.as_str(), t.as_str())).collect();
+                    let body = self.history.borrow().omnibox_json(&q, &extra, 8);
+                    let mut headers = cors_headers();
+                    headers.insert(http::header::CONTENT_TYPE, http::HeaderValue::from_static("application/json; charset=utf-8"));
+                    let mut intercepted = load.intercept(WebResourceResponse::new(req_url).headers(headers));
+                    intercepted.send_body_data(body.into_bytes());
+                    intercepted.finish();
+                    return;
+                }
+                "downloads" => {
+                    let body = self.downloads.borrow().to_json();
+                    let mut headers = cors_headers();
+                    headers.insert(http::header::CONTENT_TYPE, http::HeaderValue::from_static("application/json; charset=utf-8"));
+                    let mut intercepted = load.intercept(WebResourceResponse::new(req_url).headers(headers));
+                    intercepted.send_body_data(body.into_bytes());
+                    intercepted.finish();
+                    return;
+                }
+                "history" => {
+                    let body = self.history.borrow().recent_json(40);
+                    let mut headers = cors_headers();
+                    headers.insert(http::header::CONTENT_TYPE, http::HeaderValue::from_static("application/json; charset=utf-8"));
+                    let mut intercepted = load.intercept(WebResourceResponse::new(req_url).headers(headers));
+                    intercepted.send_body_data(body.into_bytes());
+                    intercepted.finish();
+                    return;
+                }
                 _ => {
                     info!("amnibrowse://: unknown host {:?} path {:?}", host, path);
                     load.intercept(WebResourceResponse::new(req_url).status_code(http::StatusCode::NOT_FOUND).headers(cors_headers())).finish();
@@ -566,12 +776,54 @@ impl WebViewDelegate for AppState {
             load.intercept(WebResourceResponse::new(req_url)).finish();
         }
     }
-    fn request_navigation(&self, _webview: WebView, req: NavigationRequest) {
+    fn request_navigation(&self, webview: WebView, req: NavigationRequest) {
         let url = req.url.as_str().to_string();
-        match media_engine::wants_media_window(&url) {
-            true => { info!("nav \u{2192} media engine: {}", url); self.pending_media_urls.borrow_mut().push(url); req.deny(); }
-            false => req.allow(),
+        if media_engine::wants_media_window(&url) {
+            info!("nav \u{2192} media engine: {}", url);
+            self.pending_media_urls.borrow_mut().push(url);
+            req.deny();
+            return;
         }
+        if daily_driver::is_pdf_url(&url) {
+            req.deny();
+            self.load_pdf_viewer(&webview, &url);
+            return;
+        }
+        if daily_driver::is_download_url(&url) {
+            req.deny();
+            self.downloads.borrow_mut().start_download(&url);
+            return;
+        }
+        req.allow();
+    }
+    fn notify_url_changed(&self, webview: WebView, url: url::Url) {
+        let us = url.as_str().to_string();
+        if us.starts_with("http") {
+            let title = webview.page_title().unwrap_or_default();
+            self.history.borrow_mut().record_visit(&us, &title);
+        }
+    }
+    fn notify_load_status_changed(&self, webview: WebView, status: LoadStatus) {
+        if !matches!(status, LoadStatus::Complete) { return; }
+        if self.chrome_webview.borrow().as_ref().map(|c| c.id() == webview.id()).unwrap_or(false) { return; }
+        let us = webview.url().map(|u| u.as_str().to_string()).unwrap_or_default();
+        self.inject_after_load(&webview, &us);
+    }
+    fn request_create_new(&self, _parent: WebView, request: CreateNewWebViewRequest) {
+        let scale = self.scale_factor.get();
+        let wv = request.builder(self.offscreen_context.clone())
+            .hidpi_scale_factor(Scale::new(scale))
+            .delegate(self.self_rc())
+            .build();
+        wv.resize(self.offscreen_context.size());
+        let z = self.default_zoom();
+        if (z - 1.0).abs() > 0.01 { wv.set_page_zoom(z); }
+        let mut tabs = self.content_webviews.borrow_mut();
+        tabs.push(wv);
+        self.tab_zoom.borrow_mut().push(z);
+        self.active_content_index.set(tabs.len() - 1);
+        info!("window.open \u{2192} new tab {}", tabs.len() - 1);
+        self.window.request_redraw();
     }
 }
 fn drain_pending_media(event_loop: &winit::event_loop::ActiveEventLoop, state: &AppState) {
@@ -661,6 +913,16 @@ impl ApplicationHandler<WakerEvent> for App {
                 themes: RefCell::new(themes.clone()),
                 cmd_token,
                 self_weak: weak.clone(),
+                history: RefCell::new(HistoryManager::new()),
+                downloads: RefCell::new(DownloadManager::new()),
+                vault: RefCell::new(PasswordManager::new()),
+                pm: RefCell::new(PmState::from_config(&config.password_provider, config.pm_cli_path.clone(), config.pm_keepass_db.clone())),
+                update: Arc::new(Mutex::new(None)),
+                extensions: RefCell::new({ let mut e = ExtensionManager::new(); e.scan_extensions(); e }),
+                profiles: RefCell::new(ProfileManager::new()),
+                find_query: RefCell::new(String::new()),
+                chrome_overlay_px: Cell::new(0),
+                pending_relaunch: RefCell::new(None),
             });
             let chrome_url = chrome_data_url();
             info!("servo chrome data url len: {}", chrome_url.as_str().len());
@@ -690,12 +952,34 @@ impl ApplicationHandler<WakerEvent> for App {
                     app_state.media_windows.borrow_mut().insert(id, mw);
                 }
             }
+            if config.check_updates {
+                let slot = app_state.update.clone();
+                let feed = config.update_feed.clone();
+                std::thread::spawn(move || {
+                    match updater::check_for_update(env!("CARGO_PKG_VERSION"), feed.as_deref()) {
+                        Ok(Some(r)) => { info!("update available: {} from {}", r.version, r.source); if let Ok(mut g) = slot.lock() { *g = Some(r); } }
+                        Ok(None) => info!("update check: current"),
+                        Err(e) => info!("update check: {}", e),
+                    }
+                });
+            }
             *self = Self::Running(app_state);
             info!("Servo embedder ready (chrome + content compositing)");
         }
     }
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, _event: WakerEvent) {
-        if let Self::Running(state) = self { state.servo.spin_event_loop(); drain_pending_media(event_loop, state); }
+        if let Self::Running(state) = self {
+            state.servo.spin_event_loop();
+            drain_pending_media(event_loop, state);
+            if let Some(pid) = state.pending_relaunch.borrow_mut().take() {
+                if pid != "__update__" {
+                    if let Ok(exe) = std::env::current_exe() {
+                        let _ = std::process::Command::new(exe).env("AMNI_PROFILE", pid).spawn();
+                    }
+                }
+                event_loop.exit();
+            }
+        }
     }
     fn window_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
         if let Self::Running(state) = self { state.servo.spin_event_loop(); drain_pending_media(event_loop, state); }
@@ -725,7 +1009,7 @@ impl ApplicationHandler<WakerEvent> for App {
             WindowEvent::CursorMoved { position, .. } => {
                 let p = Point2D::<f32, DevicePixel>::new(position.x as f32, position.y as f32);
                 state.mouse_point.set(p);
-                let chrome_px = state.chrome_px() as f32;
+                let chrome_px = state.hit_chrome_px();
                 let in_chrome = p.y < chrome_px;
                 match (in_chrome, chrome_opt.as_ref(), content_opt.as_ref()) {
                     (true, Some(chrome), _) => {
@@ -755,7 +1039,7 @@ impl ApplicationHandler<WakerEvent> for App {
                 };
                 let action = match pressed { ElementState::Pressed => MouseButtonAction::Down, ElementState::Released => MouseButtonAction::Up };
                 let p = state.mouse_point.get();
-                let chrome_px = state.chrome_px() as f32;
+                let chrome_px = state.hit_chrome_px();
                 match (p.y < chrome_px, chrome_opt.as_ref(), content_opt.as_ref()) {
                     (true, Some(chrome), _) => { chrome.notify_input_event(InputEvent::MouseButton(MouseButtonEvent::new(action, mb, p.into()))); }
                     (false, _, Some(c)) => {
@@ -771,7 +1055,7 @@ impl ApplicationHandler<WakerEvent> for App {
                     MouseScrollDelta::PixelDelta(p) => (p.x, p.y, WheelMode::DeltaPixel),
                 };
                 let p = state.mouse_point.get();
-                let chrome_px = state.chrome_px() as f32;
+                let chrome_px = state.hit_chrome_px();
                 match (p.y < chrome_px, chrome_opt.as_ref(), content_opt.as_ref()) {
                     (true, Some(chrome), _) => { chrome.notify_input_event(InputEvent::Wheel(WheelEvent::new(WheelDelta { x: dx, y: dy, z: 0.0, mode }, p.into()))); }
                     (false, _, Some(c)) => {
@@ -786,7 +1070,7 @@ impl ApplicationHandler<WakerEvent> for App {
                 if handle_shortcut(&key_event, state) { return; }
                 let kev = keyboard_event_from_winit(&key_event, state.modifiers.get());
                 let p = state.mouse_point.get();
-                let chrome_px = state.chrome_px() as f32;
+                let chrome_px = state.hit_chrome_px();
                 let target = match p.y < chrome_px { true => chrome_opt.as_ref(), false => content_opt.as_ref() };
                 if let Some(wv) = target { wv.notify_input_event(InputEvent::Keyboard(kev)); }
             }

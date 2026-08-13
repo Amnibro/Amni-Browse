@@ -21,7 +21,7 @@ if "%NEED_BUILD%"=="0" (
     echo [Amni-Browse] Prebuilt exe is up to date - skipping rebuild ^(delete target\release\amni-browse.exe to force one^).
 ) else (
     echo [Amni-Browse] Building full Servo engine ^(first build ~30 min, incremental after^)...
-    cargo build --release --no-default-features --features servo-real
+    cargo build --release --features servo-real
     if errorlevel 1 (
         echo [Amni-Browse] Build FAILED - not launching stale binary.
         pause

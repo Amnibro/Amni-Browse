@@ -1,0 +1,12 @@
+# Checklist — v0.12.0 Servo daily-driver / chrome replacement slice
+- [x] Backup v0.11.13 sources
+- [x] Cargo default = servo-real, version 0.12.0
+- [x] daily_driver helpers + tests
+- [x] Windows default-browser registration
+- [x] Profile config_dir isolation + relaunch
+- [x] Servo downloads / PDF / find / print / omnibox / vault / extensions / window.open / CLI
+- [x] Toolbar find + suggest + history/downloads panels + overlay hit
+- [x] architecture_map + CHANGELOG + README
+- [x] cargo test daily_driver (4/4) + open_command (no servo)
+- [x] cargo check --features servo-real (MSVC env, clean)
+- [ ] Launch smoke: URL bar suggest, Ctrl+F, download a zip, PDF page, Settings default browser

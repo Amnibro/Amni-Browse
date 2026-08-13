@@ -31,7 +31,7 @@ impl Profile {
         }
     }
     pub fn data_dir(&self) -> PathBuf {
-        let base = BrowserConfig::config_dir();
+        let base = BrowserConfig::config_dir_root();
         if self.is_default { base } else { base.join("profiles").join(&self.id) }
     }
 }

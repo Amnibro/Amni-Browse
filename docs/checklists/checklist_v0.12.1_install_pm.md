@@ -1,0 +1,11 @@
+# Checklist — v0.12.1 installer + BYO password manager
+- [x] Backups v0.12.0
+- [x] updater.rs + version compare tests
+- [x] pm.rs providers + JSON/CSV tests
+- [x] install.ps1 / Setup.cmd / uninstall / latest.json / nsi
+- [x] Settings + toolbar key/update + servo_real wiring
+- [x] architecture_map + CHANGELOG
+- [x] cargo test updater + pm (no servo)
+- [x] cargo check --features servo-real
+- [ ] Host latest.json on amni-scient.com
+- [ ] Cut GitHub release zip so install.ps1 has an asset
