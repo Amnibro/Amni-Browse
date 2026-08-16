@@ -263,7 +263,7 @@ See [AMNISHUNT_DESIGN.md](AMNISHUNT_DESIGN.md) for the v0.5+ technical architect
 - ❌ No commercial use, no resale, no SaaS, no paid redistribution
 - ❌ No use of the "Amni-Browse", "Amni-Scient", or "Amnibro" trademarks
 
-**Source-available, not permissive.** This is open source you can learn from, contribute to, and self-host — but not one you can package and sell. For commercial licensing, email `the maintainer (via GitHub)`.
+**Source-available, not permissive.** This is open source you can learn from, contribute to, and self-host — but not one you can package and sell. For commercial licensing, email `amnibro7@gmail.com`.
 
 See [`LICENSE`](LICENSE) for full terms.
 
