@@ -185,6 +185,7 @@ fn pack_native_omnibox(
     proxy: tao::event_loop::EventLoopProxy<()>,
 ) -> gtk::Entry {
     let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    bar.set_widget_name("amni-omni");
     bar.set_size_request(-1, 40);
     bar.set_margin_start(6);
     bar.set_margin_end(6);
@@ -243,9 +244,9 @@ fn pack_native_omnibox(
         if accel && !alt && is_l {
             focus_entry.grab_focus();
             focus_entry.select_region(0, -1);
-            gtk::Inhibit(true)
+            glib::Propagation::Stop
         } else {
-            gtk::Inhibit(false)
+            glib::Propagation::Proceed
         }
     });
     info!("Linux native GTK omnibox packed at vbox index 0 (outside WebKit)");

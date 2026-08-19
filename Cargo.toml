@@ -79,6 +79,7 @@ servo = { git = "https://github.com/servo/servo.git", rev = "68ca280", optional 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
 gdk = "0.18"
+glib = "0.18"
 
 [profile.release]
 opt-level = 3
