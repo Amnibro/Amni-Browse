@@ -104,8 +104,21 @@ impl Browser {
         let (webview, omnibox) = {
             let vbox = window.default_vbox().expect("gtk vbox");
             let gtk_win = window.gtk_window();
-            let omnibox = pack_native_omnibox(vbox, gtk_win, Rc::clone(&acts), proxy.clone());
-            let webview = builder.build_gtk(vbox).expect("webview");
+            // Overlay fills the vbox. Webview is the main child so paint and
+            // hit-test share one allocation. A vbox-sibling amni-omni bar made
+            // software WebKit land HN clicks on Back (URL stuck, viewport snap).
+            let overlay = gtk::Overlay::new();
+            overlay.set_hexpand(true);
+            overlay.set_vexpand(true);
+            vbox.pack_start(&overlay, true, true, 0);
+            overlay.show();
+            let (bar, omnibox) = make_native_omnibox(gtk_win, Rc::clone(&acts), proxy.clone());
+            bar.set_valign(gtk::Align::Start);
+            bar.set_halign(gtk::Align::Fill);
+            bar.set_hexpand(true);
+            let webview = builder.build_gtk(&overlay).expect("webview");
+            overlay.add_overlay(&bar);
+            bar.show_all();
             (webview, omnibox)
         };
         #[cfg(not(target_os = "linux"))]
@@ -209,12 +222,11 @@ fn omnibox_focus_replace(entry: &gtk::Entry) {
     glib::idle_add_local_once(move || { e.select_region(0, -1); });
 }
 #[cfg(all(feature = "webview", target_os = "linux"))]
-fn pack_native_omnibox(
-    vbox: &gtk::Box,
+fn make_native_omnibox(
     gtk_win: &gtk::ApplicationWindow,
     acts: Rc<RefCell<Vec<Act>>>,
     proxy: tao::event_loop::EventLoopProxy<()>,
-) -> gtk::Entry {
+) -> (gtk::Box, gtk::Entry) {
     let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     bar.set_widget_name("amni-omni");
     bar.set_size_request(-1, 40);
@@ -222,6 +234,10 @@ fn pack_native_omnibox(
     bar.set_margin_end(6);
     bar.set_margin_top(4);
     bar.set_margin_bottom(4);
+    let css = gtk::CssProvider::new();
+    if css.load_from_data(b"#amni-omni { background-color: #12122a; }").is_ok() {
+        bar.style_context().add_provider(&css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
+    }
     let mk_btn = |label: &str, tip: &str| {
         let b = gtk::Button::with_label(label);
         b.set_tooltip_text(Some(tip));
@@ -237,8 +253,6 @@ fn pack_native_omnibox(
     bar.pack_start(&fwd, false, false, 0);
     bar.pack_start(&reload, false, false, 0);
     bar.pack_start(&entry, true, true, 0);
-    vbox.pack_start(&bar, false, false, 0);
-    vbox.reorder_child(&bar, 0);
     bar.show_all();
     let bind_js = |btn: &gtk::Button, js: &str| {
         let acts = Rc::clone(&acts);
@@ -279,8 +293,8 @@ fn pack_native_omnibox(
             glib::Propagation::Proceed
         }
     });
-    info!("Linux native GTK omnibox packed at vbox index 0 (outside WebKit)");
-    entry
+    info!("Linux native GTK omnibox overlay valign-start (outside WebKit)");
+    (bar, entry)
 }
 #[cfg(feature = "webview")]
 fn chrome_init_js() -> String {
@@ -292,22 +306,46 @@ fn chrome_init_js() -> String {
 try { if (window.self !== window.top) return; } catch(_) { return; }
 if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
 if ((location.hostname || '').indexOf('amnibrowse.') === 0) return;
-// Wheel-over-link must not activate: WebKit synthesizes click/auxclick after
-// wheel. Capture-phase: record last wheel, suppress click/middle-auxclick
-// within 120ms. Real clicks (no recent wheel) stay live. Bind before the
-// native-omnibox return so Linux (no JS toolbar) still gets this.
-if (!window.__amni_wheel_bound) {
-    window.__amni_wheel_bound = 1;
-    window.__amni_last_wheel = 0;
-    window.addEventListener('wheel', function(){ window.__amni_last_wheel = Date.now(); }, true);
-    window.addEventListener('click', function(e){
-        if (Date.now() - (window.__amni_last_wheel || 0) < 120) { e.preventDefault(); e.stopPropagation(); }
+function injectNativePush(){
+    try {
+        const d = document;
+        if (!d.documentElement) return false;
+        if (d.getElementById('__amni_push_style')) return true;
+        const s = d.createElement('style');
+        s.id = '__amni_push_style';
+        s.textContent = 'html{margin-top:48px!important}';
+        (d.head || d.documentElement).appendChild(s);
+        return true;
+    } catch(_) { return false; }
+}
+function bindOmniboxHotkey(){
+    if (window.__amni_native_omnibox) return;
+    if (window.__amni_l_bound) return;
+    window.__amni_l_bound = 1;
+    window.addEventListener('keydown', function(e){
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'l' || e.key === 'L')) {
+            if (typeof stealOmnibox === 'function' && stealOmnibox()) { e.preventDefault(); e.stopPropagation(); }
+        }
     }, true);
-    window.addEventListener('auxclick', function(e){
-        if (e.button === 1 && Date.now() - (window.__amni_last_wheel || 0) < 120) { e.preventDefault(); e.stopPropagation(); }
+    window.addEventListener('pointerdown', function(e){
+        if (e.clientY >= 48) return;
+        const host = document.getElementById('__atb_host');
+        if (!host || e.target === host || host.contains(e.target)) return;
+        e.preventDefault();
+        if (typeof stealOmnibox === 'function') stealOmnibox();
     }, true);
 }
-if (window.__amni_native_omnibox) return;
+if (window.__amni_native_omnibox) {
+    function startNativePush(){
+        if (!injectNativePush()) {
+            let tries = 0;
+            const tid = setInterval(function(){ tries++; if (injectNativePush() || tries > 80) clearInterval(tid); }, 50);
+        }
+    }
+    startNativePush();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startNativePush, { once:true });
+    return;
+}
 function ipc(o){ try { window.ipc && window.ipc.postMessage(JSON.stringify(o)); } catch(_) {} }
 function stealOmnibox(){
     try {
@@ -326,21 +364,7 @@ function stealOmnibox(){
     } catch(_) { return false; }
 }
 window.__amni_steal_focus = stealOmnibox;
-if (!window.__amni_l_bound) {
-    window.__amni_l_bound = 1;
-    window.addEventListener('keydown', function(e){
-        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'l' || e.key === 'L')) {
-            if (stealOmnibox()) { e.preventDefault(); e.stopPropagation(); }
-        }
-    }, true);
-    window.addEventListener('pointerdown', function(e){
-        if (e.clientY >= 48) return;
-        const host = document.getElementById('__atb_host');
-        if (!host || e.target === host || host.contains(e.target)) return;
-        e.preventDefault();
-        stealOmnibox();
-    }, true);
-}
+bindOmniboxHotkey();
 function wireHandlers(host){
     const root = host && host.shadowRoot;
     if (!root) return;
@@ -449,14 +473,13 @@ mod tests {
         assert!(u.contains("hello"), "{u}");
     }
     #[test]
-    fn chrome_js_suppresses_wheel_synthesized_click() {
+    fn chrome_js_native_pushes_content_skips_page_steal_and_wheel() {
         let js = chrome_init_js();
-        assert!(js.contains("__amni_last_wheel"), "wheel timestamp must be recorded");
-        assert!(js.contains("auxclick"), "middle-button auxclick must be gated");
-        assert!(js.contains("< 120"), "120ms window after wheel");
-        let native_ret = js.find("if (window.__amni_native_omnibox) return;");
-        let wheel = js.find("window.__amni_last_wheel");
-        assert!(native_ret.is_some() && wheel.is_some() && wheel < native_ret,
-            "wheel suppress must bind before native-omnibox early return");
+        assert!(!js.contains("__amni_last_wheel"), "wheel click-suppress eats real clicks after scroll");
+        assert!(js.contains("html{margin-top:48px!important}"), "overlay bar must not cover page content");
+        assert!(js.contains("function bindOmniboxHotkey"), "page steal must be a named skip point");
+        let bind = js.find("function bindOmniboxHotkey").expect("bindOmniboxHotkey");
+        assert!(js[bind..].contains("if (window.__amni_native_omnibox) return"),
+            "B2 steal is native GTK, not the old 48px page steal");
     }
 }
