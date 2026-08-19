@@ -142,7 +142,7 @@ impl Browser {
                     modifiers = m;
                 }
                 Event::WindowEvent { event: WindowEvent::KeyboardInput { event: key_event, .. }, .. } => {
-                    if key_event.state == ElementState::Pressed && is_accel_l(&key_event.logical_key, modifiers) {
+                    if key_event.state == ElementState::Pressed && is_accel_l(&key_event, modifiers) {
                         webview.evaluate_script(FOCUS_URL_BAR_JS).ok();
                     }
                 }
@@ -154,9 +154,9 @@ impl Browser {
 #[cfg(feature = "webview")]
 const FOCUS_URL_BAR_JS: &str = r#"(function(){try{var h=document.getElementById('__atb_host');var r=h&&h.shadowRoot;var u=r&&r.getElementById('_au');if(!u)return;u.focus();if(u.select)u.select();}catch(_){}})();"#;
 #[cfg(feature = "webview")]
-fn is_accel_l(logical_key: &Key, modifiers: ModifiersState) -> bool {
+fn is_accel_l(key_event: &tao::event::KeyEvent, modifiers: ModifiersState) -> bool {
     let accel = modifiers.control_key() || modifiers.super_key();
-    accel && !modifiers.alt_key() && matches!(logical_key, Key::Character(c) if c.eq_ignore_ascii_case("l"))
+    accel && !modifiers.alt_key() && matches!(key_event.key_without_modifiers(), Key::Character(c) if c.eq_ignore_ascii_case("l"))
 }
 #[cfg(feature = "webview")]
 fn chrome_init_js() -> String {
