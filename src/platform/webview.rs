@@ -104,21 +104,21 @@ impl Browser {
         let (webview, omnibox) = {
             let vbox = window.default_vbox().expect("gtk vbox");
             let gtk_win = window.gtk_window();
-            // Overlay fills the vbox. Webview is the main child so paint and
-            // hit-test share one allocation. A vbox-sibling amni-omni bar made
-            // software WebKit land HN clicks on Back (URL stuck, viewport snap).
+            // Overlay fills the vbox. build_gtk FIRST so WebKit is the main
+            // child (paint). add_overlay / show_all only after it exists —
+            // showing the bar first covered WebKit (blank white content).
             let overlay = gtk::Overlay::new();
             overlay.set_hexpand(true);
             overlay.set_vexpand(true);
             vbox.pack_start(&overlay, true, true, 0);
-            overlay.show();
+            let webview = builder.build_gtk(&overlay).expect("webview");
             let (bar, omnibox) = make_native_omnibox(gtk_win, Rc::clone(&acts), proxy.clone());
+            bar.set_vexpand(false);
             bar.set_valign(gtk::Align::Start);
             bar.set_halign(gtk::Align::Fill);
-            bar.set_hexpand(true);
-            let webview = builder.build_gtk(&overlay).expect("webview");
+            bar.set_size_request(-1, 44);
             overlay.add_overlay(&bar);
-            bar.show_all();
+            overlay.show_all();
             (webview, omnibox)
         };
         #[cfg(not(target_os = "linux"))]
@@ -229,11 +229,8 @@ fn make_native_omnibox(
 ) -> (gtk::Box, gtk::Entry) {
     let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     bar.set_widget_name("amni-omni");
-    bar.set_size_request(-1, 40);
     bar.set_margin_start(6);
     bar.set_margin_end(6);
-    bar.set_margin_top(4);
-    bar.set_margin_bottom(4);
     let css = gtk::CssProvider::new();
     if css.load_from_data(b"#amni-omni { background-color: #12122a; }").is_ok() {
         bar.style_context().add_provider(&css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
@@ -253,7 +250,6 @@ fn make_native_omnibox(
     bar.pack_start(&fwd, false, false, 0);
     bar.pack_start(&reload, false, false, 0);
     bar.pack_start(&entry, true, true, 0);
-    bar.show_all();
     let bind_js = |btn: &gtk::Button, js: &str| {
         let acts = Rc::clone(&acts);
         let proxy = proxy.clone();
