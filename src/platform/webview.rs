@@ -153,7 +153,7 @@ impl Browser {
                 Event::WindowEvent { event: WindowEvent::KeyboardInput { event: key_event, .. }, .. } => {
                     if key_event.state == ElementState::Pressed && is_accel_l(&key_event, modifiers) {
                         #[cfg(target_os = "linux")]
-                        { omnibox.grab_focus(); omnibox.select_region(0, -1); }
+                        { omnibox_focus_replace(&omnibox); }
                         #[cfg(not(target_os = "linux"))]
                         { webview.evaluate_script(FOCUS_URL_BAR_JS).ok(); }
                     }
@@ -176,6 +176,15 @@ fn resolve_omnibox_input(raw: &str) -> String {
     if v.starts_with("http://") || v.starts_with("https://") { v.to_string() }
     else if v.contains('.') && !v.contains(' ') { format!("https://{}", v) }
     else { format!("{}{}", DEFAULT_SEARCH_ENGINE, urlencoding::encode(v)) }
+}
+/// grab_focus() on GtkEntry defers caret-to-end and drops a same-tick select_region,
+/// so the first typed URL prepends and leaves a stale suffix. Re-select on idle.
+#[cfg(all(feature = "webview", target_os = "linux"))]
+fn omnibox_focus_replace(entry: &gtk::Entry) {
+    entry.grab_focus();
+    entry.select_region(0, -1);
+    let e = entry.clone();
+    glib::idle_add_local_once(move || { e.select_region(0, -1); });
 }
 #[cfg(all(feature = "webview", target_os = "linux"))]
 fn pack_native_omnibox(
@@ -242,8 +251,7 @@ fn pack_native_omnibox(
         let kv = raw.keyval;
         let is_l = kv == *gdk::keys::constants::l || kv == *gdk::keys::constants::L;
         if accel && !alt && is_l {
-            focus_entry.grab_focus();
-            focus_entry.select_region(0, -1);
+            omnibox_focus_replace(&focus_entry);
             glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed
