@@ -159,11 +159,15 @@ impl Browser {
                             // Address-bar sync only. Never load_url here — that loops with the nav handler.
                             Act::Omni(url) => {
                                 let u = url.trim();
-                                if u.is_empty() { continue; }
+                                if omni_url_skip(u) { continue; }
                                 let s: String = u.chars().take(80).collect();
                                 window.set_title(&format!("{} — {}", s, APP_NAME));
                                 #[cfg(target_os = "linux")]
-                                if !omnibox.has_focus() { omnibox.set_text(u); }
+                                if !omnibox.has_focus() {
+                                    // Replace, never append — set_text alone can leave a stale suffix.
+                                    omnibox.delete_text(0, -1);
+                                    omnibox.set_text(u);
+                                }
                             }
                         }
                     }
@@ -202,14 +206,22 @@ fn resolve_omnibox_input(raw: &str) -> String {
     else if v.contains('.') && !v.contains(' ') { format!("https://{}", v) }
     else { format!("{}{}", DEFAULT_SEARCH_ENGINE, urlencoding::encode(v)) }
 }
+#[cfg(feature = "webview")]
+fn omni_url_skip(u: &str) -> bool {
+    u.is_empty() || u.eq_ignore_ascii_case("about:blank") || u.starts_with("amnibrowse://")
+}
 /// grab_focus() on GtkEntry defers caret-to-end and drops a same-tick select_region,
 /// so the first typed URL prepends and leaves a stale suffix. Re-select on idle.
 #[cfg(all(feature = "webview", target_os = "linux"))]
-fn omnibox_focus_replace(entry: &gtk::Entry) {
-    entry.grab_focus();
+fn omnibox_select_all(entry: &gtk::Entry) {
     entry.select_region(0, -1);
     let e = entry.clone();
     glib::idle_add_local_once(move || { e.select_region(0, -1); });
+}
+#[cfg(all(feature = "webview", target_os = "linux"))]
+fn omnibox_focus_replace(entry: &gtk::Entry) {
+    entry.grab_focus();
+    omnibox_select_all(entry);
 }
 #[cfg(all(feature = "webview", target_os = "linux"))]
 fn install_native_omnibox(
@@ -263,6 +275,13 @@ fn install_native_omnibox(
             if dest.is_empty() { return; }
             acts.borrow_mut().push(Act::Nav(dest));
             proxy.send_event(()).ok();
+        });
+    }
+    {
+        let e = entry.clone();
+        entry.connect_focus_in_event(move |_, _| {
+            omnibox_select_all(&e);
+            glib::Propagation::Proceed
         });
     }
     let focus_entry = entry.clone();
@@ -438,6 +457,15 @@ mod tests {
         let u = resolve_omnibox_input("hello world");
         assert!(u.starts_with(DEFAULT_SEARCH_ENGINE), "{u}");
         assert!(u.contains("hello"), "{u}");
+    }
+    #[test]
+    fn omni_skips_empty_about_blank_and_internal() {
+        assert!(omni_url_skip(""));
+        assert!(omni_url_skip("about:blank"));
+        assert!(omni_url_skip("About:Blank"));
+        assert!(omni_url_skip("amnibrowse://newtab"));
+        assert!(!omni_url_skip("https://news.ycombinator.com/item?id=1"));
+        assert!(!omni_url_skip("http://neverssl.com/"));
     }
     #[test]
     fn chrome_js_native_skips_page_steal_and_has_no_native_margin() {

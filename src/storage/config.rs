@@ -58,7 +58,7 @@ impl Default for BrowserConfig {
             clear_cookies_on_exit: false,
             clear_history_on_exit: false,
             clear_passwords_on_exit: false,
-            restore_session: true,
+            restore_session: false,
             enable_doh: false,
             doh_provider: "cloudflare".into(),
             default_zoom: 1.0,
@@ -134,5 +134,9 @@ mod tests {
         assert!(WEBVIEW_COLD_START.starts_with("http://"));
         assert_ne!(WEBVIEW_COLD_START, LITE_DDG_HOME);
         assert!(DEFAULT_SEARCH_ENGINE.starts_with(LITE_DDG_HOME.trim_end_matches('/')));
+    }
+    #[test]
+    fn restore_session_defaults_off() {
+        assert!(!BrowserConfig::default().restore_session);
     }
 }
