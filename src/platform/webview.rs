@@ -17,7 +17,7 @@ use gtk::prelude::*;
 #[cfg(feature = "webview")]
 use std::{borrow::Cow, cell::RefCell, rc::Rc, sync::Arc};
 #[cfg(feature = "webview")]
-enum Act { Nav(String), Js(String), Title(String) }
+enum Act { Nav(String), Js(String), Title(String), Omni(String) }
 #[cfg(feature = "webview")]
 pub struct Browser;
 #[cfg(feature = "webview")]
@@ -44,6 +44,10 @@ impl Browser {
         let s1 = Rc::clone(&state);
         let a1 = Rc::clone(&acts);
         let px1 = proxy.clone();
+        let a_nav = Rc::clone(&acts);
+        let px_nav = proxy.clone();
+        let a_load = Rc::clone(&acts);
+        let px_load = proxy.clone();
         let proto_html = newtab_html.into_bytes();
         // Do not call .build() on this chain. wry 0.46 build(&window) on Linux is X11-only
         // and does not pack WebKit into tao's GTK vbox → title-only white window (B3).
@@ -60,9 +64,18 @@ impl Browser {
             .with_url(WEBVIEW_COLD_START)
             .with_devtools(cfg!(debug_assertions))
             .with_initialization_script(&chrome_init_js())
-            .with_navigation_handler(|_url| {
-                // Allow all navigations; block/ads are handled via the engine if needed.
+            .with_navigation_handler(move |url| {
+                a_nav.borrow_mut().push(Act::Omni(url));
+                px_nav.send_event(()).ok();
                 true
+            })
+            .with_on_page_load_handler(move |ev, url| {
+                match ev {
+                    wry::PageLoadEvent::Started | wry::PageLoadEvent::Finished => {
+                        a_load.borrow_mut().push(Act::Omni(url));
+                        px_load.send_event(()).ok();
+                    }
+                }
             })
             .with_ipc_handler(move |msg| {
                 let body = msg.body();
@@ -139,6 +152,15 @@ impl Browser {
                             Act::Title(t) => {
                                 let s: String = t.chars().take(80).collect();
                                 window.set_title(&format!("{} — {}", s, APP_NAME));
+                            }
+                            // Address-bar sync only. Never load_url here — that loops with the nav handler.
+                            Act::Omni(url) => {
+                                let u = url.trim();
+                                if u.is_empty() { continue; }
+                                let s: String = u.chars().take(80).collect();
+                                window.set_title(&format!("{} — {}", s, APP_NAME));
+                                #[cfg(target_os = "linux")]
+                                if !omnibox.has_focus() { omnibox.set_text(u); }
                             }
                         }
                     }
@@ -270,6 +292,21 @@ fn chrome_init_js() -> String {
 try { if (window.self !== window.top) return; } catch(_) { return; }
 if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
 if ((location.hostname || '').indexOf('amnibrowse.') === 0) return;
+// Wheel-over-link must not activate: WebKit synthesizes click/auxclick after
+// wheel. Capture-phase: record last wheel, suppress click/middle-auxclick
+// within 120ms. Real clicks (no recent wheel) stay live. Bind before the
+// native-omnibox return so Linux (no JS toolbar) still gets this.
+if (!window.__amni_wheel_bound) {
+    window.__amni_wheel_bound = 1;
+    window.__amni_last_wheel = 0;
+    window.addEventListener('wheel', function(){ window.__amni_last_wheel = Date.now(); }, true);
+    window.addEventListener('click', function(e){
+        if (Date.now() - (window.__amni_last_wheel || 0) < 120) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    window.addEventListener('auxclick', function(e){
+        if (e.button === 1 && Date.now() - (window.__amni_last_wheel || 0) < 120) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+}
 if (window.__amni_native_omnibox) return;
 function ipc(o){ try { window.ipc && window.ipc.postMessage(JSON.stringify(o)); } catch(_) {} }
 function stealOmnibox(){
@@ -410,5 +447,16 @@ mod tests {
         let u = resolve_omnibox_input("hello world");
         assert!(u.starts_with(DEFAULT_SEARCH_ENGINE), "{u}");
         assert!(u.contains("hello"), "{u}");
+    }
+    #[test]
+    fn chrome_js_suppresses_wheel_synthesized_click() {
+        let js = chrome_init_js();
+        assert!(js.contains("__amni_last_wheel"), "wheel timestamp must be recorded");
+        assert!(js.contains("auxclick"), "middle-button auxclick must be gated");
+        assert!(js.contains("< 120"), "120ms window after wheel");
+        let native_ret = js.find("if (window.__amni_native_omnibox) return;");
+        let wheel = js.find("window.__amni_last_wheel");
+        assert!(native_ret.is_some() && wheel.is_some() && wheel < native_ret,
+            "wheel suppress must bind before native-omnibox early return");
     }
 }
