@@ -8,6 +8,9 @@ pub const DEFAULT_HOME: &str = "amnibrowse://newtab";
 /// Lite HTML DDG — Servo cannot run the full Next.js duckduckgo.com SPA yet.
 pub const DEFAULT_SEARCH_ENGINE: &str = "https://html.duckduckgo.com/html/?q=";
 pub const LITE_DDG_HOME: &str = "https://html.duckduckgo.com/html/";
+/// WEBVIEW cold start that still paints when DDG HTTPS TLS fails.
+/// Do not default this to `LITE_DDG_HOME` — search may stay lite DDG.
+pub const WEBVIEW_COLD_START: &str = "http://neverssl.com/";
 pub const USER_AGENT: &str = "AmniBrowse/0.3 (Privacy-First; Amni-Scient)";
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SplitMode { None, Horizontal, Vertical }
@@ -119,5 +122,17 @@ impl BrowserConfig {
         if cache_dir.exists() { fs::remove_dir_all(&cache_dir).ok(); fs::create_dir_all(&cache_dir).ok(); }
         ["cookies.json", "history.json", "downloads.json", "autofill.json", "permissions.json"]
             .iter().for_each(|f| { fs::remove_file(config_dir.join(f)).ok(); });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn webview_cold_start_is_plain_http_neverssl_not_lite_ddg() {
+        assert_eq!(WEBVIEW_COLD_START, "http://neverssl.com/");
+        assert!(WEBVIEW_COLD_START.starts_with("http://"));
+        assert_ne!(WEBVIEW_COLD_START, LITE_DDG_HOME);
+        assert!(DEFAULT_SEARCH_ENGINE.starts_with(LITE_DDG_HOME.trim_end_matches('/')));
     }
 }

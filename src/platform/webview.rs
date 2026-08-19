@@ -1,11 +1,15 @@
 #[cfg(feature = "webview")]
 use log::{error, info};
 #[cfg(feature = "webview")]
-use tao::{event::{Event, WindowEvent}, event_loop::{ControlFlow, EventLoop}, window::WindowBuilder};
+use tao::{event::{ElementState, Event, WindowEvent}, event_loop::{ControlFlow, EventLoop}, keyboard::{Key, ModifiersState}, window::WindowBuilder};
+#[cfg(all(feature = "webview", target_os = "linux"))]
+use tao::platform::unix::WindowExtUnix;
 #[cfg(feature = "webview")]
 use wry::WebViewBuilder;
+#[cfg(all(feature = "webview", target_os = "linux"))]
+use wry::WebViewBuilderExtUnix;
 #[cfg(feature = "webview")]
-use crate::{app::BrowserState, storage::config::{APP_NAME, APP_VERSION}, net::ipc::{parse_ipc_message, IpcMessage, IpcResponse}, ui::webview as spa, engine::adblocker::AdBlocker};
+use crate::{app::BrowserState, storage::config::{APP_NAME, APP_VERSION, WEBVIEW_COLD_START}, net::ipc::{parse_ipc_message, IpcMessage, IpcResponse}, ui::webview as spa, engine::adblocker::AdBlocker};
 #[cfg(feature = "webview")]
 use std::{borrow::Cow, cell::RefCell, rc::Rc, sync::Arc};
 #[cfg(feature = "webview")]
@@ -37,7 +41,9 @@ impl Browser {
         let a1 = Rc::clone(&acts);
         let px1 = proxy.clone();
         let proto_html = newtab_html.into_bytes();
-        let webview = WebViewBuilder::new()
+        // Do not call .build() on this chain. wry 0.46 build(&window) on Linux is X11-only
+        // and does not pack WebKit into tao's GTK vbox → title-only white window (B3).
+        let builder = WebViewBuilder::new()
             .with_custom_protocol("amnibrowse".to_string(), move |_, _request| {
                 wry::http::Response::builder()
                     .header("Content-Type", "text/html; charset=utf-8")
@@ -47,7 +53,7 @@ impl Browser {
                     .body(Cow::Owned(proto_html.clone()))
                     .unwrap()
             })
-            .with_url("amnibrowse://newtab/")
+            .with_url(WEBVIEW_COLD_START)
             .with_devtools(cfg!(debug_assertions))
             .with_initialization_script(&chrome_init_js())
             .with_navigation_handler(|_url| {
@@ -76,10 +82,17 @@ impl Browser {
                     Err(e) => error!("IPC: {}", e),
                 }
                 px1.send_event(()).ok();
-            })
-            .build(&window).expect("webview");
-        info!("Amni Browse v{} running!", APP_VERSION);
+            });
+        #[cfg(target_os = "linux")]
+        let webview = {
+            let vbox = window.default_vbox().expect("gtk vbox");
+            builder.build_gtk(vbox).expect("webview")
+        };
+        #[cfg(not(target_os = "linux"))]
+        let webview = builder.build(&window).expect("webview");
+        info!("Amni Browse v{} running! webview cold_start={}", APP_VERSION, WEBVIEW_COLD_START);
         proxy.send_event(()).ok();
+        let mut modifiers = ModifiersState::empty();
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
             match event {
@@ -125,10 +138,25 @@ impl Browser {
                     state.borrow_mut().shutdown();
                     *control_flow = ControlFlow::Exit;
                 }
+                Event::WindowEvent { event: WindowEvent::ModifiersChanged(m), .. } => {
+                    modifiers = m;
+                }
+                Event::WindowEvent { event: WindowEvent::KeyboardInput { event: key_event, .. }, .. } => {
+                    if key_event.state == ElementState::Pressed && is_accel_l(&key_event.logical_key, modifiers) {
+                        webview.evaluate_script(FOCUS_URL_BAR_JS).ok();
+                    }
+                }
                 _ => {}
             }
         });
     }
+}
+#[cfg(feature = "webview")]
+const FOCUS_URL_BAR_JS: &str = r#"(function(){try{var h=document.getElementById('__atb_host');var r=h&&h.shadowRoot;var u=r&&r.getElementById('_au');if(!u)return;u.focus();if(u.select)u.select();}catch(_){}})();"#;
+#[cfg(feature = "webview")]
+fn is_accel_l(logical_key: &Key, modifiers: ModifiersState) -> bool {
+    let accel = modifiers.control_key() || modifiers.super_key();
+    accel && !modifiers.alt_key() && matches!(logical_key, Key::Character(c) if c.eq_ignore_ascii_case("l"))
 }
 #[cfg(feature = "webview")]
 fn chrome_init_js() -> String {
@@ -137,6 +165,25 @@ try { if (window.self !== window.top) return; } catch(_) { return; }
 if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
 if ((location.hostname || '').indexOf('amnibrowse.') === 0) return;
 function ipc(o){ try { window.ipc && window.ipc.postMessage(JSON.stringify(o)); } catch(_) {} }
+function focusAu(){
+    try {
+        const host = document.getElementById('__atb_host');
+        const root = host && host.shadowRoot;
+        const u = root && root.getElementById('_au');
+        if (!u) return false;
+        u.focus();
+        if (u.select) u.select();
+        return true;
+    } catch(_) { return false; }
+}
+if (!window.__amni_l_bound) {
+    window.__amni_l_bound = 1;
+    window.addEventListener('keydown', function(e){
+        if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'l' || e.key === 'L')) {
+            if (focusAu()) { e.preventDefault(); e.stopPropagation(); }
+        }
+    }, true);
+}
 function wireHandlers(host){
     const root = host && host.shadowRoot;
     if (!root) return;
@@ -192,6 +239,11 @@ function ensureToolbar(){
             d.head.appendChild(s);
         }
         wireHandlers(host);
+        if (host && !host.__amni_stop) {
+            host.__amni_stop = 1;
+            host.addEventListener('keydown', function(e){ e.stopPropagation(); }, true);
+            if (host.shadowRoot) host.shadowRoot.addEventListener('keydown', function(e){ e.stopPropagation(); });
+        }
         ipc({ type:'get_stats' });
         return true;
     } catch(_) {

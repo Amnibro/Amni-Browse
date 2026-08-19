@@ -1,4 +1,13 @@
-﻿## v0.11.0 — 2026-08-11 (ff18986)
+﻿## Unreleased — 2026-08-19
+### Linux WEBVIEW attach (B3) + Ctrl+L (B2)
+- **B3 blank root:** wry 0.46 `WebViewBuilder::build(&window)` on Linux is X11-only and does **not** pack WebKit into tao's GTK `default_vbox` → title-only white window. Linux now uses `window.default_vbox()` + `builder.build_gtk(vbox)`.
+- **Cold start:** `WEBVIEW_COLD_START = http://neverssl.com/` so the viewport paints when DDG HTTPS TLS fails. Search engine stays lite DDG. Do **not** default webview cold start to `https://html.duckduckgo.com/html/`.
+- **B2 Ctrl/Cmd+L:** capture-phase JS (`__amni_l_bound`) focuses `_au` in `#__atb_host` shadow; toolbar `stopPropagation`; no `showPopover`. Native tao `KeyboardInput` evaluates the same focus JS; `ModifiersChanged` is tracked.
+### Linux servo-real software GL
+- Drop Servo feature `no-wgl` on Linux so mozangle 0.5.5 does not fail with "Do not know how to build EGL support for a non-Windows platform."
+- Hardware ANGLE remains **Windows-only**. Linux servo-real is **software-GL present** (surfman/Mesa, llvmpipe verified), not ANGLE hardware.
+
+## v0.11.0 — 2026-08-11 (ff18986)
 - Real Settings page on the menu button: search engine, homepage, privacy shield, default zoom, UA override, bookmark management — persisted via BrowserConfig (AppData/amni-browse)
 - Shield button live-toggles ad/tracker blocking; bookmark star is real (BookmarkManager, Ctrl+D)
 - Built-in start page with bookmark tiles when homepage is blank

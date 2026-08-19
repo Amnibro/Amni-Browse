@@ -42,6 +42,10 @@ Amni Browse is designed with a single principle: **your browsing is yours.**
 - GPU with Vulkan, DX12, or Metal support
 - No system WebView required
 
+**Servo-real backend (`--features servo-real`):**
+- Windows: hardware ANGLE (`no-wgl` / mozangle) + GStreamer
+- Linux: native GL via surfman/Mesa — **software-GL present** (llvmpipe verified), **not** ANGLE hardware. `no-wgl` is Windows-only; enabling it on Linux fails mozangle 0.5.5 (`Do not know how to build EGL support for a non-Windows platform`).
+
 ### Build & Run
 
 ```bash
@@ -105,8 +109,9 @@ src/
 
 | Backend | Feature Flag | Rendering | Dependencies |
 |---------|-------------|-----------|-------------|
-| **WebView** (default) | `webview` | System WebView (Chromium/WebKit) | tao, wry |
+| **WebView** (default) | `webview` | System WebView (Chromium/WebKit). Linux must `build_gtk` into tao's GTK vbox (wry 0.46 `build(&window)` is X11-only). | tao, wry |
 | **Servo-egui** | `servo-engine` | Custom wgpu + egui | winit, wgpu, egui, egui-wgpu |
+| **Servo-real** | `servo-real` | libservo + WebRender. Windows: hardware ANGLE. Linux: software GL (Mesa/llvmpipe), not ANGLE. | servo, winit, surfman |
 
 The Servo-egui backend provides fully native browser chrome via egui/wgpu, independent of any system WebView. This is the foundation for the planned **AmniShunt** rendering engine (v0.5+).
 
