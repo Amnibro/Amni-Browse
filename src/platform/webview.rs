@@ -10,6 +10,10 @@ use wry::WebViewBuilder;
 use wry::WebViewBuilderExtUnix;
 #[cfg(feature = "webview")]
 use crate::{app::BrowserState, storage::config::{APP_NAME, APP_VERSION, WEBVIEW_COLD_START}, net::ipc::{parse_ipc_message, IpcMessage, IpcResponse}, ui::webview as spa, engine::adblocker::AdBlocker};
+#[cfg(all(feature = "webview", target_os = "linux"))]
+use crate::storage::config::DEFAULT_SEARCH_ENGINE;
+#[cfg(all(feature = "webview", target_os = "linux"))]
+use gtk::prelude::*;
 #[cfg(feature = "webview")]
 use std::{borrow::Cow, cell::RefCell, rc::Rc, sync::Arc};
 #[cfg(feature = "webview")]
@@ -84,9 +88,12 @@ impl Browser {
                 px1.send_event(()).ok();
             });
         #[cfg(target_os = "linux")]
-        let webview = {
+        let (webview, omnibox) = {
             let vbox = window.default_vbox().expect("gtk vbox");
-            builder.build_gtk(vbox).expect("webview")
+            let gtk_win = window.gtk_window();
+            let omnibox = pack_native_omnibox(vbox, gtk_win, Rc::clone(&acts), proxy.clone());
+            let webview = builder.build_gtk(vbox).expect("webview");
+            (webview, omnibox)
         };
         #[cfg(not(target_os = "linux"))]
         let webview = builder.build(&window).expect("webview");
@@ -113,6 +120,8 @@ impl Browser {
                                     if let Err(e) = webview.load_url(&nav_url) {
                                         error!("Failed to navigate to '{}': {}", nav_url, e);
                                     }
+                                    #[cfg(target_os = "linux")]
+                                    omnibox.set_text(&nav_url);
                                 } else {
                                     let raw = if nav_url.starts_with("amnibrowse://") { nav_url.clone() } else { "amnibrowse://newtab/".to_string() };
                                     let rest = &raw["amnibrowse://".len()..];
@@ -143,7 +152,10 @@ impl Browser {
                 }
                 Event::WindowEvent { event: WindowEvent::KeyboardInput { event: key_event, .. }, .. } => {
                     if key_event.state == ElementState::Pressed && is_accel_l(&key_event, modifiers) {
-                        webview.evaluate_script(FOCUS_URL_BAR_JS).ok();
+                        #[cfg(target_os = "linux")]
+                        { omnibox.grab_focus(); omnibox.select_region(0, -1); }
+                        #[cfg(not(target_os = "linux"))]
+                        { webview.evaluate_script(FOCUS_URL_BAR_JS).ok(); }
                     }
                 }
                 _ => {}
@@ -151,27 +163,114 @@ impl Browser {
         });
     }
 }
-#[cfg(feature = "webview")]
+#[cfg(all(feature = "webview", not(target_os = "linux")))]
 const FOCUS_URL_BAR_JS: &str = r#"(function(){try{if(typeof window.__amni_steal_focus==='function')window.__amni_steal_focus();}catch(_){}})();"#;
 #[cfg(feature = "webview")]
 fn is_accel_l(key_event: &tao::event::KeyEvent, modifiers: ModifiersState) -> bool {
     let accel = modifiers.control_key() || modifiers.super_key();
     accel && !modifiers.alt_key() && matches!(key_event.key_without_modifiers(), Key::Character(c) if c.eq_ignore_ascii_case("l"))
 }
+#[cfg(all(feature = "webview", target_os = "linux"))]
+fn resolve_omnibox_input(raw: &str) -> String {
+    let v = raw.trim();
+    if v.starts_with("http://") || v.starts_with("https://") { v.to_string() }
+    else if v.contains('.') && !v.contains(' ') { format!("https://{}", v) }
+    else { format!("{}{}", DEFAULT_SEARCH_ENGINE, urlencoding::encode(v)) }
+}
+#[cfg(all(feature = "webview", target_os = "linux"))]
+fn pack_native_omnibox(
+    vbox: &gtk::Box,
+    gtk_win: &gtk::ApplicationWindow,
+    acts: Rc<RefCell<Vec<Act>>>,
+    proxy: tao::event_loop::EventLoopProxy<()>,
+) -> gtk::Entry {
+    let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    bar.set_size_request(-1, 40);
+    bar.set_margin_start(6);
+    bar.set_margin_end(6);
+    bar.set_margin_top(4);
+    bar.set_margin_bottom(4);
+    let mk_btn = |label: &str, tip: &str| {
+        let b = gtk::Button::with_label(label);
+        b.set_tooltip_text(Some(tip));
+        b
+    };
+    let back = mk_btn("◀", "Back");
+    let fwd = mk_btn("▶", "Forward");
+    let reload = mk_btn("⟳", "Reload");
+    let entry = gtk::Entry::new();
+    entry.set_placeholder_text(Some("Search or enter URL…"));
+    entry.set_hexpand(true);
+    bar.pack_start(&back, false, false, 0);
+    bar.pack_start(&fwd, false, false, 0);
+    bar.pack_start(&reload, false, false, 0);
+    bar.pack_start(&entry, true, true, 0);
+    vbox.pack_start(&bar, false, false, 0);
+    vbox.reorder_child(&bar, 0);
+    bar.show_all();
+    let bind_js = |btn: &gtk::Button, js: &str| {
+        let acts = Rc::clone(&acts);
+        let proxy = proxy.clone();
+        let js = js.to_string();
+        btn.connect_clicked(move |_| {
+            acts.borrow_mut().push(Act::Js(js.clone()));
+            proxy.send_event(()).ok();
+        });
+    };
+    bind_js(&back, "history.back()");
+    bind_js(&fwd, "history.forward()");
+    bind_js(&reload, "location.reload()");
+    {
+        let acts = Rc::clone(&acts);
+        let proxy = proxy.clone();
+        entry.connect_activate(move |e| {
+            let dest = resolve_omnibox_input(&e.text());
+            if dest.is_empty() { return; }
+            acts.borrow_mut().push(Act::Nav(dest));
+            proxy.send_event(()).ok();
+        });
+    }
+    let focus_entry = entry.clone();
+    gtk_win.connect_key_press_event(move |_, ev| {
+        let raw = ev.as_ref();
+        let state = gdk::ModifierType::from_bits_truncate(raw.state);
+        let accel = state.contains(gdk::ModifierType::CONTROL_MASK)
+            || state.contains(gdk::ModifierType::SUPER_MASK)
+            || state.contains(gdk::ModifierType::MOD4_MASK);
+        let alt = state.contains(gdk::ModifierType::MOD1_MASK);
+        let kv = raw.keyval;
+        let is_l = kv == *gdk::keys::constants::l || kv == *gdk::keys::constants::L;
+        if accel && !alt && is_l {
+            focus_entry.grab_focus();
+            focus_entry.select_region(0, -1);
+            gtk::Inhibit(true)
+        } else {
+            gtk::Inhibit(false)
+        }
+    });
+    info!("Linux native GTK omnibox packed at vbox index 0 (outside WebKit)");
+    entry
+}
 #[cfg(feature = "webview")]
 fn chrome_init_js() -> String {
-        r#"(function(){
+        let native = if cfg!(target_os = "linux") { "true" } else { "false" };
+        let mut js = String::from("(function(){\nwindow.__amni_native_omnibox = ");
+        js.push_str(native);
+        js.push_str(";\n");
+        js.push_str(r#"
 try { if (window.self !== window.top) return; } catch(_) { return; }
 if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
 if ((location.hostname || '').indexOf('amnibrowse.') === 0) return;
+if (window.__amni_native_omnibox) return;
 function ipc(o){ try { window.ipc && window.ipc.postMessage(JSON.stringify(o)); } catch(_) {} }
 function stealOmnibox(){
     try {
+        document.querySelectorAll('dialog[open]').forEach(function(d){ try { d.close(); d.show(); } catch(_) {} });
+        document.querySelectorAll('[inert]').forEach(function(el){ try { el.removeAttribute('inert'); } catch(_) {} });
         const host = document.getElementById('__atb_host');
         const root = host && host.shadowRoot;
         const u = root && root.getElementById('_au');
         if (!host || !u) return false;
-        // popover only at steal time — never at toolbar create (that hid chrome)
         if (typeof host.showPopover === 'function') {
             try { host.popover = 'manual'; host.showPopover(); } catch(_) {}
         }
@@ -282,5 +381,25 @@ function start(){
 }
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once:true });
 else start();
-})();"#.to_string()
+})();"#);
+        js
+}
+#[cfg(all(test, feature = "webview", target_os = "linux"))]
+mod tests {
+    use super::*;
+    #[test]
+    fn omnibox_http_as_is() {
+        assert_eq!(resolve_omnibox_input("http://neverssl.com/"), "http://neverssl.com/");
+        assert_eq!(resolve_omnibox_input(" https://example.com "), "https://example.com");
+    }
+    #[test]
+    fn omnibox_dotted_token_gets_https() {
+        assert_eq!(resolve_omnibox_input("example.com"), "https://example.com");
+    }
+    #[test]
+    fn omnibox_search_uses_lite_ddg() {
+        let u = resolve_omnibox_input("hello world");
+        assert!(u.starts_with(DEFAULT_SEARCH_ENGINE), "{u}");
+        assert!(u.contains("hello"), "{u}");
+    }
 }

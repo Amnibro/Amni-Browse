@@ -75,6 +75,11 @@ keyboard-types = { version = "0.7", optional = true }
 [target.'cfg(windows)'.dependencies]
 servo = { git = "https://github.com/servo/servo.git", rev = "68ca280", optional = true, features = ["no-wgl"] }
 
+# Already pulled by tao/wry; declare so we can pack a native omnibox above WebKit.
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+gdk = "0.18"
+
 [profile.release]
 opt-level = 3
 lto = true
