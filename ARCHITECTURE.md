@@ -67,7 +67,7 @@ Native (`servo-engine`) backend no longer paints to a hardcoded 1280×2048 canva
 
 ## Linux WEBVIEW attach (B3) + servo-real software GL (2026-08-19)
 - **WEBVIEW B3:** wry 0.46 `WebViewBuilder::build(&window)` on Linux talks X11 and never packs WebKitGTK into tao's `default_vbox` — symptom is a title-only white window. Linux attach is `window.default_vbox()` + `WebViewBuilderExtUnix::build_gtk`. Cold start is `WEBVIEW_COLD_START` (`http://neverssl.com/`) so a page paints when DDG HTTPS TLS fails; do not default this to lite DDG. Search engine may stay `html.duckduckgo.com`.
-- **WEBVIEW B2:** capture-phase Ctrl/Cmd+L focuses `_au` in `#__atb_host` shadow (`__amni_l_bound`); toolbar `stopPropagation`; no `showPopover`. Native tao `KeyboardInput` runs the same focus JS; `ModifiersChanged` is tracked.
+- **WEBVIEW B2:** `stealOmnibox()` finds `#__atb_host` + shadow `_au`. If `showPopover` exists, set `popover=manual` and `showPopover()` only at steal time (top layer beats `<dialog>.showModal()`); **never** set popover at toolbar create. Capture Ctrl/Cmd+L and `pointerdown` (`clientY < 48`, target not host) call it. `window.__amni_steal_focus = stealOmnibox`. Native tao Ctrl+L evaluates `__amni_steal_focus` if present.
 - **servo-real GL:** Servo feature `no-wgl` (hardware ANGLE / mozangle) is Windows-only. Linux omits it so mozangle 0.5.5 does not fail (`Do not know how to build EGL support for a non-Windows platform`). Linux present path is native GL via surfman/Mesa — software-GL (llvmpipe verified), not ANGLE hardware. Compositor blit/`make_current`/lite-DDG rewrite on this tree are unchanged.
 
 ## v0.7.2 — WebView2 Custom-Scheme Remap Awareness (2026-04-17)

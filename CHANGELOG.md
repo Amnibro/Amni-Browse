@@ -2,7 +2,7 @@
 ### Linux WEBVIEW attach (B3) + Ctrl+L (B2)
 - **B3 blank root:** wry 0.46 `WebViewBuilder::build(&window)` on Linux is X11-only and does **not** pack WebKit into tao's GTK `default_vbox` → title-only white window. Linux now uses `window.default_vbox()` + `builder.build_gtk(vbox)`.
 - **Cold start:** `WEBVIEW_COLD_START = http://neverssl.com/` so the viewport paints when DDG HTTPS TLS fails. Search engine stays lite DDG. Do **not** default webview cold start to `https://html.duckduckgo.com/html/`.
-- **B2 Ctrl/Cmd+L:** capture-phase JS (`__amni_l_bound`) focuses `_au` in `#__atb_host` shadow; toolbar `stopPropagation`; no `showPopover`. Native tao `KeyboardInput` evaluates the same focus JS; `ModifiersChanged` is tracked.
+- **B2 Ctrl/Cmd+L:** capture-phase JS (`__amni_l_bound`) calls `stealOmnibox()` — finds `#__atb_host` + shadow `_au`; if `showPopover` exists, set `popover=manual` and `showPopover()` (top layer, last-shown wins over `<dialog>.showModal()`) then focus+select. **Do not** set popover at toolbar create (that hid chrome). `pointerdown` capture: `clientY < 48` and target is not the host → `preventDefault` + steal (click through dialog backdrop). `window.__amni_steal_focus = stealOmnibox`. Native tao Ctrl+L evaluates `__amni_steal_focus` if present.
 ### Linux servo-real software GL
 - Drop Servo feature `no-wgl` on Linux so mozangle 0.5.5 does not fail with "Do not know how to build EGL support for a non-Windows platform."
 - Hardware ANGLE remains **Windows-only**. Linux servo-real is **software-GL present** (surfman/Mesa, llvmpipe verified), not ANGLE hardware.

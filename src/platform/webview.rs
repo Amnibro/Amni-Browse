@@ -152,7 +152,7 @@ impl Browser {
     }
 }
 #[cfg(feature = "webview")]
-const FOCUS_URL_BAR_JS: &str = r#"(function(){try{var h=document.getElementById('__atb_host');var r=h&&h.shadowRoot;var u=r&&r.getElementById('_au');if(!u)return;u.focus();if(u.select)u.select();}catch(_){}})();"#;
+const FOCUS_URL_BAR_JS: &str = r#"(function(){try{if(typeof window.__amni_steal_focus==='function')window.__amni_steal_focus();}catch(_){}})();"#;
 #[cfg(feature = "webview")]
 fn is_accel_l(key_event: &tao::event::KeyEvent, modifiers: ModifiersState) -> bool {
     let accel = modifiers.control_key() || modifiers.super_key();
@@ -165,23 +165,35 @@ try { if (window.self !== window.top) return; } catch(_) { return; }
 if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
 if ((location.hostname || '').indexOf('amnibrowse.') === 0) return;
 function ipc(o){ try { window.ipc && window.ipc.postMessage(JSON.stringify(o)); } catch(_) {} }
-function focusAu(){
+function stealOmnibox(){
     try {
         const host = document.getElementById('__atb_host');
         const root = host && host.shadowRoot;
         const u = root && root.getElementById('_au');
-        if (!u) return false;
+        if (!host || !u) return false;
+        // popover only at steal time — never at toolbar create (that hid chrome)
+        if (typeof host.showPopover === 'function') {
+            try { host.popover = 'manual'; host.showPopover(); } catch(_) {}
+        }
         u.focus();
         if (u.select) u.select();
         return true;
     } catch(_) { return false; }
 }
+window.__amni_steal_focus = stealOmnibox;
 if (!window.__amni_l_bound) {
     window.__amni_l_bound = 1;
     window.addEventListener('keydown', function(e){
         if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'l' || e.key === 'L')) {
-            if (focusAu()) { e.preventDefault(); e.stopPropagation(); }
+            if (stealOmnibox()) { e.preventDefault(); e.stopPropagation(); }
         }
+    }, true);
+    window.addEventListener('pointerdown', function(e){
+        if (e.clientY >= 48) return;
+        const host = document.getElementById('__atb_host');
+        if (!host || e.target === host || host.contains(e.target)) return;
+        e.preventDefault();
+        stealOmnibox();
     }, true);
 }
 function wireHandlers(host){
