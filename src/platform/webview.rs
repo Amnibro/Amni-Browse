@@ -104,21 +104,11 @@ impl Browser {
         let (webview, omnibox) = {
             let vbox = window.default_vbox().expect("gtk vbox");
             let gtk_win = window.gtk_window();
-            // Overlay fills the vbox. build_gtk FIRST so WebKit is the main
-            // child (paint). add_overlay / show_all only after it exists —
-            // showing the bar first covered WebKit (blank white content).
-            let overlay = gtk::Overlay::new();
-            overlay.set_hexpand(true);
-            overlay.set_vexpand(true);
-            vbox.pack_start(&overlay, true, true, 0);
-            let webview = builder.build_gtk(&overlay).expect("webview");
-            let (bar, omnibox) = make_native_omnibox(gtk_win, Rc::clone(&acts), proxy.clone());
-            bar.set_vexpand(false);
-            bar.set_valign(gtk::Align::Start);
-            bar.set_halign(gtk::Align::Fill);
-            bar.set_size_request(-1, 44);
-            overlay.add_overlay(&bar);
-            overlay.show_all();
+            // Sibling bar at vbox[0], then build_gtk(vbox). Same layout as the
+            // last-good native binary that paints. Do not use gtk::Overlay —
+            // that blanked WebKit content.
+            let omnibox = install_native_omnibox(vbox, gtk_win, Rc::clone(&acts), proxy.clone());
+            let webview = builder.build_gtk(vbox).expect("webview");
             (webview, omnibox)
         };
         #[cfg(not(target_os = "linux"))]
@@ -222,19 +212,19 @@ fn omnibox_focus_replace(entry: &gtk::Entry) {
     glib::idle_add_local_once(move || { e.select_region(0, -1); });
 }
 #[cfg(all(feature = "webview", target_os = "linux"))]
-fn make_native_omnibox(
+fn install_native_omnibox(
+    vbox: &gtk::Box,
     gtk_win: &gtk::ApplicationWindow,
     acts: Rc<RefCell<Vec<Act>>>,
     proxy: tao::event_loop::EventLoopProxy<()>,
-) -> (gtk::Box, gtk::Entry) {
+) -> gtk::Entry {
     let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     bar.set_widget_name("amni-omni");
+    bar.set_size_request(-1, 40);
     bar.set_margin_start(6);
     bar.set_margin_end(6);
-    let css = gtk::CssProvider::new();
-    if css.load_from_data(b"#amni-omni { background-color: #12122a; }").is_ok() {
-        bar.style_context().add_provider(&css, gtk::STYLE_PROVIDER_PRIORITY_APPLICATION);
-    }
+    bar.set_margin_top(4);
+    bar.set_margin_bottom(4);
     let mk_btn = |label: &str, tip: &str| {
         let b = gtk::Button::with_label(label);
         b.set_tooltip_text(Some(tip));
@@ -250,6 +240,9 @@ fn make_native_omnibox(
     bar.pack_start(&fwd, false, false, 0);
     bar.pack_start(&reload, false, false, 0);
     bar.pack_start(&entry, true, true, 0);
+    vbox.pack_start(&bar, false, false, 0);
+    vbox.reorder_child(&bar, 0);
+    bar.show_all();
     let bind_js = |btn: &gtk::Button, js: &str| {
         let acts = Rc::clone(&acts);
         let proxy = proxy.clone();
@@ -289,8 +282,8 @@ fn make_native_omnibox(
             glib::Propagation::Proceed
         }
     });
-    info!("Linux native GTK omnibox overlay valign-start (outside WebKit)");
-    (bar, entry)
+    info!("Linux native GTK omnibox packed at vbox index 0 (outside WebKit)");
+    entry
 }
 #[cfg(feature = "webview")]
 fn chrome_init_js() -> String {
@@ -302,18 +295,6 @@ fn chrome_init_js() -> String {
 try { if (window.self !== window.top) return; } catch(_) { return; }
 if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
 if ((location.hostname || '').indexOf('amnibrowse.') === 0) return;
-function injectNativePush(){
-    try {
-        const d = document;
-        if (!d.documentElement) return false;
-        if (d.getElementById('__amni_push_style')) return true;
-        const s = d.createElement('style');
-        s.id = '__amni_push_style';
-        s.textContent = 'html{margin-top:48px!important}';
-        (d.head || d.documentElement).appendChild(s);
-        return true;
-    } catch(_) { return false; }
-}
 function bindOmniboxHotkey(){
     if (window.__amni_native_omnibox) return;
     if (window.__amni_l_bound) return;
@@ -331,17 +312,7 @@ function bindOmniboxHotkey(){
         if (typeof stealOmnibox === 'function') stealOmnibox();
     }, true);
 }
-if (window.__amni_native_omnibox) {
-    function startNativePush(){
-        if (!injectNativePush()) {
-            let tries = 0;
-            const tid = setInterval(function(){ tries++; if (injectNativePush() || tries > 80) clearInterval(tid); }, 50);
-        }
-    }
-    startNativePush();
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startNativePush, { once:true });
-    return;
-}
+if (window.__amni_native_omnibox) return;
 function ipc(o){ try { window.ipc && window.ipc.postMessage(JSON.stringify(o)); } catch(_) {} }
 function stealOmnibox(){
     try {
@@ -469,13 +440,16 @@ mod tests {
         assert!(u.contains("hello"), "{u}");
     }
     #[test]
-    fn chrome_js_native_pushes_content_skips_page_steal_and_wheel() {
+    fn chrome_js_native_skips_page_steal_and_has_no_native_margin() {
         let js = chrome_init_js();
-        assert!(!js.contains("__amni_last_wheel"), "wheel click-suppress eats real clicks after scroll");
-        assert!(js.contains("html{margin-top:48px!important}"), "overlay bar must not cover page content");
-        assert!(js.contains("function bindOmniboxHotkey"), "page steal must be a named skip point");
+        assert!(!js.contains("__amni_last_wheel"));
+        assert!(!js.contains("injectNativePush"), "no html margin-top for native sibling bar");
+        assert!(js.contains("function bindOmniboxHotkey"));
         let bind = js.find("function bindOmniboxHotkey").expect("bindOmniboxHotkey");
         assert!(js[bind..].contains("if (window.__amni_native_omnibox) return"),
             "B2 steal is native GTK, not the old 48px page steal");
+        let native_ret = js.find("if (window.__amni_native_omnibox) return;").expect("native return");
+        let toolbar = js.find("function ensureToolbar").expect("toolbar");
+        assert!(native_ret < toolbar, "native must return before JS toolbar / margin-top");
     }
 }
