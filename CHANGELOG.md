@@ -1,3 +1,22 @@
+## v0.12.5-android.0 daily driver APK — 2026-08-20
+- Kotlin app in `android/` (WebView + Amni chrome, Room bookmarks/history, http/https default-browser intents).
+- Windows `scripts/export-chrome-amni.ps1` → `amni-chrome-import.json` from Chrome Default (no passwords).
+- Autofill uses the system Google Password Manager. Servo on Android is later.
+## v0.12.5 chrome not upside-down — 2026-08-16
+- Toolbar was painting at the bottom of the window; clicks were aimed at the top. Same bug made on-page video (amni-scient.com/braid) look dead (00:00 / missed play).
+- Chrome HTML is flex-end (WR Y-flip → visual top). Content blit starts at y=chrome_px.
+## v0.12.4 session restore — 2026-08-16
+- Tabs and window size persist across launches. Crash lock recovers the last dirty session.
+- Duplicate tab (Ctrl+Shift+K). Settings toggle for restore. window.open DRM stays in-tab.
+- Tab engine follows the URL: CLI/session navigate off Netflix no longer keeps Media on `amnibrowse://settings`. `route()` wins over stale `TabEngine`.
+## chrome strip at window-top (not floor) - 2026-08-16
+- Chrome webview was resized to 84px on a full-window GL context; ANGLE presented that sliver at the bottom (tabs on the floor). Chrome now resizes to the full window; content blit is GL (0,0,w,h-chrome). toolbar.html body is transparent again so the blit shows through.
+## v0.12.3 in-tab DRM (no extra window) - 2026-08-16
+- Netflix/etc. open in the same Amni window under the Servo chrome, as a normal tab. Child WebView2 fills the content band only.
+## v0.12.2 Servo-primary media + in-engine PDF - 2026-08-16
+- WebView hatch is DRM/CDM only. YouTube and other MSE hosts stay on Servo.
+- Amni extracts YouTube progressive (muxed) streams and plays them in a Servo `<video>` page.
+- PDF opens in-tab via pdf.js on fetched bytes; system viewer is fallback.
 ## v0.12.1 click-install + updates + BYO vault - 2026-08-12
 - One-click Windows install from site feed then GitHub Latest (`scripts/install.ps1`, `AmniBrowse-Setup.cmd`) into `%LOCALAPPDATA%\AmniBrowse`.
 - Auto-update check (site JSON → GitHub) in Settings + toolbar badge; Install replaces the installed copy and relaunches.

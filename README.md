@@ -1,6 +1,6 @@
 ****HEAVILY WORK IN PROGRESS****
 
-# Amni Browse v0.12.1
+# Amni Browse v0.12.5
 
 **A privacy-first web browser built from the ground up in Rust — no Amni product telemetry.**
 **Functional browsing: real URLs, injected chrome toolbar, navigation-level URL cleaning. DRM/media uses a separate system-WebView window with its own bar.**
@@ -52,6 +52,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\install.ps1
 That pulls the latest zip from **https://amni-scient.com/browse/latest.json** (falls back to GitHub `Amnibro/Amni-Browse` releases), installs to `%LOCALAPPDATA%\AmniBrowse`, adds Start Menu + Desktop shortcuts, and registers as a browser. Uninstall: `scripts\uninstall.ps1`.
 
 Host `docs/latest.json` on the site whenever you ship a GitHub release so the feed and the zip stay in sync. In-app: Settings → Updates (or the ↑ chip) checks the same feeds and can apply over an installed copy.
+
+### Android (v0 WebView daily driver)
+
+Sideload APK from `android/` (package `com.amniscient.browse`). Chrome on the phone stays Google’s; this app owns the toolbar. Passwords stay in **Google Password Manager** via Android Autofill. Servo is not on this APK.
+
+On the PC:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\export-chrome-amni.ps1
+```
+
+That writes `%USERPROFILE%\Documents\amni-chrome-import.json` (bookmarks + history only). Copy it to the phone, open AmniBrowse → Import Chrome (PC file). Set as default from the in-app button.
+
+Build:
+
+```bat
+cd android
+set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+gradlew.bat assembleDebug
+```
+
+APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Password managers
 

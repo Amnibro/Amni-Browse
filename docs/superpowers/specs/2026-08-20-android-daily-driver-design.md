@@ -1,7 +1,7 @@
 # AmniBrowse Android v0 — daily driver (WebView)
 
 Date: 2026-08-20  
-Status: draft for Anthony review  
+Status: implemented v0 (2026-08-20) — session persist, import merge, Autofill, WebView-missing + retry; Servo still later  
 Desktop: Amni-Browse 0.12.x (Rust, Servo + media WebView) stays as-is. Servo on Android is out of this spec.
 
 ## Goal

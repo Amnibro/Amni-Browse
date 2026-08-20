@@ -1,3 +1,27 @@
+## 2026-08-20 Android v0 WebView daily driver
+- New tree `android/`: `BrowseActivity` chrome over System WebView, Room, import JSON, Autofill.
+- Export: `scripts/export_chrome_amni.py` / `export-chrome-amni.ps1` from Chrome `User Data\Default`.
+- Spec: `docs/superpowers/specs/2026-08-20-android-daily-driver-design.md`.
+- Out of v0: Servo, vault copy, cookie steal, Play.
+## 2026-08-16 v0.12.5 chrome Y-flip + cursor/media hit
+- Screenshot: chrome strip on the window *bottom*, hits still on the *top* → huge cursor offset; video clicks never landed.
+- Cause: Webrender flips the full-window chrome webview (HTML top → visual bottom) while winit Y and content blit used top-left. v0.11.13 blit at GL (0,0) parked page content on the top band.
+- Fix: `#shell` sits at HTML flex-end so the flip puts chrome at visual top; suggest/panel `bottom:84px`; content blit `target_rect.y = chrome_px`. Hits (y < chrome_px) now match pixels. Media pane already used that band.
+## 2026-08-16 v0.12.4 session restore + duplicate tab
+- Servo path writes `session.json` on navigate/tab change and a clean file on close. Next launch restores every tab (Servo + in-tab DRM) and window size.
+- `Tab::navigate` / back / forward / new set `engine` from `is_drm_required`. `servo_real` initial tabs use `media_engine::route(url)` only.
+- Settings → Privacy: restore-on-start toggle; crash lock note if last run died dirty.
+- Ctrl+Shift+K duplicates the current tab. `window.open` to a DRM URL stays in-tab.
+- Tutorial no longer claims YouTube is a second window. win_close `__exit__` no longer relaunches.
+## 2026-08-16 v0.12.3 DRM is an in-tab pane, not a second window
+- `spawn_media_pane` is `WebViewBuilder::build_as_child` on the main winit window, bounds = below chrome (`content_bounds`).
+- Media lives on the same tab index as Servo content. Switch/close/reload stay in one window. Extra "Amni Media" chrome bar is gone.
+- WebView still CDM-only; it just looks like a normal tab.
+## 2026-08-16 v0.12.2 Servo-primary: own player + PDF, WebView DRM-only
+- `media_engine::route` is DRM-only. YouTube/Twitch/Vimeo stay on Servo. No Chromium hatch for MSE hosts.
+- In-tree YouTube progressive extract (`engine/stream_extract.rs`, ANDROID Innertube) → Servo `<video>` player page when a muxed format exists.
+- PDF: fetch bytes + pdf.js canvas viewer; system open is fallback only.
+- Law: ship Amni code where Servo lacks; WebView only for Widevine/FairPlay CDM.
 ## 2026-08-12 v0.12.1 click-install + auto-update + BYO password manager
 - Install: `scripts/AmniBrowse-Setup.cmd` / `scripts/install.ps1` downloads latest zip from `https://amni-scient.com/browse/latest.json` then GitHub `Amnibro/Amni-Browse` releases, extracts to `%LOCALAPPDATA%\AmniBrowse`, Start Menu + Desktop shortcuts, registers HTTP/HTTPS, launches. Host `docs/latest.json` on the site. NSIS stub `scripts/amni-browse.nsi`. Uninstall: `scripts/uninstall.ps1`.
 - In-app updater (`src/net/updater.rs`): startup check (if `check_updates`), Settings Check/Install, chrome ↑ badge. Applies zip over install dir via `apply-update.cmd` then exits.
