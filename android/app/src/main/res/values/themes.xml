@@ -1,10 +1,113 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.AmniBrowse" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:statusBarColor">@color/bg_primary</item>
-        <item name="android:navigationBarColor">@color/bg_primary</item>
-        <item name="android:windowBackground">@color/bg_primary</item>
-        <item name="android:textColor">@color/text_primary</item>
-        <item name="colorAccent">@color/accent</item>
+    <style name="Theme.AmniBrowse.Base" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:textColor">?attr/amniTextPrimary</item>
+        <item name="android:colorBackground">?attr/amniBgPrimary</item>
+        <item name="colorAccent">?attr/amniAccent</item>
+        <item name="android:statusBarColor">?attr/amniBgPrimary</item>
+        <item name="android:navigationBarColor">?attr/amniBgPrimary</item>
+        <item name="android:windowBackground">?attr/amniBgPrimary</item>
+    </style>
+
+    <style name="Theme.AmniBrowse" parent="Theme.AmniBrowse.Base">
+        <item name="amniBgPrimary">@color/bg_primary</item>
+        <item name="amniBgSecondary">@color/bg_secondary</item>
+        <item name="amniBgTertiary">@color/bg_tertiary</item>
+        <item name="amniBgHover">@color/bg_hover</item>
+        <item name="amniBorder">@color/border</item>
+        <item name="amniTextPrimary">@color/text_primary</item>
+        <item name="amniTextSecondary">@color/text_secondary</item>
+        <item name="amniAccent">@color/accent</item>
+        <item name="amniAccentHover">@color/accent_hover</item>
+        <item name="amniDanger">@color/danger</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Emerald" parent="Theme.AmniBrowse.Base">
+        <item name="amniBgPrimary">@color/browse_bg_primary</item>
+        <item name="amniBgSecondary">@color/browse_bg_secondary</item>
+        <item name="amniBgTertiary">@color/browse_bg_tertiary</item>
+        <item name="amniBgHover">@color/browse_bg_hover</item>
+        <item name="amniBorder">@color/browse_border</item>
+        <item name="amniTextPrimary">@color/text_primary</item>
+        <item name="amniTextSecondary">@color/text_secondary</item>
+        <item name="amniAccent">@color/browse_accent</item>
+        <item name="amniAccentHover">@color/browse_accent_hover</item>
+        <item name="amniDanger">@color/danger</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Haven" parent="Theme.AmniBrowse.Base">
+        <item name="amniBgPrimary">@color/haven_bg_primary</item>
+        <item name="amniBgSecondary">@color/haven_bg_secondary</item>
+        <item name="amniBgTertiary">@color/haven_bg_tertiary</item>
+        <item name="amniBgHover">@color/haven_bg_hover</item>
+        <item name="amniBorder">@color/haven_border</item>
+        <item name="amniTextPrimary">@color/haven_text_primary</item>
+        <item name="amniTextSecondary">@color/haven_text_secondary</item>
+        <item name="amniAccent">@color/haven_accent</item>
+        <item name="amniAccentHover">@color/haven_accent_hover</item>
+        <item name="amniDanger">@color/danger</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Learn" parent="Theme.AmniBrowse.Base">
+        <item name="amniBgPrimary">@color/learn_bg_primary</item>
+        <item name="amniBgSecondary">@color/learn_bg_secondary</item>
+        <item name="amniBgTertiary">@color/learn_bg_tertiary</item>
+        <item name="amniBgHover">@color/learn_bg_hover</item>
+        <item name="amniBorder">@color/learn_border</item>
+        <item name="amniTextPrimary">@color/learn_text_primary</item>
+        <item name="amniTextSecondary">@color/learn_text_secondary</item>
+        <item name="amniAccent">@color/product_learn_accent</item>
+        <item name="amniAccentHover">@color/product_learn_accent_hover</item>
+        <item name="amniDanger">@color/danger</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Amni" parent="Theme.AmniBrowse">
+        <item name="amniAccent">@color/amni_neon</item>
+        <item name="amniAccentHover">@color/amni_neon_hover</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Crypt" parent="Theme.AmniBrowse">
+        <item name="amniAccent">@color/crypt_accent</item>
+        <item name="amniAccentHover">@color/crypt_accent_hover</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Ai" parent="Theme.AmniBrowse">
+        <item name="amniAccent">@color/ai_accent</item>
+        <item name="amniAccentHover">@color/ai_accent_hover</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Core" parent="Theme.AmniBrowse">
+        <item name="amniAccent">@color/core_accent</item>
+        <item name="amniAccentHover">@color/core_accent_hover</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Explore" parent="Theme.AmniBrowse">
+        <item name="amniAccent">@color/explore_accent</item>
+        <item name="amniAccentHover">@color/explore_accent_hover</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Calc" parent="Theme.AmniBrowse">
+        <item name="amniAccent">@color/calc_accent</item>
+        <item name="amniAccentHover">@color/calc_accent_hover</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Braid" parent="Theme.AmniBrowse">
+        <item name="amniAccent">@color/braid_accent</item>
+        <item name="amniAccentHover">@color/braid_accent_hover</item>
+    </style>
+
+    <style name="Theme.AmniBrowse.Light" parent="Theme.AmniBrowse.Base">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="amniBgPrimary">@color/light_bg_primary</item>
+        <item name="amniBgSecondary">@color/light_bg_secondary</item>
+        <item name="amniBgTertiary">@color/light_bg_tertiary</item>
+        <item name="amniBgHover">@color/light_bg_hover</item>
+        <item name="amniBorder">@color/light_border</item>
+        <item name="amniTextPrimary">@color/light_text_primary</item>
+        <item name="amniTextSecondary">@color/light_text_secondary</item>
+        <item name="amniAccent">@color/light_accent</item>
+        <item name="amniAccentHover">@color/light_accent_hover</item>
+        <item name="amniDanger">@color/light_danger</item>
     </style>
 </resources>

@@ -45,6 +45,8 @@ pub struct BrowserConfig {
     pub check_updates: bool,
     #[serde(default)]
     pub update_feed: Option<String>,
+    #[serde(default)]
+    pub seen_onboarding: bool,
 }
 fn default_true() -> bool { true }
 fn default_pm() -> String { "amni".into() }
@@ -79,6 +81,7 @@ impl Default for BrowserConfig {
             autofill_on_load: true,
             check_updates: true,
             update_feed: None,
+            seen_onboarding: false,
         }
     }
 }

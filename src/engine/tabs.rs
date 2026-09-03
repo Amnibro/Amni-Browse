@@ -66,8 +66,11 @@ impl Tab {
             panel_group: None,
             is_private: false,
             zoom_level: 1.0,
-            engine: TabEngine::Servo,
+            engine: Self::engine_for_url(url),
         }
+    }
+    pub fn engine_for_url(url: &str) -> TabEngine {
+        match crate::engine::drm_fallback::is_drm_required(url) { true => TabEngine::Media, false => TabEngine::Servo }
     }
     pub fn new_private(url: &str) -> Self {
         let mut tab = Self::new(url);
@@ -97,6 +100,7 @@ impl Tab {
         self.history_index = (self.history.len() - 1) as i32;
         self.url = url.to_string();
         self.title = Self::title_from_url(url);
+        self.engine = Self::engine_for_url(url);
         self.is_loading = true;
     }
 
@@ -113,6 +117,7 @@ impl Tab {
             self.history_index -= 1;
             self.url = self.history[self.history_index as usize].clone();
             self.title = Self::title_from_url(&self.url);
+            self.engine = Self::engine_for_url(&self.url);
             Some(&self.url)
         } else {
             None
@@ -123,6 +128,7 @@ impl Tab {
             self.history_index += 1;
             self.url = self.history[self.history_index as usize].clone();
             self.title = Self::title_from_url(&self.url);
+            self.engine = Self::engine_for_url(&self.url);
             Some(&self.url)
         } else {
             None
@@ -257,5 +263,14 @@ mod tests {
         m.switch_tab(&a);
         assert!(m.close_tab(&a));
         assert_eq!(m.active_tab().map(|t| t.id.as_str()), Some(b.as_str()));
+    }
+    #[test]
+    fn navigate_clears_stale_media_engine() {
+        let mut t = Tab::new("https://www.netflix.com/");
+        assert_eq!(t.engine, TabEngine::Media);
+        t.navigate("amnibrowse://settings");
+        assert_eq!(t.engine, TabEngine::Servo);
+        t.navigate("https://www.netflix.com/browse");
+        assert_eq!(t.engine, TabEngine::Media);
     }
 }

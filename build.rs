@@ -65,10 +65,8 @@ fn copy_angle_dlls() {
         let dll_dir = entry.path().join("out");
         for n in &names {
             let src = dll_dir.join(n);
-            if src.exists() {
-                let dst = profile_dir.join(n);
-                if fs::copy(&src, &dst).is_ok() { println!("cargo:warning=copied {} -> {}", n, dst.display()); }
-            }
+            let dst = profile_dir.join(n);
+            if src.exists() && fs::copy(&src, &dst).is_ok() { println!("cargo:warning=copied {} -> {}", n, dst.display()); }
         }
     }
 }

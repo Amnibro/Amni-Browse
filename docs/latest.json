@@ -1,5 +1,5 @@
 {
-  "version": "0.12.1",
-  "url": "https://github.com/Amnibro/Amni-Browse/releases/download/v0.12.1/amni-browse-v0.12.1-win64.zip",
-  "notes": "Click-to-install + auto-update from site/GitHub. Bring-your-own password manager (Amni vault, Bitwarden, 1Password, KeePassXC) with Chrome-style autofill."
+  "version": "0.12.7",
+  "url": "https://github.com/Amnibro/Amni-Browse/releases/download/v0.12.7/amni-browse-v0.12.7-win64.zip",
+  "notes": "SVG icon repair, Servo viewBox fix (c91fc17), dark prefers-color-scheme. Cloudflare Turnstile still unsupported."
 }

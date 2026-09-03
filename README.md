@@ -1,28 +1,35 @@
 ****HEAVILY WORK IN PROGRESS****
 
-# Amni Browse v0.12.5
+# Amni Browse
 
 **A privacy-first web browser built from the ground up in Rust — no Amni product telemetry.**
-**Functional browsing: real URLs, injected chrome toolbar, navigation-level URL cleaning. DRM/media uses a separate system-WebView window with its own bar.**
+**Desktop (Windows) runs the Chromium engine through WebView2 under the Amni chrome (own window frame, tab groups, pinned tabs, request-level shield, private tabs); the Servo lane is parked behind the `servo-real` feature with its patched engine under `vendor/`. Android uses its own native System WebView architecture.**
+
+Current version metadata is platform-specific: desktop Rust crate `0.13.0`;
+native Android `versionCode 5`, `versionName 0.16.4-android.0`.
 
 ![Rust](https://img.shields.io/badge/Built%20with-Rust-orange)
 ![License](https://img.shields.io/badge/License-CC%20BY--NC%204.0-C89B4E)
 ![Privacy](https://img.shields.io/badge/Telemetry-ZERO-green)
-![Backends](https://img.shields.io/badge/Backends-WebView%20%7C%20Servo-purple)
+![Backends](https://img.shields.io/badge/Engine-Chromium%20(WebView2)-purple)
 ![Source](https://img.shields.io/badge/Source-Available-lightgrey)
 
 ---
 
 ## 🔒 Privacy by Default
 
-Amni Browse is designed with a single principle: **your browsing is yours.** Truthful scope for the default **WebView** backend:
+Amni Browse is designed with a single principle: **your browsing is yours.**
+The exact enforcement boundary depends on the desktop Servo path versus a
+System WebView path:
 
 - ✅ **No Amni product telemetry** — we do not phone home analytics
 - ✅ **Navigation URL cleaning** — ad/tracker query junk stripped on navigate (UTM, fbclid, gclid, …)
 - ✅ **DuckDuckGo** as default search engine
 - ✅ **Local-only Amni profile** — bookmarks, settings, vault ciphertext stay on your machine
 - ✅ **Private browsing tabs** — no history recorded for private tabs
-- ⚠️ **Cookies** — system WebView (WebView2 / WKWebView / WebKitGTK) policy, **not** an Amni-forced third-party cookie block on the default backend
+- ⚠️ **Cookies** — System WebView paths follow the platform cookie engine plus
+  Amni's available per-site controls; they are not equivalent to full
+  resource-level isolation in Servo
 - ⚠️ **DNS-over-HTTPS** — resolver exists for the custom pipeline; system WebView DNS is OS-controlled
 - ⚠️ **Full resource ad blocking** — shield/rules are strongest on the custom/Servo path; WebView relies on URL clean + site CSP
 
@@ -32,7 +39,7 @@ Amni Browse is designed with a single principle: **your browsing is yours.** Tru
 
 - [Rust](https://rustup.rs/) (stable, 1.70+)
 
-**WebView backend (default):**
+**Optional desktop WebView build:**
 - Windows: WebView2 Runtime (pre-installed on Windows 10/11)
 - Linux: `libwebkit2gtk-4.1-dev` and `libgtk-3-dev`
 - macOS: No extra deps (uses WKWebView)
@@ -53,9 +60,18 @@ That pulls the latest zip from **https://amni-scient.com/browse/latest.json** (f
 
 Host `docs/latest.json` on the site whenever you ship a GitHub release so the feed and the zip stay in sync. In-app: Settings → Updates (or the ↑ chip) checks the same feeds and can apply over an installed copy.
 
-### Android (v0 WebView daily driver)
+### Android (`0.16.4-android.0`, versionCode 5)
 
-Sideload APK from `android/` (package `com.amniscient.browse`). Chrome on the phone stays Google’s; this app owns the toolbar. Passwords stay in **Google Password Manager** via Android Autofill. Servo is not on this APK.
+The Android product is a native Kotlin/AppCompat browser shell around Android
+System WebView (package `com.amniscient.browse`), not the desktop Servo binary
+and not a Capacitor wrapper. New tabs are private and omitted from restored
+sessions; use **New open tab** for a persistent tab. Room stores local browser
+metadata, Android Autofill integrates with the device password manager, and the
+native chrome provides tabs, bookmarks/folders, history, import, downloads,
+search suggestions, per-site JavaScript/cookie controls, file handling,
+fullscreen, picture-in-picture, printing, and theme/accessibility sizing.
+Servo is not packaged in the APK. Beta feed:
+`https://amni-scient.com/browse/android-latest.json`.
 
 On the PC:
 
@@ -65,15 +81,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\export-chrome-amni.p
 
 That writes `%USERPROFILE%\Documents\amni-chrome-import.json` (bookmarks + history only). Copy it to the phone, open AmniBrowse → Import Chrome (PC file). Set as default from the in-app button.
 
-Build:
+Build (needs Android Studio JBR 17+):
 
 ```bat
 cd android
 set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
-gradlew.bat assembleDebug
+gradlew.bat assembleRelease --no-daemon
 ```
 
-APK: `android/app/build/outputs/apk/debug/app-debug.apk`.
+APK: `android/app/build/outputs/apk/release/app-release.apk`. Signing uses gitignored `android/keystore.properties` + `android/amni-browse-release.jks`.
 
 ### Password managers
 
@@ -100,52 +116,35 @@ powershell scripts/create_shortcut.ps1
 cargo build --release
 ```
 
-## Architecture (v0.11.13 — WebView chrome + Servo hybrid)
+## Current architecture
 
-```
-src/
-├── main.rs           Entry point (feature-gated backend selection)
-├── app.rs            Shared BrowserState + IPC command handler
-├── ui/               [UI Pillar]
-│   ├── chrome.rs     Native egui browser chrome [servo-engine]
-│   ├── webview.rs    HTML/CSS/JS SPA chrome [webview]
-│   ├── theme.rs      5 built-in + custom themes
-│   └── reader.rs     Reader mode
-├── net/              [Communication Pillar]
-│   ├── ipc.rs        IPC protocol (70+ message types)
-│   └── dns.rs        DNS-over-HTTPS resolver
-├── storage/          [Storage Pillar]
-│   ├── config.rs     Settings, paths, defaults
-│   ├── bookmarks.rs  Local bookmark storage
-│   ├── history.rs    Browsing history with search
-│   ├── session.rs    Session save/restore, crash recovery
-│   ├── downloads.rs  Async file downloads
-│   └── profiles.rs   Multi-profile support
-├── crypto/           [Encryption Pillar]
-│   ├── vault.rs      AES-256-GCM vault (PBKDF2-HMAC-SHA256)
-│   └── autofill.rs   Encrypted payment cards + addresses
-├── media/            [Media Pillar — v0.5+]
-├── platform/         [OS/Platform Pillar]
-│   ├── webview.rs    tao+wry WebView launcher [webview]
-│   └── servo.rs      winit+wgpu+egui compositor [servo-engine]
-└── engine/           [Engine Pillar]
-    ├── tabs.rs       Tab lifecycle, split view, zoom
-    ├── adblocker.rs  Ad/tracker blocking
-    ├── extensions.rs Extension system
-    ├── permissions.rs Per-site permissions
-    ├── devtools.rs   Developer console + network
-    └── app_launcher.rs Amni Apps registry + process spawner
-```
+### Android
 
-### Backends
+- A standalone Gradle/Kotlin application under `android/`; version metadata is
+  `versionCode 5` / `versionName 0.16.4-android.0`.
+- `BrowseActivity` owns native AppCompat chrome and switches between normal and
+  private Android WebView instances. It applies tracker stripping, per-site
+  JavaScript/cookie policy, downloads, file selection, fullscreen/PiP, print,
+  import, and session rules.
+- Room (`Db.kt`) stores browser metadata. `SessionStore`/`SessionCodec` exclude
+  private tabs from restoration. Android Autofill remains the password-manager
+  boundary; no desktop vault or browser-profile data is packaged.
+- The APK contains no Servo engine and shares no desktop runtime state.
 
-| Backend | Feature Flag | Rendering | Dependencies |
-|---------|-------------|-----------|-------------|
-| **Servo-real** (default / shipping) | `servo-real` | Real Servo engine (libservo) | servo, winit, surfman |
-| **WebView** (stub) | `webview` | System WebView (Chromium/WebKit) | tao, wry |
-| **Servo-egui** (legacy) | `servo-engine` | Custom wgpu + egui | winit, wgpu, egui, egui-wgpu |
+### Desktop
 
-The Servo-egui backend provides fully native browser chrome via egui/wgpu, independent of any system WebView. This is the foundation for the planned **AmniShunt** rendering engine (v0.5+).
+- Rust `main.rs` selects a feature-gated backend and `app.rs` owns shared
+  browser state/IPC.
+- `servo-real` is the default shipping desktop feature: libservo renders normal
+  content, while native winit/wgpu hosting and an HTML chrome overlay provide
+  the window and controls.
+- DRM/CDM-only routes use a wry System WebView child pane attached to the active
+  tab. It is not a separate product window.
+- `webview` remains a lightweight System WebView build, and `servo-engine`
+  remains the legacy custom egui/wgpu path.
+- Shared Rust modules cover tabs, navigation policy, blocking, downloads,
+  profiles, settings, permissions, extensions, local storage, and the encrypted
+  vault.
 
 ## ⌨️ Keyboard Shortcuts
 
@@ -263,18 +262,13 @@ Files stored:
 - **egui-wgpu 0.29** — egui GPU renderer
 - **pollster** — Blocking async executor
 
-## Roadmap
+## Version tracks
 
-| Version | Focus | Key Features |
-|---------|-------|-------------|
-| v0.5.0 (current) | Navigation | Functional browsing, toolbar injection, ad blocking, IPC round-trip |
-| v0.6 | AmniShunt | Custom HTML tokenizer, DOM tree, septidecimal IR, sandbox |
-| v0.7 | Styling | CSS cascade + specificity, block/flex layout |
-| v0.8 | Compositing | GPU paint pipeline, layer compositing, scrolling |
-| v0.9 | Scripting | JavaScript engine integration |
-| v1.0 | Independence | Full standalone browser, no legacy dependencies |
-
-See [AMNISHUNT_DESIGN.md](AMNISHUNT_DESIGN.md) for the v0.5+ technical architecture.
+- Desktop source/crate: `0.12.5`, Servo-primary hybrid.
+- Android app: `0.16.4-android.0`, `versionCode 5`, native System WebView.
+- Future experimental engine work is documented separately in
+  [AMNISHUNT_DESIGN.md](AMNISHUNT_DESIGN.md); it is not the current Android
+  architecture.
 
 ## License
 

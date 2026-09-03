@@ -5,3 +5,27 @@ local.properties
 *.iml
 .idea/
 .cxx/
+keystore.properties
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+credentials*.json
+client_secret*.json
+service-account*.json
+google-services.json
+*.apk
+*.aab
+*.apks
+*.xapk
+*.log
+screenshots/
+captures/
+Screenshot_*.png
+screenshot-*.png
+
+# R8 output remains under ignored build directories. Archive each release
+# mapping.txt with its signed bundle in protected release storage.

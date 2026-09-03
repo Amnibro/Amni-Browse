@@ -23,8 +23,10 @@ fn main() {
     }
     #[cfg(feature = "servo-real")]
     { info!("  Backend: Real Servo (libservo)"); platform::servo_real::run(state); return; }
-    #[cfg(all(feature = "webview", not(feature = "servo-real")))]
-    { let _ = state; info!("  Backend: WebView (wry/tao)"); platform::webview::Browser::new().run(); }
+    #[cfg(all(feature = "webview", not(feature = "servo-real"), target_os = "windows"))]
+    { info!("  Backend: Chromium (WebView2 via wry/tao)"); platform::chromium::run(state); }
+    #[cfg(all(feature = "webview", not(feature = "servo-real"), not(target_os = "windows")))]
+    { let _ = state; info!("  Backend: WebView (wry/tao, WebKitGTK)"); platform::webview::Browser::new().run(); }
     #[cfg(all(feature = "servo-engine", not(feature = "webview"), not(feature = "servo-real")))]
     { info!("  Backend: Servo Engine (winit/wgpu/egui)"); platform::servo::run(state); }
 }

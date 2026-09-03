@@ -70,7 +70,7 @@ foreach($row in $pairs){
   if($row[1] -eq "(default)"){ Set-ItemProperty -Path $row[0] -Name "(default)" -Value $row[2] }
   else { New-ItemProperty -Path $row[0] -Name $row[1] -Value $row[2] -PropertyType String -Force|Out-Null }
 }
-Copy-Item (Join-Path $PSScriptRoot "uninstall.ps1") (Join-Path $dest "uninstall.ps1") -Force -ErrorAction SilentlyContinue
+if($PSScriptRoot){ $un=Join-Path $PSScriptRoot "uninstall.ps1"; if(Test-Path $un){ Copy-Item $un (Join-Path $dest "uninstall.ps1") -Force } }
 Write-Host "Installed. Launching..."
 Start-Process $launch
 Start-Process "ms-settings:defaultapps"

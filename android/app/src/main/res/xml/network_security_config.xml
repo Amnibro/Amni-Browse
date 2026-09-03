@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Browser: HTTP is a first-class scheme (LAN hosts, routers, Amni-Connect, grok-remote).
+     Blocking cleartext made every http:// URL die with net::ERR_CLEARTEXT_NOT_PERMITTED. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+</network-security-config>

@@ -6,4 +6,5 @@ pub mod theme;
 pub mod reader;
 pub mod emoji;
 pub mod tokens;
+pub mod internal_pages;
 pub mod developer;

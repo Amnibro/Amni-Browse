@@ -4,3 +4,4 @@ pub mod history;
 pub mod session;
 pub mod downloads;
 pub mod profiles;
+pub mod import_browsers;

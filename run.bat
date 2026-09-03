@@ -20,6 +20,12 @@ if exist "target\release\amni-browse.exe" (
 if "%NEED_BUILD%"=="0" (
     echo [Amni-Browse] Prebuilt exe is up to date - skipping rebuild ^(delete target\release\amni-browse.exe to force one^).
 ) else (
+    call "%~dp0scripts\vsenv.cmd"
+    if errorlevel 1 (
+        echo [Amni-Browse] Need the MSVC C++ toolchain before cargo can build mozangle.
+        pause
+        exit /b 1
+    )
     echo [Amni-Browse] Building full Servo engine ^(first build ~30 min, incremental after^)...
     cargo build --release --features servo-real
     if errorlevel 1 (

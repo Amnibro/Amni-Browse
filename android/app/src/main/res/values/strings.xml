@@ -1,4 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">AmniBrowse</string>
+    <string name="app_name">Amni Browse</string>
+    <string name="action_back">Back</string>
+    <string name="action_forward">Forward</string>
+    <string name="action_reload">Reload</string>
+    <string name="action_home">Home</string>
+    <string name="action_tabs">Tab switcher</string>
+    <string name="action_menu">More options</string>
+    <string name="omnibox_hint">Search or type URL</string>
+    <string name="page_failed">Page failed to load</string>
+    <string name="page_failed_for">Couldn’t load %1$s</string>
+    <string name="retry">Retry</string>
+    <string name="not_secure">Not secure</string>
+    <string name="insecure_page_description">Insecure HTTP page. Connection is not encrypted.</string>
+    <string name="omnibox_insecure_description">Address bar. Insecure HTTP page; connection is not encrypted.</string>
+    <string name="webview_missing">Android System WebView is missing or disabled</string>
+    <string name="open_webview_settings">Open WebView settings</string>
+    <string name="home_title">Amni Browse</string>
+    <string name="home_privacy">Tabs restore when you switch back. Use Menu → New private tab for no-save browsing.</string>
+    <string name="import_bookmarks">Import bookmarks</string>
+    <string name="make_default">Make default</string>
+    <string name="bookmarks_heading">BOOKMARKS</string>
+    <string name="bookmarks_empty">Nothing saved yet — bookmark pages from the menu, or pull them in from Chrome with Import.</string>
 </resources>

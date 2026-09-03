@@ -1,5 +1,6 @@
 @echo off
 cd /d "%~dp0"
+call "%~dp0scripts\vsenv.cmd" || exit /b 1
 set "GST_ROOT=C:\gstreamer\1.0\msvc_x86_64"
 if not exist "%GST_ROOT%\bin\gstreamer-1.0-0.dll" set "GST_ROOT=C:\Program Files\gstreamer\1.0\msvc_x86_64"
 set "GSTREAMER_1_0_ROOT_MSVC_X86_64=%GST_ROOT%\"

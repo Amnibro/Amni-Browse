@@ -1,10 +1,8 @@
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window, WindowId};
-use wry::WebView;
+use wry::dpi::{PhysicalPosition, PhysicalSize};
+use wry::raw_window_handle::HasWindowHandle;
+use wry::{Rect, WebView, WebViewBuilder};
 use crate::engine::drm_fallback::is_drm_required;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum EngineKind { Servo, Media }
@@ -21,112 +19,49 @@ pub fn is_embed_url(url: &str) -> bool {
     lower.contains("/embed/") || lower.contains("/embed?") || lower.contains("youtube.com/embed")
 }
 pub fn route(url: &str) -> EngineKind {
-    let lower = url.to_lowercase();
-    let mse = MSE_PATTERNS.iter().any(|p| lower.contains(p));
-    let drm = is_drm_required(url);
-    (mse || drm).then_some(EngineKind::Media).unwrap_or(EngineKind::Servo)
+    is_drm_required(url).then_some(EngineKind::Media).unwrap_or(EngineKind::Servo)
 }
 pub fn wants_media_window(url: &str) -> bool {
     route(url) == EngineKind::Media && !is_embed_url(url)
 }
 pub struct MediaWindow {
-    pub window: Window,
     pub webview: WebView,
     pub url: String,
-    pub close_req: Arc<AtomicBool>,
+}
+/// Kill HTML media / speech before tearing a pane or Servo tab down.
+/// Hide alone does not stop WebView2 or Servo audio — ghost tabs keep playing.
+/// Do NOT navigate to about:blank here: that allocates another document and leaks
+/// if Drop is deferred; silence + hide + Drop is the teardown.
+pub const SILENCE_JS: &str = "(function(){try{window.stop()}catch(e){}\
+try{document.querySelectorAll('video,audio').forEach(function(m){try{m.pause();m.removeAttribute('src');m.srcObject=null;m.load()}catch(e){}})}catch(e){}\
+try{if(window.speechSynthesis)speechSynthesis.cancel()}catch(e){}})()";
+pub fn trash_pane(pane: MediaWindow) {
+    let _ = pane.webview.evaluate_script(SILENCE_JS);
+    let _ = pane.webview.set_visible(false);
+    drop(pane);
+    info!("media_engine: trashed DRM pane");
+}
+pub fn content_bounds(win_w: u32, win_h: u32, chrome_px: u32) -> Rect {
+    let y = chrome_px.min(win_h.saturating_sub(1));
+    let h = win_h.saturating_sub(y).max(1);
+    Rect { position: PhysicalPosition::new(0i32, y as i32).into(), size: PhysicalSize::new(win_w.max(1), h).into() }
 }
 const MEDIA_UA: &str = concat!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 AmniBrowse/", env!("CARGO_PKG_VERSION"));
-fn media_chrome_js() -> String {
-    r#"(function(){
-try{if(window.self!==window.top)return;}catch(_){return;}
-function ipc(s){try{window.ipc&&window.ipc.postMessage(s);}catch(_){}}
-function ensure(){
-  try{
-    var d=document;
-    if(!d.documentElement)return false;
-    var host=d.getElementById('__amni_media_bar');
-    if(!host){
-      host=d.createElement('div');
-      host.id='__amni_media_bar';
-      host.setAttribute('data-amni','media-chrome');
-      host.style.cssText='all:initial;position:fixed!important;top:0!important;left:0!important;right:0!important;height:44px!important;z-index:2147483647!important;display:flex!important;align-items:center!important;gap:8px!important;padding:0 12px!important;box-sizing:border-box!important;background:#08090B!important;color:#EDEFF2!important;font:13px system-ui,"Segoe UI",sans-serif!important;border-bottom:1px solid #20242B!important;box-shadow:0 2px 12px rgba(0,0,0,.45)!important;pointer-events:auto!important;';
-      var mk=function(tag,css,txt){var e=d.createElement(tag);e.style.cssText=css;if(txt!=null)e.textContent=txt;return e;};
-      var back=mk('button','all:unset;cursor:pointer;padding:6px 12px;border-radius:4px;background:#111418;color:#C89B4E;font:600 12px system-ui,"Segoe UI",sans-serif;border:1px solid #20242B;','← Back to Amni');
-      back.title='Close media window and return to browser tabs';
-      back.onclick=function(e){e.preventDefault();e.stopPropagation();ipc('amni_media_close');};
-      var home=mk('button','all:unset;cursor:pointer;padding:6px 12px;border-radius:4px;background:transparent;color:#EDEFF2;font:12px system-ui,"Segoe UI",sans-serif;border:1px solid #20242B;','Home');
-      home.onclick=function(e){e.preventDefault();e.stopPropagation();ipc('amni_media_close');};
-      var label=mk('span','flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#A7ADB6;font:12px system-ui,"Segoe UI",sans-serif;','Amni Media · streaming/DRM · close this window to return to tabs');
-      try{label.textContent='Amni Media · '+(location.hostname||'stream')+' · close to return to tabs';}catch(_){}
-      var x=mk('button','all:unset;cursor:pointer;padding:6px 10px;border-radius:4px;background:transparent;color:#FF6B6B;font:14px system-ui,"Segoe UI",sans-serif;','✕');
-      x.title='Close media window';
-      x.onclick=function(e){e.preventDefault();e.stopPropagation();ipc('amni_media_close');};
-      host.appendChild(back);host.appendChild(home);host.appendChild(label);host.appendChild(x);
-      (d.body||d.documentElement).prepend(host);
-    } else if(host.parentNode!==(d.body||d.documentElement)){
-      (d.body||d.documentElement).prepend(host);
-    }
-    if(!d.getElementById('__amni_media_push')){
-      var s=d.createElement('style');
-      s.id='__amni_media_push';
-      s.textContent='html{margin-top:44px!important}body{margin-top:0!important}';
-      (d.head||d.documentElement).appendChild(s);
-    }
-    return true;
-  }catch(_){return false;}
-}
-function start(){
-  ensure();
-  setInterval(ensure,400);
-  try{
-    var obs=new MutationObserver(function(){ensure();});
-    obs.observe(document.documentElement||document,{childList:true,subtree:true});
-  }catch(_){}
-  window.addEventListener('pageshow',function(){ensure();});
-  window.addEventListener('keydown',function(e){
-    if(e.key==='Escape'&&(e.ctrlKey||e.metaKey)){e.preventDefault();ipc('amni_media_close');}
-  },true);
-}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
-else start();
-})();"#.into()
-}
-pub fn spawn_media_window(event_loop: &ActiveEventLoop, url: &str) -> Option<(WindowId, MediaWindow)> {
+pub fn spawn_media_pane<W: HasWindowHandle>(parent: &W, url: &str, bounds: Rect) -> Option<MediaWindow> {
     configure_privacy_env();
-    let close_req = Arc::new(AtomicBool::new(false));
-    let cr = close_req.clone();
-    let attrs = Window::default_attributes()
-        .with_title(format!("Amni Media \u{2014} {}", display_title(url)))
-        .with_decorations(true)
-        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 800.0))
-        .with_min_inner_size(winit::dpi::LogicalSize::new(640.0, 400.0));
-    let window = match event_loop.create_window(attrs) {
+    let builder = WebViewBuilder::new().with_url(url).with_user_agent(MEDIA_UA).with_bounds(bounds).with_devtools(cfg!(debug_assertions));
+    let webview = match builder.build_as_child(parent) {
         Ok(w) => w,
-        Err(e) => { warn!("media_engine: window create failed: {}", e); return None; }
+        Err(e) => { warn!("media_engine: child webview failed: {}", e); return None; }
     };
-    let id = window.id();
-    let builder = wry::WebViewBuilder::new()
-        .with_url(url)
-        .with_user_agent(MEDIA_UA)
-        .with_initialization_script(&media_chrome_js())
-        .with_ipc_handler(move |msg| {
-            let body = msg.body();
-            if body.contains("amni_media_close") { cr.store(true, Ordering::SeqCst); }
-        })
-        .with_devtools(cfg!(debug_assertions));
-    let webview = match builder.build(&window) {
-        Ok(w) => w,
-        Err(e) => { warn!("media_engine: webview build failed: {}", e); return None; }
-    };
-    info!("media_engine: spawned media window {:?} for {} via {}", id, url, platform_label());
-    Some((id, MediaWindow { window, webview, url: url.into(), close_req }))
+    info!("media_engine: in-tab DRM pane for {} via {}", url, platform_label());
+    Some(MediaWindow { webview, url: url.into() })
 }
-pub fn drain_close_requests(windows: &mut std::collections::HashMap<WindowId, MediaWindow>) -> Vec<WindowId> {
-    let ids: Vec<WindowId> = windows.iter().filter(|(_, m)| m.close_req.load(Ordering::SeqCst)).map(|(id, _)| *id).collect();
-    for id in &ids { windows.remove(id); info!("media_engine: closed media window {:?}", id); }
-    ids
+pub fn apply_pane_bounds(pane: &MediaWindow, bounds: Rect, visible: bool) {
+    let _ = pane.webview.set_bounds(bounds);
+    let _ = pane.webview.set_visible(visible);
 }
-fn display_title(url: &str) -> String {
+pub fn display_title(url: &str) -> String {
     url::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.to_string())).unwrap_or_else(|| url.chars().take(40).collect())
 }
 #[cfg(target_os = "windows")]
@@ -194,16 +129,32 @@ mod tests {
         assert_eq!(route("https://www.spotify.com/"), EngineKind::Media);
     }
     #[test]
-    fn media_for_mse_streams() {
-        assert_eq!(route("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), EngineKind::Media);
-        assert_eq!(route("https://youtu.be/dQw4w9WgXcQ"), EngineKind::Media);
-        assert_eq!(route("https://www.twitch.tv/somechannel"), EngineKind::Media);
+    fn mse_hosts_stay_on_servo() {
+        assert_eq!(route("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), EngineKind::Servo);
+        assert_eq!(route("https://music.youtube.com/"), EngineKind::Servo);
+        assert_eq!(route("https://www.twitch.tv/foo"), EngineKind::Servo);
+        assert_eq!(route("https://youtu.be/dQw4w9WgXcQ"), EngineKind::Servo);
+        assert_eq!(route("https://www.twitch.tv/somechannel"), EngineKind::Servo);
+        assert!(!wants_media_window("https://www.youtube.com/watch?v=xyz"));
+    }
+    #[test]
+    fn silence_js_kills_media_elements() {
+        assert!(SILENCE_JS.contains("pause()"));
+        assert!(SILENCE_JS.contains("video,audio"));
+        assert!(SILENCE_JS.contains("speechSynthesis"));
     }
     #[test]
     fn embed_urls_do_not_spawn_window() {
         assert!(is_embed_url("https://www.youtube.com/embed/xyz"));
         assert!(!wants_media_window("https://www.youtube.com/embed/xyz"));
-        assert!(wants_media_window("https://www.youtube.com/watch?v=xyz"));
         assert!(wants_media_window("https://www.netflix.com/browse"));
+    }
+    #[test]
+    fn content_bounds_sit_under_chrome() {
+        let b = content_bounds(1280, 800, 84);
+        let y = match b.position { wry::dpi::Position::Physical(p) => p.y, wry::dpi::Position::Logical(p) => p.y as i32 };
+        let h = match b.size { wry::dpi::Size::Physical(s) => s.height, wry::dpi::Size::Logical(s) => s.height as u32 };
+        assert_eq!(y, 84);
+        assert_eq!(h, 716);
     }
 }

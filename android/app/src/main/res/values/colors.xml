@@ -10,4 +10,65 @@
     <color name="accent">#C89B4E</color>
     <color name="accent_hover">#E2BC7C</color>
     <color name="danger">#FF6B6B</color>
+
+    <!-- Amniscient product palettes. -->
+    <color name="browse_bg_primary">#07110F</color>
+    <color name="browse_bg_secondary">#0A1815</color>
+    <color name="browse_bg_tertiary">#10231F</color>
+    <color name="browse_bg_hover">#17322C</color>
+    <color name="browse_border">#24483F</color>
+    <color name="browse_accent">#2DD4BF</color>
+    <color name="browse_accent_hover">#5EEAD4</color>
+
+    <color name="haven_bg_primary">#191B28</color>
+    <color name="haven_bg_secondary">#1E2035</color>
+    <color name="haven_bg_tertiary">#252840</color>
+    <color name="haven_bg_hover">#2C2F4A</color>
+    <color name="haven_border">#383B5E</color>
+    <color name="haven_text_primary">#E2E4F0</color>
+    <color name="haven_text_secondary">#9498B3</color>
+    <color name="haven_accent">#7C5CFC</color>
+    <color name="haven_accent_hover">#9478FF</color>
+
+    <color name="learn_bg_primary">#0C0F12</color>
+    <color name="learn_bg_secondary">#111418</color>
+    <color name="learn_bg_tertiary">#1A222A</color>
+    <color name="learn_bg_hover">#24313D</color>
+    <color name="learn_border">#304252</color>
+    <color name="learn_text_primary">#ECF0F1</color>
+    <color name="learn_text_secondary">#9498B3</color>
+    <color name="learn_accent">#4DB8FF</color>
+    <color name="learn_accent_hover">#7DCAFF</color>
+
+    <!-- Product-family accents on the shared Amni charcoal chrome. -->
+    <color name="amni_neon">#00FF9D</color>
+    <color name="amni_neon_hover">#33FFB3</color>
+    <color name="crypt_accent">#6BA5FF</color>
+    <color name="crypt_accent_hover">#8FBAFF</color>
+    <color name="ai_accent">#E58B67</color>
+    <color name="ai_accent_hover">#F0A98C</color>
+    <color name="core_accent">#FF6B6B</color>
+    <color name="core_accent_hover">#FF8F8F</color>
+    <color name="explore_accent">#6BC6FF</color>
+    <color name="explore_accent_hover">#93D6FF</color>
+    <color name="calc_accent">#FF8A5E</color>
+    <color name="calc_accent_hover">#FFA982</color>
+    <color name="product_learn_accent">#4ADE80</color>
+    <color name="product_learn_accent_hover">#74E8A0</color>
+    <color name="braid_accent">#A88FE8</color>
+    <color name="braid_accent_hover">#C4B3F2</color>
+
+    <!-- Amni Scient light mode, aligned with the main site. -->
+    <color name="light_bg_primary">#F3F2EF</color>
+    <color name="light_bg_secondary">#EAE9E4</color>
+    <color name="light_bg_tertiary">#FFFFFF</color>
+    <color name="light_bg_hover">#F8F7F4</color>
+    <color name="light_border">#CBC7BE</color>
+    <color name="light_text_primary">#101216</color>
+    <color name="light_text_secondary">#454A52</color>
+    <color name="light_accent">#8A6318</color>
+    <color name="light_accent_hover">#A2762A</color>
+    <color name="light_danger">#C0392B</color>
+
+    <color name="ic_launcher_background">#064E3B</color>
 </resources>

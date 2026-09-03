@@ -45,6 +45,21 @@ impl HistoryManager {
         let path = Self::file_path();
         serde_json::to_string_pretty(self).ok().map(|d| fs::write(&path, d).ok());
     }
+    pub fn import_visit(&mut self, url: &str, title: &str, count: u32) {
+        if url.starts_with("amnibrowse://") || url.is_empty() { return; }
+        match self.entries.iter_mut().find(|e| e.url == url) {
+            Some(existing) => {
+                existing.visit_count = existing.visit_count.max(count.max(1));
+                if !title.is_empty() { existing.title = title.to_string(); }
+            }
+            None => {
+                let mut e = HistoryEntry::new(url, title);
+                e.visit_count = count.max(1);
+                self.entries.push(e);
+            }
+        }
+        self.save();
+    }
     pub fn record_visit(&mut self, url: &str, title: &str) {
         if url.starts_with("amnibrowse://") || url.is_empty() { return; }
         match self.entries.iter_mut().find(|e| e.url == url) {

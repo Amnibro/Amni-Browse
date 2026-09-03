@@ -14,6 +14,18 @@ desktop.ini
 # Environment & secrets
 .env
 .env.*
+!.env.example
+!.env.*.example
+credentials*.json
+client_secret*.json
+service-account*.json
+google-services.json
+keystore.properties
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
 *.pem
 *.key
 
@@ -40,6 +52,11 @@ tmp_*.txt
 
 # Browser user data (must never ship)
 amni-browse-data/
+browser-exports/
+chrome-export*/
+amni-chrome-import*.json
+chrome-bookmarks*.html
+chrome-history*.json
 *.session
 profiles.json
 bookmarks.json
@@ -55,7 +72,37 @@ __pycache__/
 
 # Screenshots
 _shot*.png
+Screenshot_*.png
+screenshot-*.png
+screenshots/
+captures/
 
 # Session-local launch scratch
 launch_verify.bat
 *.zip
+*.apk
+*.aab
+*.apks
+*.xapk
+
+# R8 output remains under android/**/build, ignored by android/.gitignore.
+# Archive each mapping.txt with its signed Android artifact before cleaning.
+
+# Release artifacts, logs, rig output, personal exports
+*.zip
+*.log
+_shot*.png
+_tmp*
+tmp_doc.py
+backups/*.exe
+backups/*.exe.*
+backups/installed-*
+browser_export.json
+qc_bundle_out.txt
+ddg.html
+test/*.png
+test/*.exe
+test/*.pdb
+*.probe.json
+launch_*.log
+run_launch.log

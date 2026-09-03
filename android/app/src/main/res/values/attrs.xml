@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <attr name="amniBgPrimary" format="color"/>
+    <attr name="amniBgSecondary" format="color"/>
+    <attr name="amniBgTertiary" format="color"/>
+    <attr name="amniBgHover" format="color"/>
+    <attr name="amniBorder" format="color"/>
+    <attr name="amniTextPrimary" format="color"/>
+    <attr name="amniTextSecondary" format="color"/>
+    <attr name="amniAccent" format="color"/>
+    <attr name="amniAccentHover" format="color"/>
+    <attr name="amniDanger" format="color"/>
+</resources>

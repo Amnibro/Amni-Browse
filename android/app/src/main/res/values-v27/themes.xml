@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AmniBrowse.Base" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:textColor">?attr/amniTextPrimary</item>
+        <item name="android:colorBackground">?attr/amniBgPrimary</item>
+        <item name="colorAccent">?attr/amniAccent</item>
+        <item name="android:statusBarColor">?attr/amniBgPrimary</item>
+        <item name="android:navigationBarColor">?attr/amniBgPrimary</item>
+        <item name="android:windowBackground">?attr/amniBgPrimary</item>
+    </style>
+    <style name="Theme.AmniBrowse.Light" parent="Theme.AmniBrowse.Base">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="amniBgPrimary">@color/light_bg_primary</item>
+        <item name="amniBgSecondary">@color/light_bg_secondary</item>
+        <item name="amniBgTertiary">@color/light_bg_tertiary</item>
+        <item name="amniBgHover">@color/light_bg_hover</item>
+        <item name="amniBorder">@color/light_border</item>
+        <item name="amniTextPrimary">@color/light_text_primary</item>
+        <item name="amniTextSecondary">@color/light_text_secondary</item>
+        <item name="amniAccent">@color/light_accent</item>
+        <item name="amniAccentHover">@color/light_accent_hover</item>
+        <item name="amniDanger">@color/light_danger</item>
+    </style>
+</resources>

@@ -27,6 +27,18 @@ interface StoreDao {
     suspend fun insertHistory(row: HistoryEntity): Long
     @Query("SELECT lastVisit FROM history WHERE url = :url")
     suspend fun historyLast(url: String): Long?
+    @Query("SELECT * FROM history WHERE url LIKE '%'||:q||'%' OR title LIKE '%'||:q||'%' ORDER BY visitCount DESC, lastVisit DESC LIMIT :n")
+    suspend fun searchHistory(q: String, n: Int): List<HistoryEntity>
+    @Query("SELECT * FROM bookmarks WHERE url LIKE '%'||:q||'%' OR title LIKE '%'||:q||'%' ORDER BY added DESC LIMIT :n")
+    suspend fun searchBookmarks(q: String, n: Int): List<BookmarkEntity>
+    @Query("DELETE FROM history")
+    suspend fun clearHistory(): Int
+    @Query("DELETE FROM bookmarks WHERE url = :url")
+    suspend fun deleteBookmark(url: String): Int
+    @Query("SELECT * FROM bookmarks ORDER BY added DESC LIMIT :n")
+    suspend fun topBookmarks(n: Int): List<BookmarkEntity>
+    @Query("UPDATE bookmarks SET title = :title, path = :path WHERE url = :url")
+    suspend fun updateBookmark(url: String, title: String, path: String): Int
 }
 @Database(entities = [BookmarkEntity::class, HistoryEntity::class], version = 1, exportSchema = false)
 abstract class AppDb : RoomDatabase() {

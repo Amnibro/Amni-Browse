@@ -1,21 +1,22 @@
 [package]
 name = "amni-browse"
-version = "0.12.1"
+version = "0.13.0"
 edition = "2021"
 description = "Amni Browse — A privacy-first, zero-telemetry web browser by Amni-Scient"
 authors = ["Amni-Scient"]
 license-file = "LICENSE"
 
 [features]
-default = ["servo-real"]
+default = ["webview"]
 webview = ["dep:wry", "dep:tao"]
 servo-engine = ["dep:winit", "dep:wgpu", "dep:egui", "dep:egui-winit", "dep:egui-wgpu", "dep:raw-window-handle", "dep:pollster", "dep:fontdue"]
-servo-real = ["dep:servo", "dep:winit", "dep:raw-window-handle", "dep:surfman", "dep:euclid", "dep:keyboard-types", "dep:wry"]
+servo-real = ["dep:servo", "dep:stylo_static_prefs", "dep:winit", "dep:raw-window-handle", "dep:surfman", "dep:euclid", "dep:keyboard-types", "dep:wry", "dep:rfd", "dep:glow"]
 js-engine = ["dep:boa_engine"]
 media-playback = ["dep:symphonia", "dep:cpal"]
 full = ["servo-engine", "js-engine", "media-playback"]
 
 [dependencies]
+stylo_static_prefs = { path = "vendor/stylo/stylo_static_prefs", optional = true }
 tao = { version = "0.30", optional = true }
 wry = { version = "0.46", optional = true }
 winit = { version = "0.30", optional = true }
@@ -63,10 +64,17 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 boa_engine = { version = "0.19", optional = true }
 symphonia = { version = "0.5", optional = true, default-features = false, features = ["mp3", "aac", "vorbis", "flac", "wav", "pcm"] }
 cpal = { version = "0.15", optional = true }
-servo = { git = "https://github.com/servo/servo.git", rev = "68ca280", features = ["no-wgl", "media-gstreamer"], optional = true }
+servo = { git = "https://github.com/servo/servo.git", rev = "c91fc17", features = ["no-wgl", "media-gstreamer"], optional = true }
 surfman = { version = "0.9", optional = true }
 euclid = { version = "0.22", optional = true }
 keyboard-types = { version = "0.7", optional = true }
+rusqlite = { version = "0.38", features = ["bundled"] }
+rfd = { version = "0.15", optional = true }
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+webview2-com = "0.33"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_WinRT"] }
+glow = { version = "0.17", optional = true }
 
 [profile.release]
 opt-level = 3
@@ -80,3 +88,77 @@ embed-resource = "3"
 debug = 0
 incremental = false
 
+
+[patch."https://github.com/servo/stylo"]
+selectors = { path = "vendor/stylo/selectors" }
+servo_arc = { path = "vendor/stylo/servo_arc" }
+stylo = { path = "vendor/stylo/style" }
+stylo_atoms = { path = "vendor/stylo/stylo_atoms" }
+stylo_derive = { path = "vendor/stylo/style_derive" }
+stylo_dom = { path = "vendor/stylo/stylo_dom" }
+stylo_malloc_size_of = { path = "vendor/stylo/malloc_size_of" }
+stylo_static_prefs = { path = "vendor/stylo/stylo_static_prefs" }
+stylo_traits = { path = "vendor/stylo/style_traits" }
+to_shmem = { path = "vendor/stylo/to_shmem" }
+to_shmem_derive = { path = "vendor/stylo/to_shmem_derive" }
+
+[patch."https://github.com/servo/servo.git"]
+servo = { path = "vendor/servo/components/servo" }
+servo-allocator = { path = "vendor/servo/components/allocator" }
+servo-background-hang-monitor = { path = "vendor/servo/components/background_hang_monitor" }
+servo-background-hang-monitor-api = { path = "vendor/servo/components/shared/background_hang_monitor" }
+servo-base = { path = "vendor/servo/components/shared/base" }
+servo-canvas = { path = "vendor/servo/components/canvas" }
+servo-canvas-traits = { path = "vendor/servo/components/shared/canvas" }
+servo-config = { path = "vendor/servo/components/config" }
+servo-config-macro = { path = "vendor/servo/components/config/macro" }
+servo-constellation = { path = "vendor/servo/components/constellation" }
+servo-constellation-traits = { path = "vendor/servo/components/shared/constellation" }
+servo-default-resources = { path = "vendor/servo/components/default-resources" }
+servo-deny-public-fields = { path = "vendor/servo/components/deny_public_fields" }
+servo-devtools = { path = "vendor/servo/components/devtools" }
+servo-devtools-traits = { path = "vendor/servo/components/shared/devtools" }
+servo-dom-struct = { path = "vendor/servo/components/dom_struct" }
+servo-embedder-traits = { path = "vendor/servo/components/shared/embedder" }
+servo-fonts = { path = "vendor/servo/components/fonts" }
+servo-fonts-traits = { path = "vendor/servo/components/shared/fonts" }
+servo-geometry = { path = "vendor/servo/components/geometry" }
+servo-hyper-serde = { path = "vendor/servo/components/hyper_serde" }
+servo-jstraceable-derive = { path = "vendor/servo/components/jstraceable_derive" }
+servo-layout = { path = "vendor/servo/components/layout" }
+servo-layout-api = { path = "vendor/servo/components/shared/layout" }
+servo-malloc-size-of = { path = "vendor/servo/components/malloc_size_of" }
+servo-media = { path = "vendor/servo/components/media/servo-media" }
+servo-media-audio = { path = "vendor/servo/components/media/audio" }
+servo-media-derive = { path = "vendor/servo/components/media/servo-media-derive" }
+servo-media-dummy = { path = "vendor/servo/components/media/backends/dummy" }
+servo-media-gstreamer = { path = "vendor/servo/components/media/backends/gstreamer" }
+servo-media-gstreamer-render = { path = "vendor/servo/components/media/backends/gstreamer/render" }
+servo-media-gstreamer-render-android = { path = "vendor/servo/components/media/backends/gstreamer/render-android" }
+servo-media-gstreamer-render-unix = { path = "vendor/servo/components/media/backends/gstreamer/render-unix" }
+servo-media-ohos = { path = "vendor/servo/components/media/backends/ohos" }
+servo-media-player = { path = "vendor/servo/components/media/player" }
+servo-media-streams = { path = "vendor/servo/components/media/streams" }
+servo-media-thread = { path = "vendor/servo/components/media/media-thread" }
+servo-media-traits = { path = "vendor/servo/components/media/traits" }
+servo-media-webrtc = { path = "vendor/servo/components/media/webrtc" }
+servo-metrics = { path = "vendor/servo/components/metrics" }
+servo-net = { path = "vendor/servo/components/net" }
+servo-net-traits = { path = "vendor/servo/components/shared/net" }
+servo-paint = { path = "vendor/servo/components/paint" }
+servo-paint-api = { path = "vendor/servo/components/shared/paint" }
+servo-pixels = { path = "vendor/servo/components/pixels" }
+servo-profile = { path = "vendor/servo/components/profile" }
+servo-profile-traits = { path = "vendor/servo/components/shared/profile" }
+servo-script = { path = "vendor/servo/components/script" }
+servo-script-bindings = { path = "vendor/servo/components/script_bindings" }
+servo-script-traits = { path = "vendor/servo/components/shared/script" }
+servo-storage = { path = "vendor/servo/components/storage" }
+servo-storage-traits = { path = "vendor/servo/components/shared/storage" }
+servo-timers = { path = "vendor/servo/components/timers" }
+servo-tracing = { path = "vendor/servo/components/servo_tracing" }
+servo-url = { path = "vendor/servo/components/url" }
+servo-wakelock = { path = "vendor/servo/components/wakelock" }
+servo-webvtt = { path = "vendor/servo/components/webvtt" }
+servo-webxr-api = { path = "vendor/servo/components/shared/webxr" }
+servo-xpath = { path = "vendor/servo/components/xpath" }

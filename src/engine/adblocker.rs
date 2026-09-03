@@ -3,6 +3,77 @@ use regex::Regex;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
+/// Auth / SSO hosts and script paths — never block (login buttons, GSI, Apple, MSAL).
+static AUTH_ALLOW: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    vec![
+        // Google Identity Services (X, etc. Continuue with Google)
+        "accounts.google.com",
+        "apis.google.com",
+        "www.gstatic.com/gsi",
+        "gstatic.com/gsi",
+        "www.gstatic.com/identity",
+        "gstatic.com/identity",
+        "www.google.com/recaptcha",
+        "www.gstatic.com/recaptcha",
+        "recaptcha.net",
+        "oauth2.googleapis.com",
+        "www.googleapis.com/oauth2",
+        "www.googleapis.com/identitytoolkit",
+        "identitytoolkit.googleapis.com",
+        "securetoken.googleapis.com",
+        "appleid.apple.com",
+        "appleid.cdn-apple.com",
+        "login.microsoftonline.com",
+        "login.live.com",
+        "login.windows.net",
+        "aadcdn.msauth.net",
+        "aadcdn.msftauth.net",
+        "github.com/login",
+        "github.com/sessions",
+        "connect.facebook.net/", // FB Login SDK; still blocked if AUTH_PIXEL matches
+        "www.facebook.com/login",
+        "www.facebook.com/dialog",
+        "graph.facebook.com",
+        "platform.linkedin.com/in.js",
+        "www.linkedin.com/oauth",
+        "api.twitter.com/oauth",
+        "api.x.com/oauth",
+        "twitter.com/i/api",
+        "x.com/i/api",
+        "auth0.com",
+        "okta.com",
+        "oktacdn.com",
+        "cdn.auth0.com",
+        // Cloudflare Turnstile / challenge platform (downdetector, etc.)
+        "challenges.cloudflare.com",
+        "challenge-platform",
+        "cdn-cgi/challenge",
+        "turnstile",
+        "static.cloudflareinsights.com",
+    ]
+});
+
+/// Path/query shapes that are always auth, even on hosts that also serve ads.
+fn looks_like_auth_url(url_lower: &str) -> bool {
+    AUTH_ALLOW.iter().any(|a| url_lower.contains(a))
+        || url_lower.contains("/gsi/")
+        || url_lower.contains("/o/oauth2")
+        || url_lower.contains("/oauth2/")
+        || url_lower.contains("ux_mode=popup")
+        || url_lower.contains("gsiwebsdk")
+        || url_lower.contains("redirect_uri=gis_")
+}
+
+/// Pixel / beacon paths on hosts that also serve login SDKs.
+static AUTH_PIXEL: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    vec![
+        "fbevents.js",
+        "facebook.net/signals",
+        "facebook.com/tr",
+        "pixel.facebook.com",
+    ]
+});
+
 static BLOCKED_DOMAINS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     let domains: HashSet<&str> = [
         "doubleclick.net",
@@ -14,7 +85,8 @@ static BLOCKED_DOMAINS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "adservice.google.com",
         "pagead2.googlesyndication.com",
         "facebook.com/tr",
-        "connect.facebook.net",
+        "fbevents.js",
+        "facebook.net/signals",
         "pixel.facebook.com",
         "facebook-hardware.com",
         "adnxs.com",
@@ -57,7 +129,6 @@ static BLOCKED_DOMAINS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
         "tapad.com",
         "cdn.jsdelivr.net/npm/fingerprintjs",
         "platform.twitter.com/widgets",
-        "platform.linkedin.com",
         "bat.bing.com",
         "tr.snapchat.com",
         "analytics.tiktok.com",
@@ -115,10 +186,20 @@ impl AdBlocker {
 
         let url_lower = url.to_lowercase();
 
+        if AUTH_PIXEL.iter().any(|p| url_lower.contains(p)) {
+            self.blocked_count += 1;
+            debug!("Blocked (auth-pixel): {}", url);
+            return true;
+        }
+
+        if looks_like_auth_url(&url_lower) {
+            return false;
+        }
+
         for domain in BLOCKED_DOMAINS.iter() {
             if url_lower.contains(domain) {
                 self.blocked_count += 1;
-                debug!("ðŸ›¡ï¸ Blocked (domain): {}", url);
+                debug!("Blocked (domain): {}", url);
                 return true;
             }
         }
@@ -127,7 +208,7 @@ impl AdBlocker {
             for pattern in AD_PATTERNS.iter() {
                 if pattern.is_match(&url_lower) {
                     self.blocked_count += 1;
-                    debug!("ðŸ›¡ï¸ Blocked (pattern): {}", url);
+                    debug!("Blocked (pattern): {}", url);
                     return true;
                 }
             }
@@ -216,6 +297,21 @@ mod tests {
         let mut blocker = AdBlocker::new(true, true);
         assert!(!blocker.should_block("https://www.rust-lang.org/"));
         assert!(!blocker.should_block("https://github.com/"));
+    }
+
+    #[test]
+    fn test_allows_sso_sdks() {
+        let mut blocker = AdBlocker::new(true, true);
+        assert!(!blocker.should_block("https://connect.facebook.net/en_US/sdk.js"));
+        assert!(!blocker.should_block("https://accounts.google.com/gsi/client"));
+        assert!(!blocker.should_block("https://accounts.google.com/gsi/select"));
+        assert!(!blocker.should_block("https://accounts.google.com/o/oauth2/v2/auth?client_id=x"));
+        assert!(!blocker.should_block("https://www.gstatic.com/gsi/style"));
+        assert!(!blocker.should_block("https://apis.google.com/js/api.js"));
+        assert!(!blocker.should_block("https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js"));
+        assert!(!blocker.should_block("https://login.microsoftonline.com/common/oauth2/v2.0/authorize"));
+        assert!(!blocker.should_block("https://x.com/i/api/1.1/onboarding/sso_init.json"));
+        assert!(blocker.should_block("https://connect.facebook.net/en_US/fbevents.js"));
     }
 
     #[test]

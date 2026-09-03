@@ -84,7 +84,7 @@ impl BrowserState {
         state.extensions.scan_extensions();
         if SessionManager::was_crash() { info!("Crash recovery: previous session detected"); }
         SessionManager::create_lock();
-        if state.session.restore_on_start {
+        if state.session.restore_on_start && state.config.seen_onboarding {
             let rd = state.session.get_restore_data();
             let mut count = 0usize;
             for stab in &rd {
@@ -95,10 +95,17 @@ impl BrowserState {
                     tab.history = stab.history.clone();
                     tab.history_index = stab.history_index;
                     tab.is_active = stab.is_active;
+                    tab.engine = if stab.is_media() { crate::engine::tabs::TabEngine::Media } else { crate::engine::tabs::TabEngine::Servo };
                 }
                 count += 1;
             }
-            if count > 0 { info!("Restored {} tabs from previous session", count); }
+            if count > 0 {
+                if state.tabs.tabs.first().map(|t| t.url.contains("newtab") || t.url.contains("amnibrowse://home")).unwrap_or(false) {
+                    let id = state.tabs.tabs[0].id.clone();
+                    state.tabs.close_tab(&id);
+                }
+                info!("Restored {} tabs from previous session", count);
+            }
         }
         state
     }
@@ -107,6 +114,7 @@ impl BrowserState {
         let snap: Vec<crate::storage::session::SessionTab> = self.tabs.tabs.iter().map(|t| crate::storage::session::SessionTab {
             url: t.url.clone(), title: t.title.clone(), is_active: t.is_active,
             history: t.history.clone(), history_index: t.history_index,
+            engine: match t.engine { crate::engine::tabs::TabEngine::Media => "media".into(), _ => "servo".into() }, pinned: false, group: None,
         }).collect();
         self.session.capture(snap);
         self.session.save_clean_exit();
@@ -316,6 +324,7 @@ impl BrowserState {
                 let snap: Vec<crate::storage::session::SessionTab> = self.tabs.tabs.iter().map(|t| crate::storage::session::SessionTab {
                     url: t.url.clone(), title: t.title.clone(), is_active: t.is_active,
                     history: t.history.clone(), history_index: t.history_index,
+                    engine: match t.engine { crate::engine::tabs::TabEngine::Media => "media".into(), _ => "servo".into() }, pinned: false, group: None,
                 }).collect();
                 self.session.capture(snap); self.session.save(); info!("Session saved");
                 None

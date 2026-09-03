@@ -62,8 +62,8 @@ impl Theme {
             tab_inactive: "#0D0F12".into(),
             background_image: None,
             background_opacity: 1.0,
-            font_family: "\"Segoe UI Variable Display\", \"Segoe UI\", system-ui, -apple-system, Roboto, sans-serif".into(),
-            border_radius: "4px".into(),
+            font_family: "\"Segoe UI Variable Text\", \"Segoe UI\", system-ui, sans-serif".into(),
+            border_radius: "3px".into(),
             is_custom: false,
         }
     }
@@ -308,6 +308,26 @@ impl Theme {
         }
     }
 
+    #[cfg(test)]
+    pub fn probe_is_dark(bg: &str) -> bool {
+        let mut t = Self::amni_dark();
+        t.bg_primary = bg.to_string();
+        t.is_dark()
+    }
+
+    pub fn is_dark(&self) -> bool {
+        let h = self.bg_primary.trim().trim_start_matches('#');
+        let full = match h.len() {
+            3 => h.chars().flat_map(|c| [c, c]).collect::<String>(),
+            _ => h.to_string(),
+        };
+        let ch = |i: usize| u8::from_str_radix(full.get(i..i + 2).unwrap_or("00"), 16).unwrap_or(0) as f32 / 255.0;
+        match full.len() >= 6 {
+            true => 0.2126 * ch(0) + 0.7152 * ch(2) + 0.0722 * ch(4) < 0.5,
+            false => true,
+        }
+    }
+
     pub fn all_builtin() -> Vec<Theme> {
         vec![
             Self::amni_dark(),
@@ -375,6 +395,10 @@ impl ThemeConfig {
     pub fn set_theme(&mut self, theme_id: &str) {
         self.active_theme_id = theme_id.to_string();
         self.save();
+    }
+
+    pub fn active_is_dark(&self) -> bool {
+        self.active_theme().is_dark()
     }
 
     pub fn add_custom_theme(&mut self, theme: Theme) {
@@ -452,5 +476,38 @@ impl ThemeConfig {
 
     pub fn active_theme_json(&self) -> String {
         serde_json::to_string(&self.active_theme()).unwrap_or_else(|_| "{}".to_string())
+    }
+}
+
+#[cfg(test)]
+mod theme_luma_tests {
+    use super::*;
+
+    #[test]
+    fn builtin_light_themes_report_light() {
+        for t in Theme::all_builtin() {
+            let dark = t.is_dark();
+            let expect_light = matches!(t.id.as_str(), "amni-light" | "amni-paper-sunset");
+            assert_eq!(dark, !expect_light, "theme {} bg {} is_dark={}", t.id, t.bg_primary, dark);
+        }
+    }
+
+    #[test]
+    fn luma_split_and_bad_input() {
+        assert!(Theme::probe_is_dark("#000000"));
+        assert!(Theme::probe_is_dark("#08090B"));
+        assert!(!Theme::probe_is_dark("#ffffff"));
+        assert!(!Theme::probe_is_dark("#f5f7fa"));
+        assert!(Theme::probe_is_dark("#000"));
+        assert!(!Theme::probe_is_dark("fff"));
+        assert!(Theme::probe_is_dark("garbage"));
+    }
+
+    #[test]
+    fn active_is_dark_follows_selection() {
+        let mut c = ThemeConfig::default();
+        assert!(c.active_is_dark());
+        c.active_theme_id = "amni-light".into();
+        assert!(!c.active_is_dark());
     }
 }

@@ -41,3 +41,5 @@ pub mod webrtc;
 pub mod pwa;
 pub mod cache_api;
 pub mod daily_driver;
+pub mod stream_extract;
+pub mod servo_compat;

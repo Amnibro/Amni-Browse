@@ -10,12 +10,24 @@ pub struct SessionTab {
     pub is_active: bool,
     pub history: Vec<String>,
     pub history_index: i32,
+    #[serde(default)]
+    pub engine: String,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub group: Option<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionState {
     pub tabs: Vec<SessionTab>,
     pub window_width: f64,
     pub window_height: f64,
+    #[serde(default)]
+    pub window_x: Option<f64>,
+    #[serde(default)]
+    pub window_y: Option<f64>,
+    #[serde(default)]
+    pub maximized: bool,
     pub saved_at: DateTime<Utc>,
     pub was_clean_exit: bool,
 }
@@ -25,10 +37,16 @@ impl Default for SessionState {
             tabs: Vec::new(),
             window_width: 1400.0,
             window_height: 900.0,
+            window_x: None,
+            window_y: None,
+            maximized: false,
             saved_at: Utc::now(),
             was_clean_exit: true,
         }
     }
+}
+impl SessionTab {
+    pub fn is_media(&self) -> bool { self.engine == "media" }
 }
 #[derive(Debug)]
 pub struct SessionManager {
@@ -68,10 +86,29 @@ impl SessionManager {
         fs::write(&lock, Utc::now().to_rfc3339()).ok();
     }
     pub fn was_crash() -> bool {
-        Self::lock_path().exists()
+        let p = Self::lock_path();
+        if !p.exists() { return false; }
+        let age = fs::metadata(&p).ok().and_then(|m| m.modified().ok()).and_then(|t| t.elapsed().ok()).map(|d| d.as_secs()).unwrap_or(0);
+        age < 86_400
     }
 
     pub fn to_json(&self) -> String {
         serde_json::to_string(&self.state).unwrap_or_else(|_| "{}".to_string())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn old_session_json_defaults_engine() {
+        let raw = r#"{"url":"https://a.test","title":"A","is_active":true,"history":["https://a.test"],"history_index":0}"#;
+        let t: SessionTab = serde_json::from_str(raw).unwrap();
+        assert_eq!(t.engine, "");
+        assert!(!t.is_media());
+    }
+    #[test]
+    fn media_engine_flag() {
+        let t = SessionTab { url: "https://www.netflix.com/".into(), title: "n".into(), is_active: true, history: vec![], history_index: 0, engine: "media".into() };
+        assert!(t.is_media());
     }
 }

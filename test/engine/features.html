@@ -1,0 +1,51 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Amni engine features</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+body{margin:0;padding:24px;font:18px/1.4 system-ui;background:#101418;color:#e6e6e6}
+h2{font-size:16px;margin:18px 0 6px;color:#9aa}
+.row{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.card{background:#1b2128;padding:12px 16px;border-radius:8px}
+.icon{display:inline-block;width:48px;height:48px;background-color:#ffcc33;-webkit-mask:url(icon.svg) center/contain no-repeat;mask:url(icon.svg) center/contain no-repeat}
+.icon.small{width:24px;height:24px;background-color:#4fd1c5;mask-size:16px 16px}
+.grad{font-size:40px;font-weight:800;background:linear-gradient(90deg,#ff5e62,#ffcc33);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.fill{-webkit-text-fill-color:#4fd1c5}
+.has-box{padding:8px;border:2px solid #444}
+.has-box:has(input:checked){border-color:#4ade80;background:#14301f}
+label:has(> input:checked) span{color:#4ade80;font-weight:700}
+.rm{color:#f87171}
+@media (prefers-reduced-motion: no-preference){.rm{color:#4ade80}}
+@media (forced-colors: none){.fc{color:#4ade80}}
+@media (prefers-contrast: no-preference){.pc{color:#4ade80}}
+.wb{width:160px;background:#1b2128;padding:6px;word-break:break-word;border:1px solid #444}
+.wk{display:-webkit-box;gap:8px;background:#1b2128;padding:6px;border:1px solid #444}
+.wk>div{background:#2a3340;padding:6px 10px}
+input,textarea{font:16px system-ui;padding:6px 10px;background:#1b2128;color:#eee;border:1px solid #556;border-radius:6px}
+.url{width:420px;background:#1b2128;padding:6px;overflow-wrap:break-word;border:1px solid #444}
+.bal{width:260px;text-wrap:balance;background:#1b2128;padding:6px}
+</style></head><body>
+<h2>icon fonts (Material: home/search/settings, FontAwesome: star/house)</h2>
+<div class="row"><span class="material-icons" style="font-size:36px;color:#ffcc33">home</span><span class="material-icons" style="font-size:36px;color:#ffcc33">search</span><span class="material-icons" style="font-size:36px;color:#ffcc33">settings</span><i class="fa-solid fa-star" style="font-size:32px;color:#4fd1c5"></i><i class="fa-solid fa-house" style="font-size:32px;color:#4fd1c5"></i></div>
+<h2>text boxes (text must not be cropped)</h2>
+<div class="row"><input type="text" value="typed text in an input field"><input type="search" placeholder="search placeholder"><textarea rows="2">textarea with two lines
+second line</textarea><input type="text" value="tall padded input" style="padding:14px 12px;font-size:20px"></div>
+<h2>overflow-wrap: break-word paragraph with a long URL (420px box, must wrap)</h2>
+<div class="url">See https://example.com/a/very/long/path/that/keeps/going/and/going/without/any/spaces/until/it/overflows/the/container/width and then normal words follow.</div>
+<h2>mask-image icons (should be a yellow star and a small teal star)</h2>
+<div class="row"><span class="icon"></span><span class="icon small"></span><span class="icon png" style="-webkit-mask:url(icon.png) center/contain no-repeat;mask:url(icon.png) center/contain no-repeat"></span><span class="card">card next to icons</span></div>
+<h2>gradient text (readable, orange-ish) and text-fill-color (teal)</h2>
+<div class="grad">Gradient Headline</div>
+<div class="fill">teal via -webkit-text-fill-color</div>
+<h2>:has() (checked box turns green)</h2>
+<div class="has-box"><label><input type="checkbox" checked> <span>checked label</span></label></div>
+<h2>media features (all three lines should be GREEN)</h2>
+<div class="rm">prefers-reduced-motion: no-preference</div>
+<div class="fc">forced-colors: none</div>
+<div class="pc">prefers-contrast: no-preference</div>
+<h2>word-break: break-word (long token wraps inside 160px box)</h2>
+<div class="wb">Supercalifragilisticexpialidocious_and_more_unbroken_text</div>
+<h2>display: -webkit-box (three children in a row)</h2>
+<div class="wk"><div>one</div><div>two</div><div>three</div></div>
+<h2>text-wrap: balance (parses; renders as wrap)</h2>
+<div class="bal">This headline should wrap over two or three lines without being dropped.</div>
+</body></html>
