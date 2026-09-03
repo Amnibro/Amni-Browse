@@ -108,7 +108,7 @@ mod tests {
     }
     #[test]
     fn media_engine_flag() {
-        let t = SessionTab { url: "https://www.netflix.com/".into(), title: "n".into(), is_active: true, history: vec![], history_index: 0, engine: "media".into() };
+        let t = SessionTab { url: "https://www.netflix.com/".into(), title: "n".into(), is_active: true, history: vec![], history_index: 0, engine: "media".into(), pinned: false, group: None };
         assert!(t.is_media());
     }
 }
