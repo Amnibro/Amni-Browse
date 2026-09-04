@@ -15,7 +15,7 @@ Anthony 2026-09-03: "do the flip because the servo formatting is evidently incre
 - [x] Download progress into the downloads panel; [x] find bar with highlight-all (CSS Custom Highlight API)
 - [x] Engine back/forward/reload/stop, HTML5 fullscreen, audio state, password autosave + autofill, clear-on-exit, DevTools, full key map
 - [x] Amni-OS (Linux) lane: same code on WebKitGTK via wry (verified in the Amni OS VM, speedtest via CLI URL); CEF later if needed
-- [ ] Android tab groups do not collapse (separate lap)
+- [x] Android tab groups collapse (0.16.9-android.0, on the Fold + site)
 
 ## Parity lap 2 (2026-09-03)
 - [x] Pinned tabs (right-click menu), persisted

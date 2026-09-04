@@ -1,3 +1,8 @@
+## 0.16.9-android.0 - 2026-09-03 - tab groups collapse
+- Tap a group chip in the tab strip to collapse it (chip shows `name · count`), tap again to expand. Collapsing the group that holds the active tab jumps to the nearest tab outside it; switching into a collapsed group's tab (tab grid) expands it. Collapsed set persists in `amni_ui` prefs.
+- versionCode 10. Unit tests 39 passed. Pushed to the Fold over wireless adb; site beta APK + `browse/android-latest.json` updated.
+- Backups: `android/backups/BrowseActivity.kt.v0169-pre.bak`, `build.gradle.kts.v0169-pre.bak`.
+
 ## 0.13.0 - 2026-09-03 — Chromium (WebView2) is the Windows engine; Servo parked
 - **Default lane flipped:** `default = ["webview"]`. `cargo build --release` produces the 6.6 MB Chromium lane (`src/platform/chromium.rs`). Servo stays buildable as `--no-default-features --features servo-real` (`build_servo_real.bat`) with all the 0.12.8 engine work kept under `vendor/`.
 - **Architecture matches the Android app:** native chrome bar (`assets/chrome/toolbar.html`, same look as before) in its own WebView2 child, one WebView2 child per tab (page state survives tab switches), private tabs in an in-memory WebView2 profile, internal pages (new tab, settings, tutorial) served from `src/ui/internal_pages.rs`.

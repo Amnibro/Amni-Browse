@@ -11,8 +11,8 @@ android {
         applicationId = "com.amniscient.browse"
         minSdk = 26
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.16.8-android.0"
+        versionCode = 10
+        versionName = "0.16.9-android.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {

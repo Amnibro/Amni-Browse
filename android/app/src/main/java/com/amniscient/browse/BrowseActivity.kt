@@ -821,6 +821,23 @@ class BrowseActivity : AppCompatActivity() {
         }
         return null
     }
+    private fun collapsedGroups(): MutableSet<String> = (ui.getStringSet("collapsed", emptySet()) ?: emptySet()).toMutableSet()
+    private fun setGroupCollapsed(name: String, collapsed: Boolean) {
+        val c = collapsedGroups()
+        if (collapsed) c.add(name) else c.remove(name)
+        ui.edit().putStringSet("collapsed", c).apply()
+    }
+    private fun toggleGroupCollapsed(name: String) {
+        if (name in collapsedGroups()) { setGroupCollapsed(name, false); paintTabs(); return }
+        val cur = tabs.getOrNull(tabIndex)
+        if (cur?.group == name) {
+            val outside = tabs.indices.filter { tabs[it].group != name }
+            if (outside.isEmpty()) { Toast.makeText(this, "Open another tab first", Toast.LENGTH_SHORT).show(); return }
+            setGroupCollapsed(name, true)
+            switchTab(outside.minByOrNull { kotlin.math.abs(it - tabIndex) }!!)
+        } else setGroupCollapsed(name, true)
+        paintTabs()
+    }
     private fun groupAccent(name: String): Int {
         val hue = ((name.hashCode().toLong() and 0x7fffffffL) % 360L).toFloat()
         return Color.HSVToColor(floatArrayOf(hue, 0.55f, 0.82f))
@@ -1097,8 +1114,9 @@ class BrowseActivity : AppCompatActivity() {
                 cLp.marginEnd = dp(8f)
                 cLp.marginStart = if (i > 0) dp(4f) else 0
                 cluster.layoutParams = cLp
+                val collapsed = g in collapsedGroups()
                 val header = TextView(this)
-                header.text = g
+                header.text = if (collapsed) "$g · ${end - i}" else g
                 header.textSize = (sz.textSp - 1.5f).coerceAtLeast(10f)
                 header.setTextColor(Color.WHITE)
                 header.setPadding(dp(8f), dp(3f), dp(8f), dp(3f))
@@ -1112,13 +1130,13 @@ class BrowseActivity : AppCompatActivity() {
                 hLp.marginEnd = dp(4f)
                 header.layoutParams = hLp
                 val groupStart = i
-                header.setOnClickListener { switchTab(groupStart) }
+                header.setOnClickListener { toggleGroupCollapsed(g) }
                 header.setOnLongClickListener {
                     showTabGroupMenu(groupStart, header)
                     true
                 }
                 cluster.addView(header)
-                for (idx in i until end) {
+                if (!collapsed) for (idx in i until end) {
                     cluster.addView(paintTabChip(idx, tabs[idx], sz, inGroup = true))
                 }
                 tabStrip.addView(cluster)
@@ -1226,6 +1244,7 @@ class BrowseActivity : AppCompatActivity() {
         if (i != tabIndex) snapThumb()
         tabIndex = i
         val t = tabs[i]
+        t.group?.takeIf { it in collapsedGroups() }?.let { setGroupCollapsed(it, false); paintTabs() }
         renderOmniboxDecor(if (t.home) null else t.url)
         if (t.home || t.url.isEmpty()) showHome() else go(t.url)
     }
