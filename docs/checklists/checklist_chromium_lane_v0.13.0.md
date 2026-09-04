@@ -35,5 +35,5 @@ Anthony 2026-09-03: "do the flip because the servo formatting is evidently incre
 - [x] CLI URL argument opens as a tab; `WEBKIT_DISABLE_DMABUF_RENDERER=1`
 - [x] Built in the Amni Bake chroot (`C:/amni-bake/incoming/linux-build.sh`), ran in the Amni OS VM (`run-ab.sh`), screenshots os2_ab4/os2_ab5
 - [x] PKGBUILD moved to the WebKitGTK lane (backup `amni-os/backups/PKGBUILD.servo-lane.v0.13.0.bak`)
-- [ ] WebKitGTK content-rule-list shield for subresources; collapse blocked ad iframes
+- [x] WebKitGTK content-rule-list shield for subresources + css-display-none for blocked ad iframes (patch_linux_shield_v0131.py, built in WSL Ubuntu-24.04 since the bake VM was in use)
 - [ ] Fresh ISO bake with the new PKGBUILD

@@ -54,6 +54,8 @@ struct App {
     proxy: EventLoopProxy<()>,
     blocker: Rc<RefCell<AdBlocker>>,
     shield: Rc<Cell<bool>>,
+    #[cfg(not(windows))]
+    filter: Option<usize>,
     collapsed: Vec<String>,
     ephemeral: bool,
 }
@@ -112,6 +114,45 @@ fn privacy_env(cfg: &crate::storage::config::BrowserConfig) {
         let ud = dir.join("amni-browse").join("webview2-data");
         std::fs::create_dir_all(&ud).ok();
         std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", ud);
+    }
+}
+/// WebKitGTK request shield: the ad/tracker lists compiled once into a WebKit content rule list
+/// (blocks subresources like the Windows `WebResourceRequested` hook) and attached to every tab.
+#[cfg(not(windows))]
+unsafe extern "C" fn on_filter_saved(src: *mut webkit2gtk::glib::gobject_ffi::GObject, res: *mut webkit2gtk::gio::ffi::GAsyncResult, data: webkit2gtk::glib::ffi::gpointer) {
+    let mut err: *mut webkit2gtk::glib::ffi::GError = std::ptr::null_mut();
+    let f = webkit2gtk_sys::webkit_user_content_filter_store_save_finish(src as *mut webkit2gtk_sys::WebKitUserContentFilterStore, res, &mut err);
+    if !err.is_null() { let e: webkit2gtk::glib::Error = webkit2gtk::glib::translate::from_glib_full(err); warn!("shield: content rule list failed: {}", e); }
+    let done: Rc<Cell<Option<usize>>> = Rc::from_raw(data as *const Cell<Option<usize>>);
+    done.set(Some(f as usize));
+}
+#[cfg(not(windows))]
+fn compile_filter() -> Option<usize> {
+    let dir = dirs::config_dir()?.join("amni-browse").join("filters");
+    std::fs::create_dir_all(&dir).ok();
+    let path = std::ffi::CString::new(dir.to_str()?).ok()?;
+    let id = std::ffi::CString::new("amni-shield").ok()?;
+    let rules = AdBlocker::content_rules();
+    let done: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
+    unsafe {
+        let store = webkit2gtk_sys::webkit_user_content_filter_store_new(path.as_ptr());
+        let bytes = webkit2gtk::glib::ffi::g_bytes_new(rules.as_ptr() as *const _, rules.len());
+        webkit2gtk_sys::webkit_user_content_filter_store_save(store, id.as_ptr(), bytes, std::ptr::null_mut(), Some(on_filter_saved), Rc::into_raw(done.clone()) as *mut _);
+        let ctx = webkit2gtk::glib::MainContext::default();
+        while done.get().is_none() { ctx.iteration(true); }
+        webkit2gtk::glib::ffi::g_bytes_unref(bytes);
+    }
+    let f = done.get()?;
+    match f { 0 => None, _ => { info!("shield: content rule list compiled ({} bytes)", rules.len()); Some(f) } }
+}
+#[cfg(not(windows))]
+fn attach_filter(view: &WebView, filter: Option<usize>, on: bool) {
+    use webkit2gtk::glib::translate::ToGlibPtr;
+    use webkit2gtk::WebViewExt;
+    use wry::WebViewExtUnix;
+    if let (Some(f), Some(m)) = (filter, view.webview().user_content_manager()) {
+        let mp: *mut webkit2gtk_sys::WebKitUserContentManager = m.to_glib_none().0;
+        unsafe { match on { true => webkit2gtk_sys::webkit_user_content_manager_add_filter(mp, f as *mut _), false => webkit2gtk_sys::webkit_user_content_manager_remove_filter(mp, f as *mut _) } }
     }
 }
 /// Everything wry does not expose: request-level shield + DNT/GPC headers, real history state,
@@ -248,6 +289,10 @@ impl App {
         let px = self.proxy.clone();
         Rc::new(move |e: Ev| { ev.borrow_mut().push(e); let _ = px.send_event(()); })
     }
+    fn reshield(&mut self) {
+        #[cfg(not(windows))]
+        for t in &self.tabs { attach_filter(&t.view, self.filter, self.shield.get()); }
+    }
     fn spawn_tab(&mut self, url: &str, private: bool, at: Option<usize>) -> usize {
         let uid = self.next_uid;
         self.next_uid += 1;
@@ -286,6 +331,8 @@ impl App {
             .with_download_started_handler(move |u, path| { let name = path.file_name().map(|n| n.to_os_string()).unwrap_or_else(|| "download".into()); std::fs::create_dir_all(&dl_dir).ok(); *path = dl_dir.join(name); info!("download: {} -> {:?}", u, path); true })
             .build_as_child(&self.window);
         let view = match view { Ok(v) => v, Err(e) => { warn!("webview2 tab failed: {}", e); return self.active; } };
+        #[cfg(not(windows))]
+        attach_filter(&view, self.filter, self.shield.get());
         let core = wire_engine(&view, uid, push, self.blocker.clone(), self.shield.clone(), self.state.config.enable_do_not_track, !private && self.state.config.autofill_on_load);
         let _ = view.zoom(self.state.config.default_zoom.max(0.25));
         let tab = Tab { uid, view, core, url: url.to_string(), title: String::new(), private, loading: true, zoom: self.state.config.default_zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None };
@@ -397,7 +444,7 @@ impl App {
             "home_page" => self.state.config.home_page = v.to_string(),
             "theme" => { self.state.themes.set_theme(v); self.state.themes.save(); self.apply_frame_color(); }
             "default_zoom" => { self.state.config.default_zoom = v.parse().unwrap_or(1.0); }
-            "block_ads" | "shield" => { self.state.config.block_ads = on; self.shield.set(on); }
+            "block_ads" | "shield" => { self.state.config.block_ads = on; self.shield.set(on); self.reshield(); }
             "restore_session" => self.state.config.restore_session = on,
             "custom_user_agent" => self.state.config.custom_user_agent = Some(v.to_string()).filter(|s| !s.trim().is_empty()),
             "check_updates" => self.state.config.check_updates = on,
@@ -516,7 +563,7 @@ impl App {
                 }
             }
             "bookmark_remove" => { if let Some(id) = a.get("id") { self.state.bookmarks.remove(id); self.state.bookmarks.save(); } }
-            "shield" | "block_ads" => { let on = !self.shield.get(); self.shield.set(on); self.state.config.block_ads = on; self.state.config.save(); }
+            "shield" | "block_ads" => { let on = !self.shield.get(); self.shield.set(on); self.state.config.block_ads = on; self.state.config.save(); self.reshield(); }
             "setting_set" => { if let (Some(k), Some(v)) = (a.get("k").cloned(), a.get("v").cloned()) { self.setting_set(&k, &v); } }
             "settings" => self.open_tab(Some(internal_url("settings")), false),
             "show_tutorial" => self.open_tab(Some(internal_url("tutorial")), false),
@@ -658,7 +705,7 @@ pub fn run(state: BrowserState) {
     let shield = Rc::new(Cell::new(state.config.block_ads));
     #[cfg(windows)]
     let parent = (window.hwnd() as isize) as HWND;
-    let mut a = App { window, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, collapsed: Vec::new(), ephemeral };
+    let mut a = App { window, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, #[cfg(not(windows))] filter: compile_filter(), collapsed: Vec::new(), ephemeral };
     let chrome_proto = protocol.clone();
     let kpush = a.pusher();
     let chrome = WebViewBuilder::new().with_url(&internal_url("chrome")).with_bounds(a.chrome_rect()).with_devtools(true).with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT)).with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))

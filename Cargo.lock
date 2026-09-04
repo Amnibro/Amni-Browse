@@ -221,6 +221,8 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+ "webkit2gtk",
+ "webkit2gtk-sys",
  "webpki-roots 0.26.11",
  "webview2-com",
  "wgpu",

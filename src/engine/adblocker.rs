@@ -271,6 +271,22 @@ impl AdBlocker {
         }
     }
 
+    /// WebKit content-blocker JSON (Safari/WebKitGTK rule list) mirroring the Windows request shield:
+    /// block on the domain list + tracker paths, ignore-previous-rules on the auth allowlist, and hide
+    /// the iframes/containers the blocked ads leave behind.
+    pub fn content_rules() -> String {
+        let esc = |s: &str| s.replace('.', "\\\\.").replace('/', "\\\\/").replace('?', "\\\\?");
+        let mut rules: Vec<String> = BLOCKED_DOMAINS.iter().map(|d| format!(r#"{{"trigger":{{"url-filter":"{}","url-filter-is-case-sensitive":false}},"action":{{"type":"block"}}}}"#, esc(d))).collect();
+        for p in ["[?&]utm_[a-z]+=", "\\\\/ads?\\\\/", "\\\\/adserv", "\\\\/pixel[./]", "\\\\/beacon[./]", "[?&]fbclid=", "[?&]gclid=", "[?&]mc_[a-z]+=", "\\\\/tracking?[./]", "\\\\/track[./]", "\\\\/collect\\\\?", "\\\\/__utm\\\\.gif", "\\\\/piwik\\\\.", "\\\\/matomo\\\\."] {
+            rules.push(format!(r#"{{"trigger":{{"url-filter":"{}","url-filter-is-case-sensitive":false,"resource-type":["image","script","raw","popup","document","style-sheet","font","media","svg-document"]}},"action":{{"type":"block"}}}}"#, p));
+        }
+        for a in AUTH_ALLOW.iter().map(|s| esc(s)).chain(["\\\\/o\\\\/oauth2", "\\\\/oauth2\\\\/", "ux_mode=popup", "gsiwebsdk", "redirect_uri=gis_"].into_iter().map(String::from)) {
+            rules.push(format!(r#"{{"trigger":{{"url-filter":"{}","url-filter-is-case-sensitive":false}},"action":{{"type":"ignore-previous-rules"}}}}"#, a));
+        }
+        let hide: Vec<String> = BLOCKED_DOMAINS.iter().take(160).map(|d| format!("iframe[src*='{}']", d)).chain(["ins.adsbygoogle", "[id^='google_ads_iframe']", "[id^='div-gpt-ad']", "[data-ad-slot]", "[data-google-query-id]", ".adsbygoogle", "iframe[id^='google_ads']", "iframe[name^='google_ads']", "[class~='ad-slot']", "[class~='ad-container']", "[id^='ad-slot']"].into_iter().map(String::from)).collect();
+        rules.push(format!(r#"{{"trigger":{{"url-filter":".*"}},"action":{{"type":"css-display-none","selector":"{}"}}}}"#, hide.join(", ")));
+        format!("[{}]", rules.join(","))
+    }
     pub fn blocked_count(&self) -> u64 {
         self.blocked_count
     }
@@ -329,5 +345,18 @@ mod tests {
         let mut blocker = AdBlocker::new(true, true);
         assert!(blocker.should_block("https://example.com/track/pixel.gif"));
         assert!(blocker.should_block("https://example.com?utm_source=test"));
+    }
+}
+#[cfg(test)]
+mod content_rules_tests {
+    use super::AdBlocker;
+    #[test]
+    fn content_rules_are_json() {
+        let v: serde_json::Value = serde_json::from_str(&AdBlocker::content_rules()).expect("valid content-blocker json");
+        let rules = v.as_array().unwrap();
+        assert!(rules.len() > 100);
+        assert!(rules.iter().any(|r| r["action"]["type"] == "block" && r["trigger"]["url-filter"].as_str().unwrap().contains("doubleclick\\.net")));
+        assert!(rules.iter().any(|r| r["action"]["type"] == "ignore-previous-rules"));
+        assert_eq!(rules.last().unwrap()["action"]["type"], "css-display-none");
     }
 }

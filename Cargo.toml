@@ -70,6 +70,10 @@ euclid = { version = "0.22", optional = true }
 keyboard-types = { version = "0.7", optional = true }
 rusqlite = { version = "0.38", features = ["bundled"] }
 rfd = { version = "0.15", optional = true }
+[target.'cfg(not(windows))'.dependencies]
+webkit2gtk = { version = "=2.0.1", features = ["v2_38"] }
+webkit2gtk-sys = { version = "=2.0.1", features = ["v2_38"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
 webview2-com = "0.33"
