@@ -1,26 +1,44 @@
 use std::{borrow::Cow, cell::{Cell, RefCell}, collections::HashMap, path::PathBuf, rc::Rc};
 use log::{info, warn};
-use tao::{dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize}, event::{ElementState, Event, WindowEvent}, event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy}, keyboard::{Key, ModifiersState}, platform::windows::WindowExtWindows, window::{Fullscreen, Window, WindowBuilder}};
-use wry::{http, PageLoadEvent, Rect, WebView, WebViewBuilder, WebViewExtWindows};
+use tao::{dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize}, event::{ElementState, Event, WindowEvent}, event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy}, keyboard::{Key, ModifiersState}, window::{Fullscreen, Window, WindowBuilder}};
+use wry::{http, PageLoadEvent, Rect, WebView, WebViewBuilder};
+#[cfg(windows)]
+use tao::platform::windows::WindowExtWindows;
+#[cfg(windows)]
+use wry::WebViewExtWindows;
+#[cfg(windows)]
 use webview2_com::{Microsoft::Web::WebView2::Win32::*, BytesReceivedChangedEventHandler, ClearBrowsingDataCompletedHandler, ContainsFullScreenElementChangedEventHandler, DownloadStartingEventHandler, FaviconChangedEventHandler, HistoryChangedEventHandler, IsDocumentPlayingAudioChangedEventHandler, StateChangedEventHandler, WebResourceRequestedEventHandler};
+#[cfg(windows)]
 use windows::{core::{w, Interface, HSTRING, PWSTR}, Win32::Foundation::BOOL, Win32::System::{Com::CoTaskMemFree, WinRT::EventRegistrationToken}};
+#[cfg(windows)]
 use windows_sys::Win32::Foundation::HWND;
+#[cfg(windows)]
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindow, SetWindowPos, GW_CHILD, HWND_TOP, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+#[cfg(windows)]
+type Core = ICoreWebView2;
+#[cfg(not(windows))]
+type Core = ();
 use crate::{app::BrowserState, engine::adblocker::AdBlocker, storage::{config::{APP_NAME, APP_VERSION}, downloads::{DownloadItem, DownloadManager, DownloadStatus}, session::{SessionManager, SessionTab}}, ui::internal_pages::{esc_html, newtab_html, theme_root_vars, SETTINGS_TPL, TUTORIAL_TPL}, ui::tokens::SERVO_CHROME_HEIGHT_CSS};
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+#[cfg(windows)]
 const ENGINE: &str = "Chromium (WebView2)";
+#[cfg(not(windows))]
+const ENGINE: &str = "WebKitGTK";
 const FRAME_CSS: f64 = 5.0;
+const DL_INTERRUPTED: i32 = 1;
+const DL_COMPLETED: i32 = 2;
 const AUTH_POPUP_HOSTS: &[&str] = &["accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com", "facebook.com/dialog", "facebook.com/login", "github.com/login", "auth0.com", "okta.com", "oauth", "openid", "signin", "sso."];
 const FETCH_SHIM: &str = "(function(){var f=window.fetch.bind(window);window.fetch=function(u,o){if(typeof u==='string'&&u.indexOf('amnibrowse://')===0){u=u.replace(/^amnibrowse:\\/\\/([^\\/?#]+)\\/?/,function(_,h){return 'http://amnibrowse.'+h+'/'})}return f(u,o)}})()";
 const KEY_SCRIPT: &str = "(function(){document.addEventListener('keydown',function(e){var k=e.key.toLowerCase();var fn={f5:1,f11:1,f12:1,escape:1};var alt={arrowleft:1,arrowright:1,home:1};var send=function(){e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'key',k:k,shift:e.shiftKey?1:0,alt:e.altKey?1:0}))}catch(_){}};if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&fn[k]){if(k==='escape'&&document.activeElement&&document.activeElement.tagName!=='BODY')return;send();return}if(e.altKey&&!e.ctrlKey&&alt[k]){send();return}if(!e.ctrlKey||e.altKey||e.metaKey)return;var hot={t:1,w:1,l:1,d:1,tab:1,h:1,j:1,u:1,f:1,p:1,r:1,n:1,'1':1,'2':1,'3':1,'4':1,'5':1,'6':1,'7':1,'8':1,'9':1,'=':1,'+':1,'-':1,'0':1,k:e.shiftKey?1:0,i:e.shiftKey?1:0};if(!hot[k])return;send()},true)})()";
 const FIND_SCRIPT: &str = "(function(){var H=window.CSS&&CSS.highlights;var st={q:'',ranges:[],i:-1};function clear(){if(H){CSS.highlights.delete('amni-find');CSS.highlights.delete('amni-find-cur')}st={q:'',ranges:[],i:-1}}function collect(q){var out=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p)return NodeFilter.FILTER_REJECT;var t=p.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='NOSCRIPT')return NodeFilter.FILTER_REJECT;return n.nodeValue.toLowerCase().indexOf(q)>=0?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP}}),n;while((n=w.nextNode())){var s=n.nodeValue.toLowerCase(),k=0;while((k=s.indexOf(q,k))>=0){var r=document.createRange();r.setStart(n,k);r.setEnd(n,k+q.length);out.push(r);k+=q.length;if(out.length>5000)return out}}return out}function paint(){if(!H)return;var h=new Highlight();st.ranges.forEach(function(r){h.add(r)});CSS.highlights.set('amni-find',h);if(st.i>=0)CSS.highlights.set('amni-find-cur',new Highlight(st.ranges[st.i]))}function ensureCss(){if(document.getElementById('amni-find-css'))return;var s=document.createElement('style');s.id='amni-find-css';s.textContent='::highlight(amni-find){background:#ffd54a;color:#111}::highlight(amni-find-cur){background:#ff8a00;color:#111}';(document.head||document.documentElement).appendChild(s)}window.__amniFind=function(q,dir){q=(q||'').toLowerCase();if(!q){clear();return 0}ensureCss();if(q!==st.q){st.q=q;st.ranges=collect(q);st.i=st.ranges.length?0:-1}else if(st.ranges.length){st.i=(st.i+(dir<0?-1:1)+st.ranges.length)%st.ranges.length}if(!st.ranges.length){paint();return 0}var r=st.ranges[st.i];try{var sel=window.getSelection();sel.removeAllRanges();if(!H)sel.addRange(r)}catch(e){}try{var el=r.startContainer.parentElement;el&&el.scrollIntoView({block:'center',inline:'nearest'})}catch(e){}paint();return st.ranges.length};window.__amniFindClear=clear})()";
+#[allow(dead_code)]
 enum Ev { Cmd(String, HashMap<String, String>), Title(u64, String), Load(u64, bool, String), Popup(String), Key(u64, String, bool, bool), History(u64, bool, bool), Favicon(u64, String), PageFullscreen(u64, bool), Audio(u64, bool), DlStart(String, String, String, Option<u64>), DlProgress(String, u64), DlState(String, i32, String) }
-struct Tab { uid: u64, view: WebView, core: Option<ICoreWebView2>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String> }
+struct Tab { uid: u64, view: WebView, core: Option<Core>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String> }
 struct App {
     window: Window,
     decorated: bool,
     chrome: Option<WebView>,
-    chrome_hwnd: HWND,
+    chrome_hwnd: usize,
     tabs: Vec<Tab>,
     active: usize,
     closed: Vec<(String, bool)>,
@@ -44,7 +62,8 @@ fn load_toolbar_html() -> String {
     let candidates = [std::env::var_os("AMNI_CHROME_HTML").map(PathBuf::from), Some(PathBuf::from("assets/chrome/toolbar.html")), std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("assets/chrome/toolbar.html")))];
     candidates.into_iter().flatten().find_map(|p| std::fs::read_to_string(p).ok()).unwrap_or_else(|| include_str!("../../assets/chrome/toolbar.html").to_string())
 }
-fn internal_url(host: &str) -> String { format!("http://amnibrowse.{}/", host) }
+fn internal_url(host: &str) -> String { match cfg!(windows) { true => format!("http://amnibrowse.{}/", host), false => format!("amnibrowse://{}/", host) } }
+fn fetch_shim() -> &'static str { match cfg!(windows) { true => FETCH_SHIM, false => "" } }
 fn is_internal(url: &str) -> bool { url.starts_with("https://amnibrowse.") || url.starts_with("http://amnibrowse.") || url.starts_with("amnibrowse://") }
 fn display_url(url: &str) -> String {
     match url.strip_prefix("https://amnibrowse.").or_else(|| url.strip_prefix("http://amnibrowse.")) { Some(rest) => format!("amnibrowse://{}", rest.trim_end_matches('/')), None => url.to_string() }
@@ -66,6 +85,7 @@ fn json_headers(ct: &'static str) -> http::response::Builder {
 }
 fn respond(ct: &'static str, body: String) -> http::Response<Cow<'static, [u8]>> { json_headers(ct).body(Cow::Owned(body.into_bytes())).unwrap() }
 fn empty(status: u16) -> http::Response<Cow<'static, [u8]>> { json_headers("text/plain").status(status).body(Cow::Borrowed(&[][..])).unwrap() }
+#[cfg(windows)]
 fn take_pwstr(p: PWSTR) -> String {
     if p.is_null() { return String::new(); }
     let s = unsafe { p.to_string() }.unwrap_or_default();
@@ -83,6 +103,11 @@ fn privacy_env(cfg: &crate::storage::config::BrowserConfig) {
         args.push_str(&format!(" --enable-features=DnsOverHttps --dns-over-https-mode=secure --dns-over-https-templates={}", tpl));
     }
     std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args);
+    #[cfg(not(windows))]
+    {
+        if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
+        if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() && std::env::var("AMNI_VM").map(|v| v == "1").unwrap_or(false) { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); }
+    }
     if let Some(dir) = dirs::config_dir() {
         let ud = dir.join("amni-browse").join("webview2-data");
         std::fs::create_dir_all(&ud).ok();
@@ -91,6 +116,9 @@ fn privacy_env(cfg: &crate::storage::config::BrowserConfig) {
 }
 /// Everything wry does not expose: request-level shield + DNT/GPC headers, real history state,
 /// favicons, HTML5 fullscreen, audio state, download progress, password/form autofill.
+#[cfg(not(windows))]
+fn wire_engine(_view: &WebView, _uid: u64, _push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, _dnt: bool, _autofill: bool) -> Option<Core> { None }
+#[cfg(windows)]
 fn wire_engine(view: &WebView, uid: u64, push: Push, blocker: Rc<RefCell<AdBlocker>>, shield: Rc<Cell<bool>>, dnt: bool, autofill: bool) -> Option<ICoreWebView2> {
     unsafe {
         let core = view.controller().CoreWebView2().ok()?;
@@ -171,7 +199,8 @@ impl App {
     fn content_rect(&self) -> Rect {
         let sz = self.window.inner_size();
         let f = self.frame_px();
-        let y = (self.chrome_px() + f).min(sz.height.saturating_sub(1));
+        let overlay = match cfg!(windows) { true => 0, false => (self.overlay_css as f64 * self.scale()).round() as u32 };
+        let y = (self.chrome_px().max(overlay) + f).min(sz.height.saturating_sub(1));
         Rect { position: PhysicalPosition::new(f as i32, y as i32).into(), size: PhysicalSize::new(sz.width.saturating_sub(2 * f).max(1), sz.height.saturating_sub(y + f).max(1)).into() }
     }
     fn layout(&self) {
@@ -181,9 +210,32 @@ impl App {
         for (i, t) in self.tabs.iter().enumerate() { let _ = t.view.set_bounds(r); let _ = t.view.set_visible(i == self.active); }
         self.raise_chrome();
     }
+    #[cfg(windows)]
     fn raise_chrome(&self) {
-        if !self.chrome_hwnd.is_null() { unsafe { SetWindowPos(self.chrome_hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } }
+        if self.chrome_hwnd != 0 { unsafe { SetWindowPos(self.chrome_hwnd as HWND, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } }
     }
+    #[cfg(not(windows))]
+    fn raise_chrome(&self) {}
+    #[cfg(windows)]
+    fn go_back(&self) { self.with_core(|c| unsafe { let _ = c.GoBack(); }); }
+    #[cfg(windows)]
+    fn go_forward(&self) { self.with_core(|c| unsafe { let _ = c.GoForward(); }); }
+    #[cfg(windows)]
+    fn reload_page(&self) { self.with_core(|c| unsafe { let _ = c.Reload(); }); }
+    #[cfg(windows)]
+    fn stop_page(&self) { self.with_core(|c| unsafe { let _ = c.Stop(); }); }
+    #[cfg(windows)]
+    fn open_devtools(&self) { self.with_core(|c| unsafe { let _ = c.OpenDevToolsWindow(); }); }
+    #[cfg(not(windows))]
+    fn go_back(&self) { self.active_js("history.back()"); }
+    #[cfg(not(windows))]
+    fn go_forward(&self) { self.active_js("history.forward()"); }
+    #[cfg(not(windows))]
+    fn reload_page(&self) { self.active_js("location.reload()"); }
+    #[cfg(not(windows))]
+    fn stop_page(&self) { self.active_js("window.stop()"); }
+    #[cfg(not(windows))]
+    fn open_devtools(&self) { if let Some(t) = self.active_tab() { t.view.open_devtools(); } }
     fn active_tab(&self) -> Option<&Tab> { self.tabs.get(self.active) }
     fn tab_index(&self, uid: u64) -> Option<usize> { self.tabs.iter().position(|t| t.uid == uid) }
     fn home_url(&self) -> String {
@@ -214,7 +266,7 @@ impl App {
             .with_devtools(true)
             .with_hotkeys_zoom(true)
             .with_back_forward_navigation_gestures(true)
-            .with_initialization_script(&format!("{};{};{}", FETCH_SHIM, KEY_SCRIPT, FIND_SCRIPT))
+            .with_initialization_script(&format!("{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT))
             .with_custom_protocol("amnibrowse".to_string(), move |id, req| proto(id, req))
             .with_navigation_handler(move |u| {
                 let blocked = shield.get() && !is_internal(&u) && blocker.borrow_mut().should_block(&u);
@@ -252,8 +304,7 @@ impl App {
     fn close_tab(&mut self, idx: usize) {
         if idx >= self.tabs.len() { return; }
         let t = self.tabs.remove(idx);
-        if let Some(c) = t.core.as_ref() { unsafe { let _ = c.Stop(); } }
-        let _ = t.view.evaluate_script("try{document.querySelectorAll('video,audio').forEach(function(m){m.pause()})}catch(e){}");
+        let _ = t.view.evaluate_script("try{window.stop()}catch(e){}try{document.querySelectorAll('video,audio').forEach(function(m){m.pause()})}catch(e){}");
         let _ = t.view.set_visible(false);
         if !t.private && !is_internal(&t.url) { self.closed.push((t.url.clone(), t.private)); self.closed.truncate(20); }
         drop(t);
@@ -272,7 +323,8 @@ impl App {
     }
     fn chrome_js(&self, js: &str) { if let Some(c) = self.chrome.as_ref() { let _ = c.evaluate_script(js); } }
     fn active_js(&self, js: &str) { if let Some(t) = self.active_tab() { let _ = t.view.evaluate_script(js); } }
-    fn with_core(&self, f: impl FnOnce(&ICoreWebView2)) { if let Some(c) = self.active_tab().and_then(|t| t.core.as_ref()) { f(c); } }
+    #[cfg(windows)]
+    fn with_core(&self, f: impl FnOnce(&Core)) { if let Some(c) = self.active_tab().and_then(|t| t.core.as_ref()) { f(c); } }
     fn sync_title(&self) {
         let title = self.active_tab().map(|t| match t.title.trim().is_empty() { true => display_url(&t.url), false => t.title.clone() }).unwrap_or_default();
         self.window.set_title(&match title.is_empty() || is_internal(&title) { true => APP_NAME.to_string(), false => format!("{} \u{2014} {}", title.chars().take(80).collect::<String>(), APP_NAME) });
@@ -359,6 +411,9 @@ impl App {
         if self.active_tab().map(|t| t.url.contains("amnibrowse.settings")).unwrap_or(false) && k == "theme" { self.active_js("location.reload()"); }
     }
     fn apply_frame_color(&self) { self.window.set_background_color(hex_rgba(&self.state.themes.active_theme().bg_primary)); }
+    #[cfg(not(windows))]
+    fn clear_browsing_data(&self, _kinds: u32) {}
+    #[cfg(windows)]
     fn clear_browsing_data(&self, kinds: COREWEBVIEW2_BROWSING_DATA_KINDS) {
         if let Some(c) = self.tabs.iter().find_map(|t| t.core.clone()) {
             unsafe { if let Ok(p) = c.cast::<ICoreWebView2_13>().and_then(|c| c.Profile()).and_then(|p| p.cast::<ICoreWebView2Profile2>()) { let _ = p.ClearBrowsingData(kinds, &ClearBrowsingDataCompletedHandler::create(Box::new(|_| Ok(())))); } }
@@ -371,7 +426,7 @@ impl App {
             ("home", _, true) => self.command("home", &HashMap::new()),
             ("f5", _, _) | ("r", false, false) => self.command("reload", &HashMap::new()),
             ("f11", _, _) => self.command("fullscreen", &HashMap::new()),
-            ("f12", _, _) | ("i", true, false) => self.with_core(|c| unsafe { let _ = c.OpenDevToolsWindow(); }),
+            ("f12", _, _) | ("i", true, false) => self.open_devtools(),
             ("escape", _, _) => self.command("stop", &HashMap::new()),
             ("t", false, false) => self.open_tab(None, false),
             ("t", true, false) => self.command("reopen_tab", &HashMap::new()),
@@ -398,10 +453,10 @@ impl App {
         let idx_of = |s: &str| s.trim_start_matches('t').parse::<usize>().ok();
         match name {
             "navigate" => { if let Some(u) = a.get("url").and_then(|u| resolve_input(u, &self.state.config.search_engine)) { self.navigate_active(&u); } }
-            "back" => self.with_core(|c| unsafe { let _ = c.GoBack(); }),
-            "forward" => self.with_core(|c| unsafe { let _ = c.GoForward(); }),
-            "reload" => self.with_core(|c| unsafe { let _ = c.Reload(); }),
-            "stop" => self.with_core(|c| unsafe { let _ = c.Stop(); }),
+            "back" => self.go_back(),
+            "forward" => self.go_forward(),
+            "reload" => self.reload_page(),
+            "stop" => self.stop_page(),
             "home" => { let h = self.home_url(); self.navigate_active(&h); }
             "new_tab" => self.open_tab(a.get("url").cloned(), false),
             "private_tab" => self.open_tab(a.get("url").cloned(), true),
@@ -473,15 +528,15 @@ impl App {
             "win_drag" => { let _ = self.window.drag_window(); }
             "fullscreen" => { self.fullscreen = !self.fullscreen; self.window.set_fullscreen(match self.fullscreen { true => Some(Fullscreen::Borderless(None)), false => None }); self.layout(); }
             "print" => { if let Some(t) = self.active_tab() { let _ = t.view.print(); } }
-            "devtools" => self.with_core(|c| unsafe { let _ = c.OpenDevToolsWindow(); }),
+            "devtools" => self.open_devtools(),
             "view_source" => { if let Some(t) = self.active_tab() { let u = t.url.clone(); if !is_internal(&u) && !u.starts_with("view-source:") { let i = self.spawn_tab(&format!("view-source:{}", u), false, Some(self.active + 1)); self.active = i; self.layout(); } } }
             "download" => { if let Some(t) = self.active_tab() { let u = t.url.clone(); self.state.downloads.start_download(&u); } }
             "open_download" => {
-                if let Some(p) = a.get("id").and_then(|id| self.state.downloads.downloads.iter().find(|d| &d.id == id)).map(|d| d.save_path.clone()) { let _ = std::process::Command::new("explorer").arg(&p).spawn(); }
+                if let Some(p) = a.get("id").and_then(|id| self.state.downloads.downloads.iter().find(|d| &d.id == id)).map(|d| d.save_path.clone()) { let _ = std::process::Command::new(match cfg!(windows) { true => "explorer", false => "xdg-open" }).arg(&p).spawn(); }
             }
             "download_remove" => { if let Some(id) = a.get("id") { self.state.downloads.remove_download(id); self.state.downloads.save(); } }
             "download_clear" => { self.state.downloads.clear_completed(); self.state.downloads.save(); }
-            "clear_data" => { self.clear_browsing_data(COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_PROFILE); self.state.history.clear_all(); self.state.history.save(); }
+            "clear_data" => { #[cfg(windows)] self.clear_browsing_data(COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_PROFILE); #[cfg(not(windows))] self.clear_browsing_data(0); self.state.history.clear_all(); self.state.history.save(); }
             "kbd" | "overlay_rect" | "favicon_cache" | "ctx_dismiss" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "ctx_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
             other => info!("cmd: unhandled {}", other),
         }
@@ -489,12 +544,15 @@ impl App {
     fn shutdown(&mut self) {
         self.persist();
         let c = &self.state.config;
-        let mut kinds: Option<COREWEBVIEW2_BROWSING_DATA_KINDS> = None;
-        let mut add = |k: COREWEBVIEW2_BROWSING_DATA_KINDS| { kinds = Some(match kinds { Some(x) => x | k, None => k }); };
-        if c.clear_data_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_PROFILE); }
-        if c.clear_cache_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE); }
-        if c.clear_cookies_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES); }
-        if let Some(k) = kinds { self.clear_browsing_data(k); std::thread::sleep(std::time::Duration::from_millis(400)); }
+        #[cfg(windows)]
+        {
+            let mut kinds: Option<COREWEBVIEW2_BROWSING_DATA_KINDS> = None;
+            let mut add = |k: COREWEBVIEW2_BROWSING_DATA_KINDS| { kinds = Some(match kinds { Some(x) => x | k, None => k }); };
+            if c.clear_data_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_PROFILE); }
+            if c.clear_cache_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE); }
+            if c.clear_cookies_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES); }
+            if let Some(k) = kinds { self.clear_browsing_data(k); std::thread::sleep(std::time::Duration::from_millis(400)); }
+        }
         if c.clear_history_on_exit || c.clear_data_on_exit { self.state.history.clear_all(); self.state.history.save(); }
         self.state.shutdown();
     }
@@ -509,6 +567,7 @@ impl App {
                     if !u.is_empty() { if t.url != u { t.icon = None; } t.url = u.clone(); }
                     let (private, title) = (t.private, t.title.clone());
                     if !started && !private && !is_internal(&u) && u.starts_with("http") { self.state.history.record_visit(&u, &title); self.state.history.save(); }
+                    if !started && !cfg!(windows) && u.starts_with("http") { if let Some(t) = self.tabs.get_mut(i) { if t.icon.is_none() { t.icon = url::Url::parse(&u).ok().and_then(|p| p.host_str().map(|h| format!("{}://{}/favicon.ico", p.scheme(), h))); } } }
                     if !started { if let Some(js) = std::env::var_os("AMNI_PROBE_JS").and_then(|f| std::fs::read_to_string(f).ok()) { if let Some(t) = self.tabs.get(i) { let _ = t.view.evaluate_script(&js); } } }
                     if !started && !is_internal(&u) {
                         let scripts = self.state.extensions.get_content_scripts(&u);
@@ -537,7 +596,7 @@ impl App {
             Ev::DlState(id, st, path) => {
                 if let Some(d) = self.state.downloads.downloads.iter_mut().find(|d| d.id == id) {
                     if !path.is_empty() { d.save_path = PathBuf::from(&path); d.filename = d.save_path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(d.filename.clone()); }
-                    d.status = match st { x if x == COREWEBVIEW2_DOWNLOAD_STATE_COMPLETED.0 => { d.completed_at = Some(chrono::Utc::now()); if let Some(t) = d.total_bytes { d.downloaded_bytes = t; } DownloadStatus::Completed } x if x == COREWEBVIEW2_DOWNLOAD_STATE_INTERRUPTED.0 => DownloadStatus::Failed, _ => DownloadStatus::Downloading };
+                    d.status = match st { x if x == DL_COMPLETED => { d.completed_at = Some(chrono::Utc::now()); if let Some(t) = d.total_bytes { d.downloaded_bytes = t; } DownloadStatus::Completed } x if x == DL_INTERRUPTED => DownloadStatus::Failed, _ => DownloadStatus::Downloading };
                 }
                 self.state.downloads.save();
             }
@@ -551,7 +610,7 @@ pub fn run(state: BrowserState) {
     let token = format!("{:016x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x5eed) ^ 0x9e37_79b9_7f4a_7c15u64);
     let ephemeral = std::env::args().any(|a| a == "--new-window");
     let saved = SessionManager::load().filter(|_| state.config.restore_session && !ephemeral);
-    let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(false);
+    let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(!cfg!(windows));
     let event_loop = EventLoopBuilder::<()>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let (w, h) = saved.as_ref().map(|s| (s.window_width.max(720.0), s.window_height.max(480.0))).unwrap_or((1400.0, 900.0));
@@ -570,11 +629,11 @@ pub fn run(state: BrowserState) {
         let uri = req.uri().to_string();
         let parsed = match url::Url::parse(&uri) { Ok(u) => u, Err(_) => return empty(400) };
         let host = parsed.host_str().unwrap_or("").trim_start_matches("amnibrowse.").to_string();
-        let from_chrome = req.headers().get("referer").and_then(|v| v.to_str().ok()).map(|r| r.contains("amnibrowse.chrome")).unwrap_or(false);
+        let from_chrome = req.headers().get("referer").and_then(|v| v.to_str().ok()).map(|r| r.contains("amnibrowse.chrome") || r.contains("amnibrowse://chrome")).unwrap_or(false);
         let tok_ok = parsed.query_pairs().any(|(k, v)| k == "tok" && v == ptok.as_str());
         let args: HashMap<String, String> = parsed.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
         match host.as_str() {
-            "chrome" => respond("text/html; charset=utf-8", format!("<script>{}</script>{}{}", FETCH_SHIM, load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
+            "chrome" => respond("text/html; charset=utf-8", format!("<script>{}</script>{}{}", fetch_shim(), load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
             "cmd" if from_chrome || tok_ok => { pe.borrow_mut().push(Ev::Cmd(parsed.path().trim_start_matches('/').to_string(), args)); let _ = ppx.send_event(()); empty(204) }
             "state" if from_chrome => {
                 let body = match pa.try_borrow() { Ok(g) => g.as_ref().map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => pl.borrow().clone() };
@@ -590,23 +649,26 @@ pub fn run(state: BrowserState) {
             "downloads" if from_chrome => respond("application/json; charset=utf-8", pa.try_borrow().ok().and_then(|g| g.as_ref().map(|a| a.state.downloads.to_json())).unwrap_or_else(|| "[]".into())),
             "import" => respond("application/json; charset=utf-8", "{}".into()),
             page => match pa.try_borrow().ok().and_then(|g| g.as_ref().and_then(|a| a.page_html(page))) {
-                Some(html) => respond("text/html; charset=utf-8", format!("<script>{}</script>{}", FETCH_SHIM, html)),
+                Some(html) => respond("text/html; charset=utf-8", format!("<script>{}</script>{}", fetch_shim(), html)),
                 None => empty(404),
             },
         }
     });
     let blocker = Rc::new(RefCell::new(AdBlocker::new(state.config.block_ads, state.config.block_trackers)));
     let shield = Rc::new(Cell::new(state.config.block_ads));
+    #[cfg(windows)]
     let parent = (window.hwnd() as isize) as HWND;
-    let mut a = App { window, decorated, chrome: None, chrome_hwnd: std::ptr::null_mut(), tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, collapsed: Vec::new(), ephemeral };
+    let mut a = App { window, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, collapsed: Vec::new(), ephemeral };
     let chrome_proto = protocol.clone();
     let kpush = a.pusher();
-    let chrome = WebViewBuilder::new().with_url(&internal_url("chrome")).with_bounds(a.chrome_rect()).with_devtools(true).with_initialization_script(&format!("{};{}", FETCH_SHIM, KEY_SCRIPT)).with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
+    let chrome = WebViewBuilder::new().with_url(&internal_url("chrome")).with_bounds(a.chrome_rect()).with_devtools(true).with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT)).with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
         .with_ipc_handler(move |req| { if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) { if v.get("type").and_then(|t| t.as_str()) == Some("key") { kpush(Ev::Key(0, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)); } } })
         .build_as_child(&a.window).expect("chrome webview");
+    #[cfg(windows)]
     if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }
     a.chrome = Some(chrome);
-    a.chrome_hwnd = unsafe { GetWindow(parent, GW_CHILD) };
+    #[cfg(windows)]
+    { a.chrome_hwnd = unsafe { GetWindow(parent, GW_CHILD) } as usize; }
     let restore: Vec<SessionTab> = saved.map(|s| s.tabs).unwrap_or_default();
     let mut active = 0;
     for t in restore.iter() {
@@ -616,6 +678,7 @@ pub fn run(state: BrowserState) {
         if let Some(tab) = a.tabs.get_mut(i) { tab.pinned = t.pinned; tab.group = t.group.clone(); }
         if t.is_active { active = a.tabs.len().saturating_sub(1); }
     }
+    if let Some(cli) = std::env::args().skip(1).find(|x| !x.starts_with('-')).and_then(|x| resolve_input(&x, &a.state.config.search_engine)) { a.spawn_tab(&cli, false, None); active = a.tabs.len() - 1; }
     if a.tabs.is_empty() { let h = a.home_url(); a.spawn_tab(&h, false, None); }
     a.active = active.min(a.tabs.len().saturating_sub(1));
     a.layout();

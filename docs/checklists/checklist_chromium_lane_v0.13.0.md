@@ -14,7 +14,7 @@ Anthony 2026-09-03: "do the flip because the servo formatting is evidently incre
 - [x] Favicons in the tab strip (FaviconChanged)
 - [x] Download progress into the downloads panel; [x] find bar with highlight-all (CSS Custom Highlight API)
 - [x] Engine back/forward/reload/stop, HTML5 fullscreen, audio state, password autosave + autofill, clear-on-exit, DevTools, full key map
-- [ ] Amni-OS (Linux) lane: same code on WebKitGTK via wry, or CEF for true Chromium
+- [x] Amni-OS (Linux) lane: same code on WebKitGTK via wry (verified in the Amni OS VM, speedtest via CLI URL); CEF later if needed
 - [ ] Android tab groups do not collapse (separate lap)
 
 ## Parity lap 2 (2026-09-03)
@@ -26,4 +26,14 @@ Anthony 2026-09-03: "do the flip because the servo formatting is evidently incre
 - [x] Linux/macOS fallback to plain wry backend (cfg gating)
 - [x] Packager rewritten: exe + toolbar + docs, versioned + unversioned zip
 - [x] Site: amni-browse.html Windows download block + browse/latest.json 0.13.0
-- [ ] GitHub release v0.13.0 + site push + live md5 check
+- [x] GitHub release v0.13.0 (assets re-uploaded after the Linux refactor) + site push + live md5 check
+
+## Linux lane (2026-09-04)
+- [x] cfg(windows) gating of COM imports/handlers; `Core = ()` on Linux; numeric download-state consts
+- [x] Native `amnibrowse://` scheme on Linux, `http://amnibrowse.<host>/` on Windows; `fetch_shim()` empty off Windows
+- [x] Decorated window off Windows; overlay-inset content rect; favicon.ico fallback
+- [x] CLI URL argument opens as a tab; `WEBKIT_DISABLE_DMABUF_RENDERER=1`
+- [x] Built in the Amni Bake chroot (`C:mni-bake\incoming\linux-build.sh`), ran in the Amni OS VM (`run-ab.sh`), screenshots os2_ab4/os2_ab5
+- [x] PKGBUILD moved to the WebKitGTK lane (backup `amni-os/backups/PKGBUILD.servo-lane.v0.13.0.bak`)
+- [ ] WebKitGTK content-rule-list shield for subresources; collapse blocked ad iframes
+- [ ] Fresh ISO bake with the new PKGBUILD

@@ -1,7 +1,7 @@
 pub mod os_default;
 #[cfg(feature = "webview")]
 pub mod webview;
-#[cfg(all(feature = "webview", target_os = "windows"))]
+#[cfg(feature = "webview")]
 pub mod chromium;
 #[cfg(feature = "servo-engine")]
 pub mod servo;
