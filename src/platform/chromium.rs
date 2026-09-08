@@ -9,7 +9,7 @@ use tao::platform::unix::WindowExtUnix;
 #[cfg(not(windows))]
 use wry::WebViewBuilderExtUnix;
 #[cfg(not(windows))]
-use gtk::prelude::{BoxExt, WidgetExt as GtkWidgetExt};
+use gtk::prelude::{BoxExt, LayoutExt, WidgetExt as GtkWidgetExt};
 #[cfg(windows)]
 use wry::WebViewExtWindows;
 #[cfg(windows)]
@@ -43,7 +43,7 @@ struct Tab { uid: u64, view: WebView, core: Option<Core>, url: String, title: St
 struct App {
     window: Window,
     #[cfg(not(windows))]
-    fixed: gtk::Fixed,
+    canvas: gtk::Layout,
     decorated: bool,
     chrome: Option<WebView>,
     chrome_hwnd: usize,
@@ -108,13 +108,17 @@ fn take_pwstr(p: PWSTR) -> String {
 #[cfg(windows)]
 fn build_view(b: WebViewBuilder<'_>, host: &Window) -> wry::Result<WebView> { b.build_as_child(host) }
 #[cfg(not(windows))]
-fn build_view(b: WebViewBuilder<'_>, host: &gtk::Fixed) -> wry::Result<WebView> { b.build_gtk(host) }
+fn build_view(b: WebViewBuilder<'_>, host: &gtk::Layout) -> wry::Result<WebView> { b.build_gtk(host) }
+/// gtk::Layout, not gtk::Fixed: a Fixed re-allocates children at their original put() spot with
+/// their original size request on every pass, so views stayed the size the window opened at and
+/// the window could never shrink. A Layout is a canvas whose own size request ignores its
+/// children; `place()` moves and resizes each view on every layout.
 #[cfg(not(windows))]
-fn gtk_host(window: &Window) -> gtk::Fixed {
-    let f = gtk::Fixed::new();
-    if let Some(vb) = window.default_vbox() { vb.pack_start(&f, true, true, 0); }
-    f.show_all();
-    f
+fn gtk_host(window: &Window) -> gtk::Layout {
+    let l = gtk::Layout::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+    if let Some(vb) = window.default_vbox() { vb.pack_start(&l, true, true, 0); }
+    l.show_all();
+    l
 }
 fn hex_rgba(hex: &str) -> Option<tao::window::RGBA> {
     let h = hex.trim().trim_start_matches('#');
@@ -254,7 +258,19 @@ impl App {
     #[cfg(windows)]
     fn host(&self) -> &Window { &self.window }
     #[cfg(not(windows))]
-    fn host(&self) -> &gtk::Fixed { &self.fixed }
+    fn host(&self) -> &gtk::Layout { &self.canvas }
+    #[cfg(windows)]
+    fn place(&self, v: &WebView, r: Rect) { let _ = v.set_bounds(r); }
+    #[cfg(not(windows))]
+    fn place(&self, v: &WebView, r: Rect) {
+        use wry::WebViewExtUnix;
+        let s = self.scale();
+        let (x, y): (i32, i32) = r.position.to_logical::<i32>(s).into();
+        let (w, h): (i32, i32) = r.size.to_logical::<i32>(s).into();
+        let wv = v.webview();
+        self.canvas.move_(&wv, x, y);
+        wv.set_size_request(w.max(1), h.max(1));
+    }
     fn frame_px(&self) -> u32 { match self.decorated || self.fullscreen || self.page_fullscreen || self.window.is_maximized() { true => 0, false => (FRAME_CSS * self.scale()).round() as u32 } }
     fn chrome_px(&self) -> u32 { match self.fullscreen || self.page_fullscreen { true => 0, false => (SERVO_CHROME_HEIGHT_CSS as f64 * self.scale()).round() as u32 } }
     fn chrome_rect(&self) -> Rect {
@@ -272,9 +288,9 @@ impl App {
     }
     fn layout(&self) {
         let hide_chrome = self.fullscreen || self.page_fullscreen;
-        if let Some(c) = self.chrome.as_ref() { let _ = c.set_bounds(self.chrome_rect()); let _ = c.set_visible(!hide_chrome); }
+        if let Some(c) = self.chrome.as_ref() { self.place(c, self.chrome_rect()); let _ = c.set_visible(!hide_chrome); }
         let r = self.content_rect();
-        for (i, t) in self.tabs.iter().enumerate() { let _ = t.view.set_bounds(r); let _ = t.view.set_visible(i == self.active); }
+        for (i, t) in self.tabs.iter().enumerate() { self.place(&t.view, r); let _ = t.view.set_visible(i == self.active); }
         self.raise_chrome();
     }
     #[cfg(windows)]
@@ -359,6 +375,7 @@ impl App {
         let view = match view { Ok(v) => v, Err(e) => { warn!("webview2 tab failed: {}", e); return self.active; } };
         #[cfg(not(windows))]
         attach_filter(&view, self.filter, self.shield.get());
+        self.place(&view, self.content_rect());
         let core = wire_engine(&view, uid, push, self.blocker.clone(), self.shield.clone(), self.state.config.enable_do_not_track, !private && self.state.config.autofill_on_load);
         let _ = view.zoom(self.state.config.default_zoom.max(0.25));
         let tab = Tab { uid, view, core, url: url.to_string(), title: String::new(), private, loading: true, zoom: self.state.config.default_zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None };
@@ -732,8 +749,8 @@ pub fn run(state: BrowserState) {
     #[cfg(windows)]
     let parent = (window.hwnd() as isize) as HWND;
     #[cfg(not(windows))]
-    let fixed = gtk_host(&window);
-    let mut a = App { window, #[cfg(not(windows))] fixed, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, #[cfg(not(windows))] filter: compile_filter(), collapsed: Vec::new(), ephemeral };
+    let canvas = gtk_host(&window);
+    let mut a = App { window, #[cfg(not(windows))] canvas, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, #[cfg(not(windows))] filter: compile_filter(), collapsed: Vec::new(), ephemeral };
     let chrome_proto = protocol.clone();
     let kpush = a.pusher();
     let chrome = WebViewBuilder::new().with_url(&internal_url("chrome")).with_bounds(a.chrome_rect()).with_devtools(true).with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT)).with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
@@ -741,6 +758,7 @@ pub fn run(state: BrowserState) {
     let chrome = build_view(chrome, a.host()).expect("chrome webview");
     #[cfg(windows)]
     if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }
+    a.place(&chrome, a.chrome_rect());
     a.chrome = Some(chrome);
     #[cfg(windows)]
     { a.chrome_hwnd = unsafe { GetWindow(parent, GW_CHILD) } as usize; }
