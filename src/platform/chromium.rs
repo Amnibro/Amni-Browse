@@ -109,7 +109,21 @@ fn take_pwstr(p: PWSTR) -> String {
 #[cfg(windows)]
 fn build_view(b: WebViewBuilder<'_>, host: &Window) -> wry::Result<WebView> { b.build_as_child(host) }
 #[cfg(not(windows))]
-fn build_view(b: WebViewBuilder<'_>, host: &gtk::Layout) -> wry::Result<WebView> { b.build_gtk(host) }
+fn build_view(b: WebViewBuilder<'_>, host: &gtk::Layout) -> wry::Result<WebView> {
+    let v = b.build_gtk(host)?;
+    focus_on_click(&v);
+    Ok(v)
+}
+/// GTK keeps keyboard focus on whichever webview had it last, so a click in the omnibox reached
+/// the DOM while the keystrokes still went to the page. Every view grabs GTK focus when clicked.
+#[cfg(not(windows))]
+fn focus_on_click(v: &WebView) {
+    use gtk::prelude::WidgetExt;
+    use wry::WebViewExtUnix;
+    let wv = v.webview();
+    wv.set_can_focus(true);
+    wv.connect_button_press_event(|w, _| { if !w.has_focus() { w.grab_focus(); } gtk::glib::Propagation::Proceed });
+}
 /// gtk::Layout, not gtk::Fixed: a Fixed re-allocates children at their original put() spot with
 /// their original size request on every pass, so views stayed the size the window opened at and
 /// the window could never shrink. A Layout is a canvas whose own size request ignores its
@@ -298,8 +312,7 @@ impl App {
     fn content_rect(&self) -> Rect {
         let sz = self.window.inner_size();
         let f = self.frame_px();
-        let overlay = match cfg!(windows) { true => 0, false => (self.overlay_css as f64 * self.scale()).round() as u32 };
-        let y = (self.chrome_px().max(overlay) + f).min(sz.height.saturating_sub(1));
+        let y = (self.chrome_px() + f).min(sz.height.saturating_sub(1));
         Rect { position: PhysicalPosition::new(f as i32, y as i32).into(), size: PhysicalSize::new(sz.width.saturating_sub(2 * f).max(1), sz.height.saturating_sub(y + f).max(1)).into() }
     }
     fn layout(&self) {
@@ -313,8 +326,15 @@ impl App {
     fn raise_chrome(&self) {
         if self.chrome_hwnd != 0 { unsafe { SetWindowPos(self.chrome_hwnd as HWND, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } }
     }
+    /// GtkLayout stacks children in the order they were added, so every tab spawned after the
+    /// chrome sits above it and swallows the expanded menu overlay. Raising the chrome's own
+    /// GdkWindow puts it back on top; without this the app menu opens invisibly under the page.
     #[cfg(not(windows))]
-    fn raise_chrome(&self) {}
+    fn raise_chrome(&self) {
+        use gtk::prelude::WidgetExt;
+        use wry::WebViewExtUnix;
+        if let Some(w) = self.chrome.as_ref().and_then(|c| c.webview().window()) { w.raise(); }
+    }
     #[cfg(windows)]
     fn go_back(&self) { self.with_core(|c| unsafe { let _ = c.GoBack(); }); }
     #[cfg(windows)]
@@ -433,6 +453,40 @@ impl App {
     fn focus_omnibox(&self, clear: bool) {
         if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); let _ = c.evaluate_script(&format!("try{{var u=document.getElementById('url');{}u.focus();u.select()}}catch(e){{}}", match clear { true => "u.value='';", false => "" })); }
     }
+    /// The hamburger. Both platforms drive the same list through the chrome's embedder-menu
+    /// renderer (showEmbedder); picks come back as ctx_pick and route to normal commands.
+    fn show_app_menu(&self) {
+        let zoom = self.active_tab().map(|t| t.zoom).unwrap_or(1.0);
+        let internal = self.active_tab().map(|t| is_internal(&t.url)).unwrap_or(true);
+        let bookmarked = self.active_tab().map(|t| self.state.bookmarks.find_by_url(&display_url(&t.url)).is_some()).unwrap_or(false);
+        let items = serde_json::json!([
+            {"id":"new_tab","label":"New tab","enabled":true},
+            {"id":"private_tab","label":"New private tab","enabled":true},
+            {"id":"new_window","label":"New window","enabled":true},
+            {"sep":true},
+            {"id":"am_history","label":"History","enabled":true},
+            {"id":"am_downloads","label":"Downloads","enabled":true},
+            {"id":"bookmark","label":match bookmarked { true => "Remove bookmark", false => "Bookmark this page" },"enabled":!internal},
+            {"sep":true},
+            {"id":"am_find","label":"Find on page","enabled":true},
+            {"id":"zoom_in","label":"Zoom in","enabled":true},
+            {"id":"zoom_out","label":"Zoom out","enabled":true},
+            {"id":"zoom_reset","label":format!("Reset zoom ({}%)", (zoom * 100.0).round() as i64),"enabled":(zoom - 1.0).abs() > 0.01},
+            {"id":"fullscreen","label":match self.fullscreen { true => "Leave full screen", false => "Full screen" },"enabled":true},
+            {"sep":true},
+            {"id":"print","label":"Print","enabled":!internal},
+            {"id":"view_source","label":"View page source","enabled":!internal},
+            {"id":"devtools","label":"Developer tools","enabled":true},
+            {"sep":true},
+            {"id":"clear_data","label":"Clear browsing data","enabled":true},
+            {"id":"show_tutorial","label":"Guide","enabled":true},
+            {"id":"settings","label":"Settings","enabled":true},
+        ]);
+        let w = self.window.inner_size().to_logical::<f64>(self.scale()).width;
+        let payload = serde_json::json!({"kind":"menu","x":(w - 244.0).max(4.0).round() as i64,"y":(SERVO_CHROME_HEIGHT_CSS as i64) - 8,"items":items});
+        if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
+        self.chrome_js(&format!("window.__amni&&window.__amni.showEmbedder&&window.__amni.showEmbedder({})", payload));
+    }
     fn chrome_js(&self, js: &str) { if let Some(c) = self.chrome.as_ref() { let _ = c.evaluate_script(js); } }
     fn active_js(&self, js: &str) { if let Some(t) = self.active_tab() { let _ = t.view.evaluate_script(js); } }
     #[cfg(windows)]
@@ -470,7 +524,7 @@ impl App {
             "canBack": active.map(|t| t.can_back).unwrap_or(false), "canForward": active.map(|t| t.can_forward).unwrap_or(false), "tabs": tabs, "theme": theme,
             "zoom": active.map(|t| t.zoom).unwrap_or(1.0), "fullscreen": self.fullscreen, "maximized": self.window.is_maximized(), "canReopen": !self.closed.is_empty(),
             "shield": self.shield.get(), "blocked": self.blocker.borrow().blocked_count(), "bookmarked": !url.is_empty() && self.state.bookmarks.find_by_url(&url).is_some(), "vault": false, "downloads": active_dl, "profile": "Local",
-            "find": self.find_query, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": ENGINE, "decorated": self.decorated,
+            "find": self.find_query, "winh": (self.window.inner_size().to_logical::<f64>(self.scale()).height).round() as i64, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": ENGINE, "decorated": self.decorated,
         }).to_string()
     }
     fn settings_html(&self) -> String {
@@ -649,7 +703,18 @@ impl App {
             "download_remove" => { if let Some(id) = a.get("id") { self.state.downloads.remove_download(id); self.state.downloads.save(); } }
             "download_clear" => { self.state.downloads.clear_completed(); self.state.downloads.save(); }
             "clear_data" => { #[cfg(windows)] self.clear_browsing_data(COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_PROFILE); #[cfg(not(windows))] self.clear_browsing_data(0); self.state.history.clear_all(); self.state.history.save(); }
-            "kbd" | "overlay_rect" | "favicon_cache" | "ctx_dismiss" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "ctx_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
+            "menu" => self.show_app_menu(),
+            "ctx_pick" => {
+                let Some(id) = a.get("id").cloned() else { return };
+                match id.as_str() {
+                    "am_history" => self.chrome_js("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('hist')"),
+                    "am_downloads" => self.chrome_js("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('dl')"),
+                    "am_find" => { if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); } self.chrome_js("window.__amni&&window.__amni.showFind&&window.__amni.showFind()"); }
+                    "am_newtab" => { let u = a.get("url").cloned().unwrap_or_default(); if !u.is_empty() { self.open_tab(Some(u), false); } }
+                    other => { let mut args = a.clone(); args.remove("id"); let verb = other.to_string(); self.command(&verb, &args); }
+                }
+            }
+            "kbd" | "overlay_rect" | "favicon_cache" | "ctx_dismiss" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
             other => info!("cmd: unhandled {}", other),
         }
     }
