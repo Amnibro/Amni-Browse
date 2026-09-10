@@ -36,7 +36,8 @@ const DL_COMPLETED: i32 = 2;
 const AUTH_POPUP_HOSTS: &[&str] = &["accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com", "facebook.com/dialog", "facebook.com/login", "github.com/login", "auth0.com", "okta.com", "oauth", "openid", "signin", "sso."];
 const FETCH_SHIM: &str = "(function(){var f=window.fetch.bind(window);window.fetch=function(u,o){if(typeof u==='string'&&u.indexOf('amnibrowse://')===0){u=u.replace(/^amnibrowse:\\/\\/([^\\/?#]+)\\/?/,function(_,h){return 'http://amnibrowse.'+h+'/'})}return f(u,o)}})()";
 const KEY_SCRIPT: &str = "(function(){document.addEventListener('keydown',function(e){var k=e.key.toLowerCase();var fn={f5:1,f11:1,f12:1,escape:1};var alt={arrowleft:1,arrowright:1,home:1};var send=function(){e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'key',k:k,shift:e.shiftKey?1:0,alt:e.altKey?1:0}))}catch(_){}};if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&fn[k]){if(k==='escape'&&document.activeElement&&document.activeElement.tagName!=='BODY')return;send();return}if(e.altKey&&!e.ctrlKey&&alt[k]){send();return}if(!e.ctrlKey||e.altKey||e.metaKey)return;var hot={t:1,w:1,l:1,d:1,tab:1,h:1,j:1,u:1,f:1,p:1,r:1,n:1,'1':1,'2':1,'3':1,'4':1,'5':1,'6':1,'7':1,'8':1,'9':1,'=':1,'+':1,'-':1,'0':1,k:e.shiftKey?1:0,i:e.shiftKey?1:0};if(!hot[k])return;send()},true)})()";
-const FIND_SCRIPT: &str = "(function(){var H=window.CSS&&CSS.highlights;var st={q:'',ranges:[],i:-1};function clear(){if(H){CSS.highlights.delete('amni-find');CSS.highlights.delete('amni-find-cur')}st={q:'',ranges:[],i:-1}}function collect(q){var out=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p)return NodeFilter.FILTER_REJECT;var t=p.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='NOSCRIPT')return NodeFilter.FILTER_REJECT;return n.nodeValue.toLowerCase().indexOf(q)>=0?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP}}),n;while((n=w.nextNode())){var s=n.nodeValue.toLowerCase(),k=0;while((k=s.indexOf(q,k))>=0){var r=document.createRange();r.setStart(n,k);r.setEnd(n,k+q.length);out.push(r);k+=q.length;if(out.length>5000)return out}}return out}function paint(){if(!H)return;var h=new Highlight();st.ranges.forEach(function(r){h.add(r)});CSS.highlights.set('amni-find',h);if(st.i>=0)CSS.highlights.set('amni-find-cur',new Highlight(st.ranges[st.i]))}function ensureCss(){if(document.getElementById('amni-find-css'))return;var s=document.createElement('style');s.id='amni-find-css';s.textContent='::highlight(amni-find){background:#ffd54a;color:#111}::highlight(amni-find-cur){background:#ff8a00;color:#111}';(document.head||document.documentElement).appendChild(s)}window.__amniFind=function(q,dir){q=(q||'').toLowerCase();if(!q){clear();return 0}ensureCss();if(q!==st.q){st.q=q;st.ranges=collect(q);st.i=st.ranges.length?0:-1}else if(st.ranges.length){st.i=(st.i+(dir<0?-1:1)+st.ranges.length)%st.ranges.length}if(!st.ranges.length){paint();return 0}var r=st.ranges[st.i];try{var sel=window.getSelection();sel.removeAllRanges();if(!H)sel.addRange(r)}catch(e){}try{var el=r.startContainer.parentElement;el&&el.scrollIntoView({block:'center',inline:'nearest'})}catch(e){}paint();return st.ranges.length};window.__amniFindClear=clear})()";
+const ICON_SCRIPT: &str = "(function(){function s(){try{var l=document.querySelector('link[rel~=\"icon\"],link[rel=\"shortcut icon\"]');var h=l&&l.href?l.href:(location.origin+'/favicon.ico');if(/^https?:/.test(h))window.ipc.postMessage(JSON.stringify({type:'icon',href:h}))}catch(_){}}if(document.readyState==='complete')s();else window.addEventListener('load',s)})()";
+const FIND_SCRIPT: &str ="(function(){var H=window.CSS&&CSS.highlights;var st={q:'',ranges:[],i:-1};function clear(){if(H){CSS.highlights.delete('amni-find');CSS.highlights.delete('amni-find-cur')}st={q:'',ranges:[],i:-1}}function collect(q){var out=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p)return NodeFilter.FILTER_REJECT;var t=p.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='NOSCRIPT')return NodeFilter.FILTER_REJECT;return n.nodeValue.toLowerCase().indexOf(q)>=0?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP}}),n;while((n=w.nextNode())){var s=n.nodeValue.toLowerCase(),k=0;while((k=s.indexOf(q,k))>=0){var r=document.createRange();r.setStart(n,k);r.setEnd(n,k+q.length);out.push(r);k+=q.length;if(out.length>5000)return out}}return out}function paint(){if(!H)return;var h=new Highlight();st.ranges.forEach(function(r){h.add(r)});CSS.highlights.set('amni-find',h);if(st.i>=0)CSS.highlights.set('amni-find-cur',new Highlight(st.ranges[st.i]))}function ensureCss(){if(document.getElementById('amni-find-css'))return;var s=document.createElement('style');s.id='amni-find-css';s.textContent='::highlight(amni-find){background:#ffd54a;color:#111}::highlight(amni-find-cur){background:#ff8a00;color:#111}';(document.head||document.documentElement).appendChild(s)}window.__amniFind=function(q,dir){q=(q||'').toLowerCase();if(!q){clear();return 0}ensureCss();if(q!==st.q){st.q=q;st.ranges=collect(q);st.i=st.ranges.length?0:-1}else if(st.ranges.length){st.i=(st.i+(dir<0?-1:1)+st.ranges.length)%st.ranges.length}if(!st.ranges.length){paint();return 0}var r=st.ranges[st.i];try{var sel=window.getSelection();sel.removeAllRanges();if(!H)sel.addRange(r)}catch(e){}try{var el=r.startContainer.parentElement;el&&el.scrollIntoView({block:'center',inline:'nearest'})}catch(e){}paint();return st.ranges.length};window.__amniFindClear=clear})()";
 #[allow(dead_code)]
 enum Ev { Cmd(String, HashMap<String, String>), Title(u64, String), Load(u64, bool, String), Popup(String), Key(u64, String, bool, bool), History(u64, bool, bool), Favicon(u64, String), PageFullscreen(u64, bool), Audio(u64, bool), DlStart(String, String, String, Option<u64>), DlProgress(String, u64), DlState(String, i32, String) }
 struct Tab { uid: u64, view: WebView, core: Option<Core>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String> }
@@ -183,8 +184,23 @@ fn attach_filter(view: &WebView, filter: Option<usize>, on: bool) {
 }
 /// Everything wry does not expose: request-level shield + DNT/GPC headers, real history state,
 /// favicons, HTML5 fullscreen, audio state, download progress, password/form autofill.
+/// Linux: history, HTML5 fullscreen and audio state come straight from WebKitGTK signals on the
+/// underlying WebKitWebView; favicons arrive through the ICON_SCRIPT ipc note; downloads report
+/// completion through wry's download-completed handler (see spawn_tab).
 #[cfg(not(windows))]
-fn wire_engine(_view: &WebView, _uid: u64, _push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, _dnt: bool, _autofill: bool) -> Option<Core> { None }
+fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, _dnt: bool, _autofill: bool) -> Option<Core> {
+    use wry::WebViewExtUnix;
+    use webkit2gtk::WebViewExt;
+    let wv = view.webview();
+    let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
+    wv.connect_load_changed(move |w, _| p1(Ev::History(uid, w.can_go_back(), w.can_go_forward())));
+    wv.connect_enter_fullscreen(move |_| { p2(Ev::PageFullscreen(uid, true)); false });
+    wv.connect_leave_fullscreen(move |_| { p3(Ev::PageFullscreen(uid, false)); false });
+    wv.connect_is_playing_audio_notify(move |w| p4(Ev::Audio(uid, w.is_playing_audio())));
+    None
+}
+#[cfg(not(windows))]
+fn dl_id(u: &str) -> String { format!("{:x}", u.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))) }
 #[cfg(windows)]
 fn wire_engine(view: &WebView, uid: u64, push: Push, blocker: Rc<RefCell<AdBlocker>>, shield: Rc<Cell<bool>>, dnt: bool, autofill: bool) -> Option<ICoreWebView2> {
     unsafe {
@@ -340,6 +356,8 @@ impl App {
         self.next_uid += 1;
         let push = self.pusher();
         let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
+        #[cfg(not(windows))]
+        let (p5, p6) = (push.clone(), push.clone());
         let proto = self.protocol.clone();
         let blocker = self.blocker.clone();
         let shield = self.shield.clone();
@@ -353,7 +371,7 @@ impl App {
             .with_devtools(true)
             .with_hotkeys_zoom(true)
             .with_back_forward_navigation_gestures(true)
-            .with_initialization_script(&format!("{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT))
+            .with_initialization_script(&format!("{};{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT))
             .with_custom_protocol("amnibrowse".to_string(), move |id, req| proto(id, req))
             .with_navigation_handler(move |u| {
                 let blocked = shield.get() && !is_internal(&u) && blocker.borrow_mut().should_block(&u);
@@ -365,12 +383,16 @@ impl App {
             .with_on_page_load_handler(move |e, u| p3(Ev::Load(uid, matches!(e, PageLoadEvent::Started), u)))
             .with_ipc_handler(move |req| {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) {
-                    if v.get("type").and_then(|t| t.as_str()) == Some("key") {
-                        p4(Ev::Key(uid, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1));
+                    match v.get("type").and_then(|t| t.as_str()) {
+                        Some("key") => p4(Ev::Key(uid, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)),
+                        Some("icon") => { if let Some(h) = v.get("href").and_then(|h| h.as_str()) { p4(Ev::Favicon(uid, h.to_string())); } }
+                        _ => {}
                     }
                 }
             })
-            .with_download_started_handler(move |u, path| { let name = path.file_name().map(|n| n.to_os_string()).unwrap_or_else(|| "download".into()); std::fs::create_dir_all(&dl_dir).ok(); *path = dl_dir.join(name); info!("download: {} -> {:?}", u, path); true });
+            .with_download_started_handler(move |u, path| { let name = path.file_name().map(|n| n.to_os_string()).unwrap_or_else(|| "download".into()); std::fs::create_dir_all(&dl_dir).ok(); *path = dl_dir.join(name); info!("download: {} -> {:?}", u, path); #[cfg(not(windows))] p5(Ev::DlStart(dl_id(&u), u.clone(), path.to_string_lossy().to_string(), None)); true });
+        #[cfg(not(windows))]
+        let view = view.with_download_completed_handler(move |u, path, ok| p6(Ev::DlState(dl_id(&u), if ok { DL_COMPLETED } else { DL_INTERRUPTED }, path.map(|p| p.to_string_lossy().to_string()).unwrap_or_default())));
         let view = build_view(view, self.host());
         let view = match view { Ok(v) => v, Err(e) => { warn!("webview2 tab failed: {}", e); return self.active; } };
         #[cfg(not(windows))]
