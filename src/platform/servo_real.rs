@@ -199,7 +199,7 @@ fn chrome_data_url() -> Url {
     let encoded = urlencoding::encode(&html);
     Url::parse(&format!("data:text/html;charset=utf-8,{}", encoded)).expect("chrome data url")
 }
-use crate::ui::internal_pages::{NEWTAB_TPL, SETTINGS_TPL, TUTORIAL_TPL, esc_html};
+use crate::ui::internal_pages::{NEWTAB_TPL, SETTINGS_TPL, esc_html, tutorial_with_engine};
 fn chrome_height_px(scale: f32) -> u32 { (CHROME_HEIGHT_CSS * scale).round().max(1.0) as u32 }
 fn content_size(window_size: PhysicalSize<u32>, chrome_px: u32) -> PhysicalSize<u32> {
     PhysicalSize::new(window_size.width.max(1), window_size.height.saturating_sub(chrome_px).max(1))
@@ -611,7 +611,7 @@ impl AppState {
             s.push_str("<p><button class='primary' onclick=\"imp('all')\">Import everything we found</button></p>");
             s
         };
-        TUTORIAL_TPL.replace("__THEME__", &self.theme_root_vars()).replace("__VER__", env!("CARGO_PKG_VERSION")).replace("__TOK__", &self.cmd_token).replace("__BROWSERS__", &browsers)
+        tutorial_with_engine("Real Servo").replace("__THEME__", &self.theme_root_vars()).replace("__VER__", env!("CARGO_PKG_VERSION")).replace("__TOK__", &self.cmd_token).replace("__BROWSERS__", &browsers)
     }
     fn theme_root_vars(&self) -> String {
         let t = self.themes.borrow().active_theme();

@@ -24,7 +24,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindow, SetWindowPos, GW_CH
 type Core = ICoreWebView2;
 #[cfg(not(windows))]
 type Core = ();
-use crate::{app::BrowserState, engine::adblocker::AdBlocker, storage::{config::{APP_NAME, APP_VERSION}, downloads::{DownloadItem, DownloadManager, DownloadStatus}, session::{SessionManager, SessionTab}}, ui::internal_pages::{esc_html, newtab_html, theme_root_vars, SETTINGS_TPL, TUTORIAL_TPL}, ui::tokens::SERVO_CHROME_HEIGHT_CSS};
+use crate::{app::BrowserState, engine::adblocker::AdBlocker, storage::{config::{APP_NAME, APP_VERSION}, downloads::{DownloadItem, DownloadManager, DownloadStatus}, session::{SessionManager, SessionTab}}, ui::internal_pages::{esc_html, newtab_html, theme_root_vars, tutorial_with_engine, SETTINGS_TPL}, ui::tokens::SERVO_CHROME_HEIGHT_CSS};
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 #[cfg(windows)]
 const ENGINE: &str = "Chromium (WebView2)";
@@ -546,7 +546,7 @@ impl App {
             .replace("__UPD__", "checked on the site feed").replace("__PROFS__", "<div class='row'><span>Local \u{00b7} active</span></div>").replace("__CRASH__", "").replace("__IMPORTNOTE__", "").replace("__BMS__", &bms).replace("__ENGINE__", ENGINE)
     }
     fn tutorial_html(&self) -> String {
-        TUTORIAL_TPL.replace("__THEME__", &theme_root_vars(&self.state.themes.active_theme())).replace("__VER__", APP_VERSION).replace("__TOK__", &self.token).replace("__BROWSERS__", "<p class='dim'>Import from Settings once you are in.</p>")
+        tutorial_with_engine(ENGINE).replace("__THEME__", &theme_root_vars(&self.state.themes.active_theme())).replace("__VER__", APP_VERSION).replace("__TOK__", &self.token).replace("__BROWSERS__", "<p class='dim'>Import from Settings once you are in.</p>")
     }
     fn page_html(&self, host: &str) -> Option<String> {
         match host {

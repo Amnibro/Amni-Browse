@@ -51,7 +51,7 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:3px;padd
 <h2>Look</h2>
 <p class='note'>Amni Scient is graphite + brass. Pick Amni Light only if you want a pale chrome.</p>
 <div>__THEMES__</div>
-<label>User-agent override (blank = Servo default — better site CSS)<input type='text' value='__UA__' placeholder='Servo default' onchange='set("custom_user_agent",this.value)'></label>
+<label>User-agent override (blank = engine default)<input type='text' value='__UA__' placeholder='Engine default' onchange='set("custom_user_agent",this.value)'></label>
 </section>
 <section class='pane' id='keys'>
 <h2>Passwords</h2>
@@ -135,10 +135,10 @@ button.primary{background:var(--accent);color:#08090B;border-color:transparent;f
 kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padding:1px 6px;font:12px ui-monospace,monospace}
 </style></head><body>
 <h1>Welcome to Amni Browse</h1>
-<p class='tag'>v__VER__ &#183; Real Servo &#183; your data stays on this machine</p>
+<p class='tag'>v__VER__ &#183; __ENGINE__ &#183; your data stays on this machine</p>
 <div class='dots' id='dots'></div>
 <section class='step on' data-s='0'>
-<p>This is a real browser engine &#8212; Servo &#8212; not a Chromium wrapper. Tabs, the URL bar, and the shield live in the gold strip above.</p>
+<p>__ENGINE_INTRO__ Tabs, the URL bar, and the shield live in the gold strip above.</p>
 <p>Takes about a minute. You can skip anytime.</p>
 </section>
 <section class='step' data-s='1'>
@@ -149,7 +149,7 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padd
 </section>
 <section class='step' data-s='2'>
 <p><kbd>Ctrl+L</kbd> jumps to the URL bar. Type a site or a search. <kbd>Ctrl+T</kbd> / <kbd>Ctrl+W</kbd> tabs. The shield strips trackers. The star bookmarks the page.</p>
-<p class='dim'>YouTube plays in Servo when we can extract a progressive stream. Netflix-class DRM stays in the same window, same chrome, as an in-tab pane.</p>
+<p class='dim'>__MEDIA_NOTE__</p>
 </section>
 <section class='step' data-s='3'>
 <p>Settings &#8594; Password manager: Amni vault, Bitwarden (<code>bw</code>), 1Password (<code>op</code>), or KeePassXC. Unlock once. A key icon appears in the URL bar when a page has matches &#8212; pick one to fill, like Chrome.</p>
@@ -169,6 +169,76 @@ document.getElementById('skip').onclick=()=>cmd('tutorial_done',{});
 function imp(src){document.getElementById('note').textContent='Importing '+src+'…';cmd('import_browser',{src:src});setTimeout(async()=>{try{const r=await fetch('amnibrowse://import/last');const j=await r.json();document.getElementById('note').textContent=(j.source||src)+': '+j.bookmarks+' bookmarks, '+j.history+' history, '+j.passwords+' passwords'+(j.notes&&j.notes[0]?' — '+j.notes[0]:'')}catch(e){document.getElementById('note').textContent='Import finished (reload if counts stay blank)'}},1200)}
 paint();
 </script></body></html>"##;
+/// Engine-specific copy for the first-run tutorial. Each backend passes its own
+/// wording so the page never claims an engine the build does not ship: the
+/// Windows and Linux desktop builds run Chromium (WebView2) / WebKitGTK through
+/// wry, and only the `servo-real` feature is actually Servo.
+pub struct TutorialEngineCopy<'a> {
+    /// Short engine name for the tag line, e.g. "Chromium (WebView2)".
+    pub name: &'a str,
+    /// First sentence of step one.
+    pub intro: &'static str,
+    /// Media / DRM note in the shortcuts step.
+    pub media_note: &'static str,
+}
+
+pub fn tutorial_engine_copy(engine: &str) -> TutorialEngineCopy<'_> {
+    match engine {
+        e if e.starts_with("Chromium") => TutorialEngineCopy {
+            name: e,
+            intro: "Pages render in the Chromium engine (Microsoft WebView2) under the Amni chrome, with the shield filtering requests before they load.",
+            media_note: "YouTube, Netflix-class DRM and everything else play in the same tab, same chrome.",
+        },
+        e if e.starts_with("WebKitGTK") => TutorialEngineCopy {
+            name: e,
+            intro: "Pages render in WebKitGTK under the Amni chrome, with the shield filtering requests before they load.",
+            media_note: "YouTube and other media play in the same tab, same chrome.",
+        },
+        e => TutorialEngineCopy {
+            name: e,
+            intro: "This is a real browser engine &#8212; Servo &#8212; not a Chromium wrapper.",
+            media_note: "YouTube plays in Servo when we can extract a progressive stream. Netflix-class DRM stays in the same window, same chrome, as an in-tab pane.",
+        },
+    }
+}
+
+/// Fill the engine placeholders of `TUTORIAL_TPL`; the caller still replaces theme, version, token and browsers.
+pub fn tutorial_with_engine(engine: &str) -> String {
+    let c = tutorial_engine_copy(engine);
+    TUTORIAL_TPL.replace("__ENGINE__", c.name).replace("__ENGINE_INTRO__", c.intro).replace("__MEDIA_NOTE__", c.media_note)
+}
+
+#[cfg(test)]
+mod tutorial_engine_tests {
+    use super::tutorial_with_engine;
+
+    #[test]
+    fn chromium_tutorial_does_not_claim_servo() {
+        let html = tutorial_with_engine("Chromium (WebView2)");
+        assert!(html.contains("Chromium (WebView2)"));
+        assert!(!html.contains("not a Chromium wrapper"));
+        assert!(!html.contains("__ENGINE__"));
+        assert!(!html.contains("__ENGINE_INTRO__"));
+        assert!(!html.contains("__MEDIA_NOTE__"));
+    }
+
+    #[test]
+    fn webkit_tutorial_names_webkit() {
+        let html = tutorial_with_engine("WebKitGTK");
+        assert!(html.contains("WebKitGTK"));
+        assert!(!html.contains("not a Chromium wrapper"));
+        assert!(!html.contains("__ENGINE__"));
+    }
+
+    #[test]
+    fn servo_real_tutorial_still_names_servo() {
+        let html = tutorial_with_engine("Real Servo");
+        assert!(html.contains("Real Servo"));
+        assert!(html.contains("not a Chromium wrapper"));
+        assert!(!html.contains("__ENGINE__"));
+    }
+}
+
 pub fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
 
 pub fn theme_root_vars(t: &Theme) -> String {

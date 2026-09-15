@@ -22,7 +22,7 @@ pub fn register_browser_exe(exe: &std::path::Path) -> Result<String, String> {
         (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\shell\open\command", "", &format!("\"{}\"", exe_s)),
         (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\Capabilities", "ApplicationName", "Amni Browse"),
         (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\Capabilities", "ApplicationIcon", &icon),
-        (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\Capabilities", "ApplicationDescription", "Privacy-first Servo browser by Amni-Scient"),
+        (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\Capabilities", "ApplicationDescription", "Privacy-first browser by Amni-Scient"),
         (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\Capabilities\URLAssociations", "http", "AmniBrowseHTML"),
         (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\Capabilities\URLAssociations", "https", "AmniBrowseHTML"),
         (r"HKCU\Software\Clients\StartMenuInternet\AmniBrowse\Capabilities\FileAssociations", ".html", "AmniBrowseHTML"),
