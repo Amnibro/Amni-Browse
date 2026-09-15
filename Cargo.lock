@@ -186,6 +186,7 @@ dependencies = [
  "fontdue",
  "generic-array",
  "glow 0.17.0",
+ "gtk",
  "hmac",
  "html5ever 0.38.0",
  "http 1.5.0",

@@ -4,6 +4,12 @@ use tao::{dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize}, e
 use wry::{http, PageLoadEvent, Rect, WebView, WebViewBuilder};
 #[cfg(windows)]
 use tao::platform::windows::WindowExtWindows;
+#[cfg(not(windows))]
+use tao::platform::unix::WindowExtUnix;
+#[cfg(not(windows))]
+use wry::WebViewBuilderExtUnix;
+#[cfg(not(windows))]
+use gtk::prelude::{BoxExt, LayoutExt, WidgetExt as GtkWidgetExt};
 #[cfg(windows)]
 use wry::WebViewExtWindows;
 #[cfg(windows)]
@@ -30,12 +36,15 @@ const DL_COMPLETED: i32 = 2;
 const AUTH_POPUP_HOSTS: &[&str] = &["accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com", "facebook.com/dialog", "facebook.com/login", "github.com/login", "auth0.com", "okta.com", "oauth", "openid", "signin", "sso."];
 const FETCH_SHIM: &str = "(function(){var f=window.fetch.bind(window);window.fetch=function(u,o){if(typeof u==='string'&&u.indexOf('amnibrowse://')===0){u=u.replace(/^amnibrowse:\\/\\/([^\\/?#]+)\\/?/,function(_,h){return 'http://amnibrowse.'+h+'/'})}return f(u,o)}})()";
 const KEY_SCRIPT: &str = "(function(){document.addEventListener('keydown',function(e){var k=e.key.toLowerCase();var fn={f5:1,f11:1,f12:1,escape:1};var alt={arrowleft:1,arrowright:1,home:1};var send=function(){e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'key',k:k,shift:e.shiftKey?1:0,alt:e.altKey?1:0}))}catch(_){}};if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&fn[k]){if(k==='escape'&&document.activeElement&&document.activeElement.tagName!=='BODY')return;send();return}if(e.altKey&&!e.ctrlKey&&alt[k]){send();return}if(!e.ctrlKey||e.altKey||e.metaKey)return;var hot={t:1,w:1,l:1,d:1,tab:1,h:1,j:1,u:1,f:1,p:1,r:1,n:1,'1':1,'2':1,'3':1,'4':1,'5':1,'6':1,'7':1,'8':1,'9':1,'=':1,'+':1,'-':1,'0':1,k:e.shiftKey?1:0,i:e.shiftKey?1:0};if(!hot[k])return;send()},true)})()";
-const FIND_SCRIPT: &str = "(function(){var H=window.CSS&&CSS.highlights;var st={q:'',ranges:[],i:-1};function clear(){if(H){CSS.highlights.delete('amni-find');CSS.highlights.delete('amni-find-cur')}st={q:'',ranges:[],i:-1}}function collect(q){var out=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p)return NodeFilter.FILTER_REJECT;var t=p.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='NOSCRIPT')return NodeFilter.FILTER_REJECT;return n.nodeValue.toLowerCase().indexOf(q)>=0?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP}}),n;while((n=w.nextNode())){var s=n.nodeValue.toLowerCase(),k=0;while((k=s.indexOf(q,k))>=0){var r=document.createRange();r.setStart(n,k);r.setEnd(n,k+q.length);out.push(r);k+=q.length;if(out.length>5000)return out}}return out}function paint(){if(!H)return;var h=new Highlight();st.ranges.forEach(function(r){h.add(r)});CSS.highlights.set('amni-find',h);if(st.i>=0)CSS.highlights.set('amni-find-cur',new Highlight(st.ranges[st.i]))}function ensureCss(){if(document.getElementById('amni-find-css'))return;var s=document.createElement('style');s.id='amni-find-css';s.textContent='::highlight(amni-find){background:#ffd54a;color:#111}::highlight(amni-find-cur){background:#ff8a00;color:#111}';(document.head||document.documentElement).appendChild(s)}window.__amniFind=function(q,dir){q=(q||'').toLowerCase();if(!q){clear();return 0}ensureCss();if(q!==st.q){st.q=q;st.ranges=collect(q);st.i=st.ranges.length?0:-1}else if(st.ranges.length){st.i=(st.i+(dir<0?-1:1)+st.ranges.length)%st.ranges.length}if(!st.ranges.length){paint();return 0}var r=st.ranges[st.i];try{var sel=window.getSelection();sel.removeAllRanges();if(!H)sel.addRange(r)}catch(e){}try{var el=r.startContainer.parentElement;el&&el.scrollIntoView({block:'center',inline:'nearest'})}catch(e){}paint();return st.ranges.length};window.__amniFindClear=clear})()";
+const ICON_SCRIPT: &str = "(function(){function s(){try{var l=document.querySelector('link[rel~=\"icon\"],link[rel=\"shortcut icon\"]');var h=l&&l.href?l.href:(location.origin+'/favicon.ico');if(/^https?:/.test(h))window.ipc.postMessage(JSON.stringify({type:'icon',href:h}))}catch(_){}}if(document.readyState==='complete')s();else window.addEventListener('load',s)})()";
+const FIND_SCRIPT: &str ="(function(){var H=window.CSS&&CSS.highlights;var st={q:'',ranges:[],i:-1};function clear(){if(H){CSS.highlights.delete('amni-find');CSS.highlights.delete('amni-find-cur')}st={q:'',ranges:[],i:-1}}function collect(q){var out=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p)return NodeFilter.FILTER_REJECT;var t=p.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='NOSCRIPT')return NodeFilter.FILTER_REJECT;return n.nodeValue.toLowerCase().indexOf(q)>=0?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP}}),n;while((n=w.nextNode())){var s=n.nodeValue.toLowerCase(),k=0;while((k=s.indexOf(q,k))>=0){var r=document.createRange();r.setStart(n,k);r.setEnd(n,k+q.length);out.push(r);k+=q.length;if(out.length>5000)return out}}return out}function paint(){if(!H)return;var h=new Highlight();st.ranges.forEach(function(r){h.add(r)});CSS.highlights.set('amni-find',h);if(st.i>=0)CSS.highlights.set('amni-find-cur',new Highlight(st.ranges[st.i]))}function ensureCss(){if(document.getElementById('amni-find-css'))return;var s=document.createElement('style');s.id='amni-find-css';s.textContent='::highlight(amni-find){background:#ffd54a;color:#111}::highlight(amni-find-cur){background:#ff8a00;color:#111}';(document.head||document.documentElement).appendChild(s)}window.__amniFind=function(q,dir){q=(q||'').toLowerCase();if(!q){clear();return 0}ensureCss();if(q!==st.q){st.q=q;st.ranges=collect(q);st.i=st.ranges.length?0:-1}else if(st.ranges.length){st.i=(st.i+(dir<0?-1:1)+st.ranges.length)%st.ranges.length}if(!st.ranges.length){paint();return 0}var r=st.ranges[st.i];try{var sel=window.getSelection();sel.removeAllRanges();if(!H)sel.addRange(r)}catch(e){}try{var el=r.startContainer.parentElement;el&&el.scrollIntoView({block:'center',inline:'nearest'})}catch(e){}paint();return st.ranges.length};window.__amniFindClear=clear})()";
 #[allow(dead_code)]
 enum Ev { Cmd(String, HashMap<String, String>), Title(u64, String), Load(u64, bool, String), Popup(String), Key(u64, String, bool, bool), History(u64, bool, bool), Favicon(u64, String), PageFullscreen(u64, bool), Audio(u64, bool), DlStart(String, String, String, Option<u64>), DlProgress(String, u64), DlState(String, i32, String) }
 struct Tab { uid: u64, view: WebView, core: Option<Core>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String> }
 struct App {
     window: Window,
+    #[cfg(not(windows))]
+    canvas: gtk::Layout,
     decorated: bool,
     chrome: Option<WebView>,
     chrome_hwnd: usize,
@@ -93,6 +102,38 @@ fn take_pwstr(p: PWSTR) -> String {
     let s = unsafe { p.to_string() }.unwrap_or_default();
     unsafe { CoTaskMemFree(Some(p.0 as *const _)) };
     s
+}
+/// wry on Linux only takes an X11 handle from `build_as_child` and then wraps the window a second
+/// time, so under Wayland it panics (UnsupportedWindowHandle) and under X11 the omnibox never gets
+/// keyboard focus. Webviews go into a gtk::Fixed inside tao's own vbox instead; bounds still apply.
+#[cfg(windows)]
+fn build_view(b: WebViewBuilder<'_>, host: &Window) -> wry::Result<WebView> { b.build_as_child(host) }
+#[cfg(not(windows))]
+fn build_view(b: WebViewBuilder<'_>, host: &gtk::Layout) -> wry::Result<WebView> {
+    let v = b.build_gtk(host)?;
+    focus_on_click(&v);
+    Ok(v)
+}
+/// GTK keeps keyboard focus on whichever webview had it last, so a click in the omnibox reached
+/// the DOM while the keystrokes still went to the page. Every view grabs GTK focus when clicked.
+#[cfg(not(windows))]
+fn focus_on_click(v: &WebView) {
+    use gtk::prelude::WidgetExt;
+    use wry::WebViewExtUnix;
+    let wv = v.webview();
+    wv.set_can_focus(true);
+    wv.connect_button_press_event(|w, _| { if !w.has_focus() { w.grab_focus(); } gtk::glib::Propagation::Proceed });
+}
+/// gtk::Layout, not gtk::Fixed: a Fixed re-allocates children at their original put() spot with
+/// their original size request on every pass, so views stayed the size the window opened at and
+/// the window could never shrink. A Layout is a canvas whose own size request ignores its
+/// children; `place()` moves and resizes each view on every layout.
+#[cfg(not(windows))]
+fn gtk_host(window: &Window) -> gtk::Layout {
+    let l = gtk::Layout::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+    if let Some(vb) = window.default_vbox() { vb.pack_start(&l, true, true, 0); }
+    l.show_all();
+    l
 }
 fn hex_rgba(hex: &str) -> Option<tao::window::RGBA> {
     let h = hex.trim().trim_start_matches('#');
@@ -157,8 +198,23 @@ fn attach_filter(view: &WebView, filter: Option<usize>, on: bool) {
 }
 /// Everything wry does not expose: request-level shield + DNT/GPC headers, real history state,
 /// favicons, HTML5 fullscreen, audio state, download progress, password/form autofill.
+/// Linux: history, HTML5 fullscreen and audio state come straight from WebKitGTK signals on the
+/// underlying WebKitWebView; favicons arrive through the ICON_SCRIPT ipc note; downloads report
+/// completion through wry's download-completed handler (see spawn_tab).
 #[cfg(not(windows))]
-fn wire_engine(_view: &WebView, _uid: u64, _push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, _dnt: bool, _autofill: bool) -> Option<Core> { None }
+fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, _dnt: bool, _autofill: bool) -> Option<Core> {
+    use wry::WebViewExtUnix;
+    use webkit2gtk::WebViewExt;
+    let wv = view.webview();
+    let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
+    wv.connect_load_changed(move |w, _| p1(Ev::History(uid, w.can_go_back(), w.can_go_forward())));
+    wv.connect_enter_fullscreen(move |_| { p2(Ev::PageFullscreen(uid, true)); false });
+    wv.connect_leave_fullscreen(move |_| { p3(Ev::PageFullscreen(uid, false)); false });
+    wv.connect_is_playing_audio_notify(move |w| p4(Ev::Audio(uid, w.is_playing_audio())));
+    None
+}
+#[cfg(not(windows))]
+fn dl_id(u: &str) -> String { format!("{:x}", u.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))) }
 #[cfg(windows)]
 fn wire_engine(view: &WebView, uid: u64, push: Push, blocker: Rc<RefCell<AdBlocker>>, shield: Rc<Cell<bool>>, dnt: bool, autofill: bool) -> Option<ICoreWebView2> {
     unsafe {
@@ -229,6 +285,22 @@ fn wire_engine(view: &WebView, uid: u64, push: Push, blocker: Rc<RefCell<AdBlock
 }
 impl App {
     fn scale(&self) -> f64 { self.window.scale_factor() }
+    #[cfg(windows)]
+    fn host(&self) -> &Window { &self.window }
+    #[cfg(not(windows))]
+    fn host(&self) -> &gtk::Layout { &self.canvas }
+    #[cfg(windows)]
+    fn place(&self, v: &WebView, r: Rect) { let _ = v.set_bounds(r); }
+    #[cfg(not(windows))]
+    fn place(&self, v: &WebView, r: Rect) {
+        use wry::WebViewExtUnix;
+        let s = self.scale();
+        let (x, y): (i32, i32) = r.position.to_logical::<i32>(s).into();
+        let (w, h): (i32, i32) = r.size.to_logical::<i32>(s).into();
+        let wv = v.webview();
+        self.canvas.move_(&wv, x, y);
+        wv.set_size_request(w.max(1), h.max(1));
+    }
     fn frame_px(&self) -> u32 { match self.decorated || self.fullscreen || self.page_fullscreen || self.window.is_maximized() { true => 0, false => (FRAME_CSS * self.scale()).round() as u32 } }
     fn chrome_px(&self) -> u32 { match self.fullscreen || self.page_fullscreen { true => 0, false => (SERVO_CHROME_HEIGHT_CSS as f64 * self.scale()).round() as u32 } }
     fn chrome_rect(&self) -> Rect {
@@ -240,23 +312,29 @@ impl App {
     fn content_rect(&self) -> Rect {
         let sz = self.window.inner_size();
         let f = self.frame_px();
-        let overlay = match cfg!(windows) { true => 0, false => (self.overlay_css as f64 * self.scale()).round() as u32 };
-        let y = (self.chrome_px().max(overlay) + f).min(sz.height.saturating_sub(1));
+        let y = (self.chrome_px() + f).min(sz.height.saturating_sub(1));
         Rect { position: PhysicalPosition::new(f as i32, y as i32).into(), size: PhysicalSize::new(sz.width.saturating_sub(2 * f).max(1), sz.height.saturating_sub(y + f).max(1)).into() }
     }
     fn layout(&self) {
         let hide_chrome = self.fullscreen || self.page_fullscreen;
-        if let Some(c) = self.chrome.as_ref() { let _ = c.set_bounds(self.chrome_rect()); let _ = c.set_visible(!hide_chrome); }
+        if let Some(c) = self.chrome.as_ref() { self.place(c, self.chrome_rect()); let _ = c.set_visible(!hide_chrome); }
         let r = self.content_rect();
-        for (i, t) in self.tabs.iter().enumerate() { let _ = t.view.set_bounds(r); let _ = t.view.set_visible(i == self.active); }
+        for (i, t) in self.tabs.iter().enumerate() { self.place(&t.view, r); let _ = t.view.set_visible(i == self.active); }
         self.raise_chrome();
     }
     #[cfg(windows)]
     fn raise_chrome(&self) {
         if self.chrome_hwnd != 0 { unsafe { SetWindowPos(self.chrome_hwnd as HWND, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } }
     }
+    /// GtkLayout stacks children in the order they were added, so every tab spawned after the
+    /// chrome sits above it and swallows the expanded menu overlay. Raising the chrome's own
+    /// GdkWindow puts it back on top; without this the app menu opens invisibly under the page.
     #[cfg(not(windows))]
-    fn raise_chrome(&self) {}
+    fn raise_chrome(&self) {
+        use gtk::prelude::WidgetExt;
+        use wry::WebViewExtUnix;
+        if let Some(w) = self.chrome.as_ref().and_then(|c| c.webview().window()) { w.raise(); }
+    }
     #[cfg(windows)]
     fn go_back(&self) { self.with_core(|c| unsafe { let _ = c.GoBack(); }); }
     #[cfg(windows)]
@@ -298,6 +376,8 @@ impl App {
         self.next_uid += 1;
         let push = self.pusher();
         let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
+        #[cfg(not(windows))]
+        let (p5, p6) = (push.clone(), push.clone());
         let proto = self.protocol.clone();
         let blocker = self.blocker.clone();
         let shield = self.shield.clone();
@@ -311,7 +391,7 @@ impl App {
             .with_devtools(true)
             .with_hotkeys_zoom(true)
             .with_back_forward_navigation_gestures(true)
-            .with_initialization_script(&format!("{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT))
+            .with_initialization_script(&format!("{};{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT))
             .with_custom_protocol("amnibrowse".to_string(), move |id, req| proto(id, req))
             .with_navigation_handler(move |u| {
                 let blocked = shield.get() && !is_internal(&u) && blocker.borrow_mut().should_block(&u);
@@ -323,16 +403,21 @@ impl App {
             .with_on_page_load_handler(move |e, u| p3(Ev::Load(uid, matches!(e, PageLoadEvent::Started), u)))
             .with_ipc_handler(move |req| {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) {
-                    if v.get("type").and_then(|t| t.as_str()) == Some("key") {
-                        p4(Ev::Key(uid, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1));
+                    match v.get("type").and_then(|t| t.as_str()) {
+                        Some("key") => p4(Ev::Key(uid, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)),
+                        Some("icon") => { if let Some(h) = v.get("href").and_then(|h| h.as_str()) { p4(Ev::Favicon(uid, h.to_string())); } }
+                        _ => {}
                     }
                 }
             })
-            .with_download_started_handler(move |u, path| { let name = path.file_name().map(|n| n.to_os_string()).unwrap_or_else(|| "download".into()); std::fs::create_dir_all(&dl_dir).ok(); *path = dl_dir.join(name); info!("download: {} -> {:?}", u, path); true })
-            .build_as_child(&self.window);
+            .with_download_started_handler(move |u, path| { let name = path.file_name().map(|n| n.to_os_string()).unwrap_or_else(|| "download".into()); std::fs::create_dir_all(&dl_dir).ok(); *path = dl_dir.join(name); info!("download: {} -> {:?}", u, path); #[cfg(not(windows))] p5(Ev::DlStart(dl_id(&u), u.clone(), path.to_string_lossy().to_string(), None)); true });
+        #[cfg(not(windows))]
+        let view = view.with_download_completed_handler(move |u, path, ok| p6(Ev::DlState(dl_id(&u), if ok { DL_COMPLETED } else { DL_INTERRUPTED }, path.map(|p| p.to_string_lossy().to_string()).unwrap_or_default())));
+        let view = build_view(view, self.host());
         let view = match view { Ok(v) => v, Err(e) => { warn!("webview2 tab failed: {}", e); return self.active; } };
         #[cfg(not(windows))]
         attach_filter(&view, self.filter, self.shield.get());
+        self.place(&view, self.content_rect());
         let core = wire_engine(&view, uid, push, self.blocker.clone(), self.shield.clone(), self.state.config.enable_do_not_track, !private && self.state.config.autofill_on_load);
         let _ = view.zoom(self.state.config.default_zoom.max(0.25));
         let tab = Tab { uid, view, core, url: url.to_string(), title: String::new(), private, loading: true, zoom: self.state.config.default_zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None };
@@ -367,6 +452,40 @@ impl App {
     }
     fn focus_omnibox(&self, clear: bool) {
         if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); let _ = c.evaluate_script(&format!("try{{var u=document.getElementById('url');{}u.focus();u.select()}}catch(e){{}}", match clear { true => "u.value='';", false => "" })); }
+    }
+    /// The hamburger. Both platforms drive the same list through the chrome's embedder-menu
+    /// renderer (showEmbedder); picks come back as ctx_pick and route to normal commands.
+    fn show_app_menu(&self) {
+        let zoom = self.active_tab().map(|t| t.zoom).unwrap_or(1.0);
+        let internal = self.active_tab().map(|t| is_internal(&t.url)).unwrap_or(true);
+        let bookmarked = self.active_tab().map(|t| self.state.bookmarks.find_by_url(&display_url(&t.url)).is_some()).unwrap_or(false);
+        let items = serde_json::json!([
+            {"id":"new_tab","label":"New tab","enabled":true},
+            {"id":"private_tab","label":"New private tab","enabled":true},
+            {"id":"new_window","label":"New window","enabled":true},
+            {"sep":true},
+            {"id":"am_history","label":"History","enabled":true},
+            {"id":"am_downloads","label":"Downloads","enabled":true},
+            {"id":"bookmark","label":match bookmarked { true => "Remove bookmark", false => "Bookmark this page" },"enabled":!internal},
+            {"sep":true},
+            {"id":"am_find","label":"Find on page","enabled":true},
+            {"id":"zoom_in","label":"Zoom in","enabled":true},
+            {"id":"zoom_out","label":"Zoom out","enabled":true},
+            {"id":"zoom_reset","label":format!("Reset zoom ({}%)", (zoom * 100.0).round() as i64),"enabled":(zoom - 1.0).abs() > 0.01},
+            {"id":"fullscreen","label":match self.fullscreen { true => "Leave full screen", false => "Full screen" },"enabled":true},
+            {"sep":true},
+            {"id":"print","label":"Print","enabled":!internal},
+            {"id":"view_source","label":"View page source","enabled":!internal},
+            {"id":"devtools","label":"Developer tools","enabled":true},
+            {"sep":true},
+            {"id":"clear_data","label":"Clear browsing data","enabled":true},
+            {"id":"show_tutorial","label":"Guide","enabled":true},
+            {"id":"settings","label":"Settings","enabled":true},
+        ]);
+        let w = self.window.inner_size().to_logical::<f64>(self.scale()).width;
+        let payload = serde_json::json!({"kind":"menu","x":(w - 244.0).max(4.0).round() as i64,"y":(SERVO_CHROME_HEIGHT_CSS as i64) - 8,"items":items});
+        if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
+        self.chrome_js(&format!("window.__amni&&window.__amni.showEmbedder&&window.__amni.showEmbedder({})", payload));
     }
     fn chrome_js(&self, js: &str) { if let Some(c) = self.chrome.as_ref() { let _ = c.evaluate_script(js); } }
     fn active_js(&self, js: &str) { if let Some(t) = self.active_tab() { let _ = t.view.evaluate_script(js); } }
@@ -405,7 +524,7 @@ impl App {
             "canBack": active.map(|t| t.can_back).unwrap_or(false), "canForward": active.map(|t| t.can_forward).unwrap_or(false), "tabs": tabs, "theme": theme,
             "zoom": active.map(|t| t.zoom).unwrap_or(1.0), "fullscreen": self.fullscreen, "maximized": self.window.is_maximized(), "canReopen": !self.closed.is_empty(),
             "shield": self.shield.get(), "blocked": self.blocker.borrow().blocked_count(), "bookmarked": !url.is_empty() && self.state.bookmarks.find_by_url(&url).is_some(), "vault": false, "downloads": active_dl, "profile": "Local",
-            "find": self.find_query, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": ENGINE, "decorated": self.decorated,
+            "find": self.find_query, "winh": (self.window.inner_size().to_logical::<f64>(self.scale()).height).round() as i64, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": ENGINE, "decorated": self.decorated,
         }).to_string()
     }
     fn settings_html(&self) -> String {
@@ -584,7 +703,18 @@ impl App {
             "download_remove" => { if let Some(id) = a.get("id") { self.state.downloads.remove_download(id); self.state.downloads.save(); } }
             "download_clear" => { self.state.downloads.clear_completed(); self.state.downloads.save(); }
             "clear_data" => { #[cfg(windows)] self.clear_browsing_data(COREWEBVIEW2_BROWSING_DATA_KINDS_ALL_PROFILE); #[cfg(not(windows))] self.clear_browsing_data(0); self.state.history.clear_all(); self.state.history.save(); }
-            "kbd" | "overlay_rect" | "favicon_cache" | "ctx_dismiss" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "ctx_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
+            "menu" => self.show_app_menu(),
+            "ctx_pick" => {
+                let Some(id) = a.get("id").cloned() else { return };
+                match id.as_str() {
+                    "am_history" => self.chrome_js("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('hist')"),
+                    "am_downloads" => self.chrome_js("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('dl')"),
+                    "am_find" => { if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); } self.chrome_js("window.__amni&&window.__amni.showFind&&window.__amni.showFind()"); }
+                    "am_newtab" => { let u = a.get("url").cloned().unwrap_or_default(); if !u.is_empty() { self.open_tab(Some(u), false); } }
+                    other => { let mut args = a.clone(); args.remove("id"); let verb = other.to_string(); self.command(&verb, &args); }
+                }
+            }
+            "kbd" | "overlay_rect" | "favicon_cache" | "ctx_dismiss" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
             other => info!("cmd: unhandled {}", other),
         }
     }
@@ -705,14 +835,17 @@ pub fn run(state: BrowserState) {
     let shield = Rc::new(Cell::new(state.config.block_ads));
     #[cfg(windows)]
     let parent = (window.hwnd() as isize) as HWND;
-    let mut a = App { window, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, #[cfg(not(windows))] filter: compile_filter(), collapsed: Vec::new(), ephemeral };
+    #[cfg(not(windows))]
+    let canvas = gtk_host(&window);
+    let mut a = App { window, #[cfg(not(windows))] canvas, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, #[cfg(not(windows))] filter: compile_filter(), collapsed: Vec::new(), ephemeral };
     let chrome_proto = protocol.clone();
     let kpush = a.pusher();
     let chrome = WebViewBuilder::new().with_url(&internal_url("chrome")).with_bounds(a.chrome_rect()).with_devtools(true).with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT)).with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
-        .with_ipc_handler(move |req| { if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) { if v.get("type").and_then(|t| t.as_str()) == Some("key") { kpush(Ev::Key(0, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)); } } })
-        .build_as_child(&a.window).expect("chrome webview");
+        .with_ipc_handler(move |req| { if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) { if v.get("type").and_then(|t| t.as_str()) == Some("key") { kpush(Ev::Key(0, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)); } } });
+    let chrome = build_view(chrome, a.host()).expect("chrome webview");
     #[cfg(windows)]
     if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }
+    a.place(&chrome, a.chrome_rect());
     a.chrome = Some(chrome);
     #[cfg(windows)]
     { a.chrome_hwnd = unsafe { GetWindow(parent, GW_CHILD) } as usize; }
