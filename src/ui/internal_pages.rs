@@ -208,6 +208,37 @@ pub fn tutorial_with_engine(engine: &str) -> String {
     TUTORIAL_TPL.replace("__ENGINE__", c.name).replace("__ENGINE_INTRO__", c.intro).replace("__MEDIA_NOTE__", c.media_note)
 }
 
+#[cfg(test)]
+mod tutorial_engine_tests {
+    use super::tutorial_with_engine;
+
+    #[test]
+    fn chromium_tutorial_does_not_claim_servo() {
+        let html = tutorial_with_engine("Chromium (WebView2)");
+        assert!(html.contains("Chromium (WebView2)"));
+        assert!(!html.contains("not a Chromium wrapper"));
+        assert!(!html.contains("__ENGINE__"));
+        assert!(!html.contains("__ENGINE_INTRO__"));
+        assert!(!html.contains("__MEDIA_NOTE__"));
+    }
+
+    #[test]
+    fn webkit_tutorial_names_webkit() {
+        let html = tutorial_with_engine("WebKitGTK");
+        assert!(html.contains("WebKitGTK"));
+        assert!(!html.contains("not a Chromium wrapper"));
+        assert!(!html.contains("__ENGINE__"));
+    }
+
+    #[test]
+    fn servo_real_tutorial_still_names_servo() {
+        let html = tutorial_with_engine("Real Servo");
+        assert!(html.contains("Real Servo"));
+        assert!(html.contains("not a Chromium wrapper"));
+        assert!(!html.contains("__ENGINE__"));
+    }
+}
+
 pub fn esc_html(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;") }
 
 pub fn theme_root_vars(t: &Theme) -> String {
