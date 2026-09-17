@@ -676,8 +676,9 @@ impl App {
     fn clear_browsing_data(&self, _kinds: u32) {
         use webkit2gtk::{WebContext, WebContextExt, WebsiteDataManagerExt, WebsiteDataTypes};
         if let Some(ctx) = WebContext::default() {
-            let dm = ctx.website_data_manager();
-            dm.clear(WebsiteDataTypes::all(), webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
+            if let Some(dm) = ctx.website_data_manager() {
+                dm.clear(WebsiteDataTypes::all(), webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
+            }
         }
     }
     #[cfg(windows)]
