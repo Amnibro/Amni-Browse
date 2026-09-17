@@ -9,6 +9,11 @@ mod app;
 use log::info;
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,wgpu_core=warn,wgpu_hal=warn,naga=warn,egui_wgpu=warn")).init();
+    let single_instance = match net::single_instance::init() {
+        net::single_instance::SingleInstance::Forwarded => return,
+        net::single_instance::SingleInstance::Primary(listener) => Some(listener),
+        net::single_instance::SingleInstance::Disabled => None,
+    };
     let _ = rustls::crypto::ring::default_provider().install_default();
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
     let _guard = rt.enter();
@@ -24,7 +29,7 @@ fn main() {
     #[cfg(feature = "servo-real")]
     { info!("  Backend: Real Servo (libservo)"); platform::servo_real::run(state); return; }
     #[cfg(all(feature = "webview", not(feature = "servo-real")))]
-    { info!("  Backend: {}", match cfg!(windows) { true => "Chromium (WebView2 via wry/tao)", false => "WebKitGTK (wry/tao)" }); platform::chromium::run(state); }
+    { info!("  Backend: {}", match cfg!(windows) { true => "Chromium (WebView2 via wry/tao)", false => "WebKitGTK (wry/tao)" }); platform::chromium::run(state, single_instance); }
     #[cfg(all(feature = "servo-engine", not(feature = "webview"), not(feature = "servo-real")))]
     { info!("  Backend: Servo Engine (winit/wgpu/egui)"); platform::servo::run(state); }
 }

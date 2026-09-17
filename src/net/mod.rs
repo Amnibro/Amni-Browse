@@ -6,3 +6,4 @@ pub mod websocket;
 pub mod cors;
 pub mod csp;
 pub mod updater;
+pub mod single_instance;

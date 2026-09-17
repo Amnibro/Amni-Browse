@@ -852,6 +852,18 @@ impl App {
             }
         }
     }
+    fn handle_single_instance(&mut self, msg: crate::net::single_instance::SingleInstanceMessage) {
+        if let Some(raw) = msg.url {
+            let raw = raw.trim();
+            if !raw.is_empty() {
+                let resolved = resolve_input(raw, &self.state().config.search_engine);
+                self.open_tab(resolved, msg.private);
+            }
+        }
+        self.window.set_minimized(false);
+        self.window.set_focus();
+        self.chrome_js("try{poll()}catch(e){}");
+    }
     fn close_tab(&mut self, idx: usize) {
         if idx >= self.tabs.len() { return; }
         self.overlay_css = 0;
@@ -1392,7 +1404,7 @@ impl App {
         }
     }
 }
-pub fn run(state: BrowserState) {
+pub fn run(state: BrowserState, single_instance: Option<crate::net::single_instance::SingleInstanceListener>) {
     privacy_env(&state.config);
     let token = format!("{:016x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x5eed) ^ 0x9e37_79b9_7f4a_7c15u64);
     let ephemeral = std::env::args().any(|a| a == "--new-window");
@@ -1400,6 +1412,8 @@ pub fn run(state: BrowserState) {
     let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(false);
     let event_loop = EventLoopBuilder::<()>::with_user_event().build();
     let proxy = event_loop.create_proxy();
+    let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<crate::net::single_instance::SingleInstanceMessage>();
+    let mut _instance_guard = single_instance.map(|l| l.listen(proxy.clone(), ipc_tx));
     let (w, h) = saved.as_ref().map(|s| (s.window_width.max(720.0), s.window_height.max(480.0))).unwrap_or((1400.0, 900.0));
     let mut builder = WindowBuilder::new().with_title(APP_NAME).with_decorations(decorated).with_inner_size(LogicalSize::new(w, h)).with_min_inner_size(LogicalSize::new(720.0, 480.0)).with_maximized(saved.as_ref().map(|s| s.maximized).unwrap_or(false));
     if let Some(c) = hex_rgba(&state.themes.active_theme().bg_primary) { builder = builder.with_background_color(c); }
@@ -1554,7 +1568,16 @@ pub fn run(state: BrowserState) {
             }
             Event::UserEvent(()) => {
                 let pending: Vec<Ev> = std::mem::take(&mut *events.borrow_mut());
-                if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { for ev in pending { a.handle(ev); } } }
+                if let Ok(mut g) = app_loop.try_borrow_mut() {
+                    if let Some(a) = g.as_mut() {
+                        while let Ok(msg) = ipc_rx.try_recv() {
+                            a.handle_single_instance(msg);
+                        }
+                        for ev in pending {
+                            a.handle(ev);
+                        }
+                    }
+                }
             }
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } | Event::WindowEvent { event: WindowEvent::ScaleFactorChanged { .. }, .. } => {
                 if let Ok(g) = app_loop.try_borrow() { if let Some(a) = g.as_ref() { a.layout(); } }
@@ -1564,6 +1587,7 @@ pub fn run(state: BrowserState) {
             }
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
                 if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { a.shutdown(); } }
+                _instance_guard.take();
                 *control_flow = ControlFlow::Exit;
             }
             _ => {}
