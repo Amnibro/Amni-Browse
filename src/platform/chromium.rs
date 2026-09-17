@@ -9,7 +9,7 @@ use tao::platform::unix::WindowExtUnix;
 #[cfg(not(windows))]
 use wry::WebViewBuilderExtUnix;
 #[cfg(not(windows))]
-use gtk::prelude::{BoxExt, LayoutExt, WidgetExt as GtkWidgetExt};
+use gtk::prelude::{BoxExt, LayoutExt, OverlayExt, WidgetExt as GtkWidgetExt};
 #[cfg(windows)]
 use wry::WebViewExtWindows;
 #[cfg(windows)]
@@ -45,6 +45,8 @@ struct App {
     window: Window,
     #[cfg(not(windows))]
     canvas: gtk::Layout,
+    #[cfg(not(windows))]
+    chrome_canvas: gtk::Layout,
     decorated: bool,
     chrome: Option<WebView>,
     chrome_hwnd: usize,
@@ -128,12 +130,18 @@ fn focus_on_click(v: &WebView) {
 /// their original size request on every pass, so views stayed the size the window opened at and
 /// the window could never shrink. A Layout is a canvas whose own size request ignores its
 /// children; `place()` moves and resizes each view on every layout.
+/// A gtk::Overlay ensures the chrome canvas is stacked above the tabs canvas so menus and popups
+/// are never occluded by tab webviews.
 #[cfg(not(windows))]
-fn gtk_host(window: &Window) -> gtk::Layout {
-    let l = gtk::Layout::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
-    if let Some(vb) = window.default_vbox() { vb.pack_start(&l, true, true, 0); }
-    l.show_all();
-    l
+fn gtk_host(window: &Window) -> (gtk::Layout, gtk::Layout) {
+    let overlay = gtk::Overlay::new();
+    let content_canvas = gtk::Layout::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+    let chrome_canvas = gtk::Layout::new(None::<&gtk::Adjustment>, None::<&gtk::Adjustment>);
+    overlay.add(&content_canvas);
+    overlay.add_overlay(&chrome_canvas);
+    if let Some(vb) = window.default_vbox() { vb.pack_start(&overlay, true, true, 0); }
+    overlay.show_all();
+    (content_canvas, chrome_canvas)
 }
 fn hex_rgba(hex: &str) -> Option<tao::window::RGBA> {
     let h = hex.trim().trim_start_matches('#');
@@ -202,10 +210,14 @@ fn attach_filter(view: &WebView, filter: Option<usize>, on: bool) {
 /// underlying WebKitWebView; favicons arrive through the ICON_SCRIPT ipc note; downloads report
 /// completion through wry's download-completed handler (see spawn_tab).
 #[cfg(not(windows))]
-fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, _dnt: bool, _autofill: bool) -> Option<Core> {
+fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, dnt: bool, _autofill: bool) -> Option<Core> {
     use wry::WebViewExtUnix;
-    use webkit2gtk::WebViewExt;
+    use webkit2gtk::{SettingsExt, WebViewExt};
     let wv = view.webview();
+    if let Some(settings) = wv.settings() {
+        settings.set_enable_do_not_track(dnt);
+        settings.set_enable_developer_extras(true);
+    }
     let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
     wv.connect_load_changed(move |w, _| p1(Ev::History(uid, w.can_go_back(), w.can_go_forward())));
     wv.connect_enter_fullscreen(move |_| { p2(Ev::PageFullscreen(uid, true)); false });
@@ -290,16 +302,37 @@ impl App {
     #[cfg(not(windows))]
     fn host(&self) -> &gtk::Layout { &self.canvas }
     #[cfg(windows)]
+    fn chrome_host(&self) -> &Window { &self.window }
+    #[cfg(not(windows))]
+    fn chrome_host(&self) -> &gtk::Layout { &self.chrome_canvas }
+    #[cfg(windows)]
     fn place(&self, v: &WebView, r: Rect) { let _ = v.set_bounds(r); }
     #[cfg(not(windows))]
-    fn place(&self, v: &WebView, r: Rect) {
+    fn place_in(&self, canvas: &gtk::Layout, v: &WebView, r: Rect) {
         use wry::WebViewExtUnix;
         let s = self.scale();
         let (x, y): (i32, i32) = r.position.to_logical::<i32>(s).into();
         let (w, h): (i32, i32) = r.size.to_logical::<i32>(s).into();
         let wv = v.webview();
-        self.canvas.move_(&wv, x, y);
+        canvas.move_(&wv, x, y);
         wv.set_size_request(w.max(1), h.max(1));
+    }
+    #[cfg(not(windows))]
+    fn place(&self, v: &WebView, r: Rect) {
+        self.place_in(&self.canvas, v, r);
+    }
+    #[cfg(windows)]
+    fn place_chrome(&self, c: &WebView, r: Rect) { self.place(c, r); }
+    #[cfg(not(windows))]
+    fn place_chrome(&self, c: &WebView, r: Rect) {
+        use wry::WebViewExtUnix;
+        let s = self.scale();
+        let (x, y): (i32, i32) = r.position.to_logical::<i32>(s).into();
+        let (w, h): (i32, i32) = r.size.to_logical::<i32>(s).into();
+        let wv = c.webview();
+        self.chrome_canvas.move_(&wv, x, y);
+        wv.set_size_request(w.max(1), h.max(1));
+        self.chrome_canvas.set_size_request(w.max(1), h.max(1));
     }
     fn frame_px(&self) -> u32 { match self.decorated || self.fullscreen || self.page_fullscreen || self.window.is_maximized() { true => 0, false => (FRAME_CSS * self.scale()).round() as u32 } }
     fn chrome_px(&self) -> u32 { match self.fullscreen || self.page_fullscreen { true => 0, false => (SERVO_CHROME_HEIGHT_CSS as f64 * self.scale()).round() as u32 } }
@@ -317,7 +350,15 @@ impl App {
     }
     fn layout(&self) {
         let hide_chrome = self.fullscreen || self.page_fullscreen;
-        if let Some(c) = self.chrome.as_ref() { self.place(c, self.chrome_rect()); let _ = c.set_visible(!hide_chrome); }
+        if let Some(c) = self.chrome.as_ref() {
+            self.place_chrome(c, self.chrome_rect());
+            let _ = c.set_visible(!hide_chrome);
+            #[cfg(not(windows))]
+            {
+                use gtk::prelude::WidgetExt;
+                self.chrome_canvas.set_visible(!hide_chrome);
+            }
+        }
         let r = self.content_rect();
         for (i, t) in self.tabs.iter().enumerate() { self.place(&t.view, r); let _ = t.view.set_visible(i == self.active); }
         self.raise_chrome();
@@ -326,15 +367,8 @@ impl App {
     fn raise_chrome(&self) {
         if self.chrome_hwnd != 0 { unsafe { SetWindowPos(self.chrome_hwnd as HWND, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE); } }
     }
-    /// GtkLayout stacks children in the order they were added, so every tab spawned after the
-    /// chrome sits above it and swallows the expanded menu overlay. Raising the chrome's own
-    /// GdkWindow puts it back on top; without this the app menu opens invisibly under the page.
     #[cfg(not(windows))]
-    fn raise_chrome(&self) {
-        use gtk::prelude::WidgetExt;
-        use wry::WebViewExtUnix;
-        if let Some(w) = self.chrome.as_ref().and_then(|c| c.webview().window()) { w.raise(); }
-    }
+    fn raise_chrome(&self) {}
     #[cfg(windows)]
     fn go_back(&self) { self.with_core(|c| unsafe { let _ = c.GoBack(); }); }
     #[cfg(windows)]
@@ -346,13 +380,29 @@ impl App {
     #[cfg(windows)]
     fn open_devtools(&self) { self.with_core(|c| unsafe { let _ = c.OpenDevToolsWindow(); }); }
     #[cfg(not(windows))]
-    fn go_back(&self) { self.active_js("history.back()"); }
+    fn go_back(&self) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        if let Some(t) = self.active_tab() { t.view.webview().go_back(); }
+    }
     #[cfg(not(windows))]
-    fn go_forward(&self) { self.active_js("history.forward()"); }
+    fn go_forward(&self) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        if let Some(t) = self.active_tab() { t.view.webview().go_forward(); }
+    }
     #[cfg(not(windows))]
-    fn reload_page(&self) { self.active_js("location.reload()"); }
+    fn reload_page(&self) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        if let Some(t) = self.active_tab() { t.view.webview().reload(); }
+    }
     #[cfg(not(windows))]
-    fn stop_page(&self) { self.active_js("window.stop()"); }
+    fn stop_page(&self) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        if let Some(t) = self.active_tab() { t.view.webview().stop_loading(); }
+    }
     #[cfg(not(windows))]
     fn open_devtools(&self) { if let Some(t) = self.active_tab() { t.view.open_devtools(); } }
     fn active_tab(&self) -> Option<&Tab> { self.tabs.get(self.active) }
@@ -446,12 +496,31 @@ impl App {
         self.persist();
     }
     fn switch_tab(&mut self, idx: usize) { if idx < self.tabs.len() { self.active = idx; self.layout(); self.sync_title(); self.persist(); self.focus_content(); } }
-    fn focus_content(&self) { if let Some(t) = self.active_tab() { let _ = t.view.focus(); } }
+    fn focus_content(&self) {
+        if let Some(t) = self.active_tab() {
+            #[cfg(not(windows))]
+            {
+                use gtk::prelude::WidgetExt;
+                use wry::WebViewExtUnix;
+                t.view.webview().grab_focus();
+            }
+            let _ = t.view.focus();
+        }
+    }
     fn navigate_active(&mut self, url: &str) {
         if let Some(t) = self.tabs.get_mut(self.active) { t.url = url.to_string(); t.loading = true; t.icon = None; let _ = t.view.load_url(url); }
     }
     fn focus_omnibox(&self, clear: bool) {
-        if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); let _ = c.evaluate_script(&format!("try{{var u=document.getElementById('url');{}u.focus();u.select()}}catch(e){{}}", match clear { true => "u.value='';", false => "" })); }
+        if let Some(c) = self.chrome.as_ref() {
+            #[cfg(not(windows))]
+            {
+                use gtk::prelude::WidgetExt;
+                use wry::WebViewExtUnix;
+                c.webview().grab_focus();
+            }
+            let _ = c.focus();
+            let _ = c.evaluate_script(&format!("try{{var u=document.getElementById('url');{}u.focus();u.select()}}catch(e){{}}", match clear { true => "u.value='';", false => "" }));
+        }
     }
     /// The hamburger. Both platforms drive the same list through the chrome's embedder-menu
     /// renderer (showEmbedder); picks come back as ctx_pick and route to normal commands.
@@ -484,7 +553,15 @@ impl App {
         ]);
         let w = self.window.inner_size().to_logical::<f64>(self.scale()).width;
         let payload = serde_json::json!({"kind":"menu","x":(w - 244.0).max(4.0).round() as i64,"y":(SERVO_CHROME_HEIGHT_CSS as i64) - 8,"items":items});
-        if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
+        if let Some(c) = self.chrome.as_ref() {
+            #[cfg(not(windows))]
+            {
+                use gtk::prelude::WidgetExt;
+                use wry::WebViewExtUnix;
+                c.webview().grab_focus();
+            }
+            let _ = c.focus();
+        }
         self.chrome_js(&format!("window.__amni&&window.__amni.showEmbedder&&window.__amni.showEmbedder({})", payload));
     }
     fn chrome_js(&self, js: &str) { if let Some(c) = self.chrome.as_ref() { let _ = c.evaluate_script(js); } }
@@ -836,16 +913,16 @@ pub fn run(state: BrowserState) {
     #[cfg(windows)]
     let parent = (window.hwnd() as isize) as HWND;
     #[cfg(not(windows))]
-    let canvas = gtk_host(&window);
-    let mut a = App { window, #[cfg(not(windows))] canvas, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, #[cfg(not(windows))] filter: compile_filter(), collapsed: Vec::new(), ephemeral };
+    let (canvas, chrome_canvas) = gtk_host(&window);
+    let mut a = App { window, #[cfg(not(windows))] canvas, #[cfg(not(windows))] chrome_canvas, decorated, chrome: None, chrome_hwnd: 0, tabs: Vec::new(), active: 0, closed: Vec::new(), state, token, next_uid: 1, overlay_css: 0, fullscreen: false, page_fullscreen: false, find_query: String::new(), protocol: protocol.clone(), events: events.clone(), proxy: proxy.clone(), blocker, shield, #[cfg(not(windows))] filter: compile_filter(), collapsed: Vec::new(), ephemeral };
     let chrome_proto = protocol.clone();
     let kpush = a.pusher();
     let chrome = WebViewBuilder::new().with_url(&internal_url("chrome")).with_bounds(a.chrome_rect()).with_devtools(true).with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT)).with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
         .with_ipc_handler(move |req| { if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) { if v.get("type").and_then(|t| t.as_str()) == Some("key") { kpush(Ev::Key(0, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)); } } });
-    let chrome = build_view(chrome, a.host()).expect("chrome webview");
+    let chrome = build_view(chrome, a.chrome_host()).expect("chrome webview");
     #[cfg(windows)]
     if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }
-    a.place(&chrome, a.chrome_rect());
+    a.place_chrome(&chrome, a.chrome_rect());
     a.chrome = Some(chrome);
     #[cfg(windows)]
     { a.chrome_hwnd = unsafe { GetWindow(parent, GW_CHILD) } as usize; }
