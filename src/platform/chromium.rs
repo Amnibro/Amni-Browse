@@ -895,7 +895,7 @@ pub fn run(state: BrowserState) {
     let token = format!("{:016x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x5eed) ^ 0x9e37_79b9_7f4a_7c15u64);
     let ephemeral = std::env::args().any(|a| a == "--new-window");
     let saved = SessionManager::load().filter(|_| state.config.restore_session && !ephemeral);
-    let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(!cfg!(windows));
+    let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(false);
     let event_loop = EventLoopBuilder::<()>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let (w, h) = saved.as_ref().map(|s| (s.window_width.max(720.0), s.window_height.max(480.0))).unwrap_or((1400.0, 900.0));
