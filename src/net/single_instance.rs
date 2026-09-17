@@ -49,6 +49,13 @@ fn socket_path() -> PathBuf {
     }
 }
 
+pub fn cleanup() {
+    #[cfg(unix)]
+    {
+        let _ = std::fs::remove_file(socket_path());
+    }
+}
+
 pub fn init() -> SingleInstance {
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--new-instance") {

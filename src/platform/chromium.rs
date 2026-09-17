@@ -1343,6 +1343,7 @@ impl App {
             if c_hist || c_exit { st.history.clear_all(); st.history.save(); }
             st.shutdown();
         }
+        crate::net::single_instance::cleanup();
     }
     fn handle(&mut self, ev: Ev) {
         match ev {
