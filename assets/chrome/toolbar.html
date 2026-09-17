@@ -58,7 +58,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
 #suggest .sub,#panel .sub{color:var(--text-dim);font-size:10.5px;letter-spacing:.08em;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #panel h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;font-weight:650;color:var(--text-dim);padding:10px 12px 4px}
 #tabs{display:flex;align-items:flex-end;height:40px;padding:6px 8px 0;gap:2px;background:var(--bg-darkest);position:relative;z-index:2;box-shadow:inset 0 -1px 0 var(--stroke)}
-#tab-list{display:flex;align-items:flex-end;gap:1px;flex:0 1 auto;min-width:0;max-width:calc(100% - 200px);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:var(--stroke) transparent}
+#tab-list{display:flex;align-items:flex-end;gap:1px;flex:1 1 auto;min-width:0;max-width:none;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:var(--stroke) transparent}
 .tab{display:flex;align-items:center;gap:7px;min-width:112px;max-width:220px;height:28px;margin-bottom:1px;padding:0 4px 0 10px;border:1px solid transparent;border-bottom:none;border-radius:var(--tab-radius);background:var(--tab-inactive);color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;letter-spacing:.01em;transition:background .12s,color .12s,height .12s,margin .12s,border-color .12s}
 .tab:hover{background:var(--bg-hover);color:var(--text)}
 .tab.active{height:35px;margin-bottom:0;background:var(--tab-active);color:var(--text);z-index:3;border-color:var(--stroke);border-bottom-color:var(--tab-active);box-shadow:0 1px 0 var(--tab-active)}
@@ -87,10 +87,10 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
 .tab.dragging{z-index:6;opacity:.92;background:var(--bg-elev);cursor:grabbing;transition:none}
 #tab-list.dragging .tab{transition:transform .12s ease}
 #tab-list.dragging{scroll-behavior:auto}
-#new-tab{width:28px;height:28px;border-radius:6px;background:transparent;color:var(--text-dim);border:1px solid transparent;cursor:pointer;margin:0 0 3px 4px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;font:600 16px/1 Consolas,monospace}
+#new-tab{width:28px;height:28px;border-radius:6px;background:transparent;color:var(--text-dim);border:1px solid transparent;cursor:pointer;margin:0 0 3px 4px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;font:600 16px/1 Consolas,monospace;pointer-events:auto;position:relative;z-index:10}
 #tab-drag{flex:1 1 auto;min-width:24px;height:32px;align-self:stretch;-webkit-app-region:drag}
-#win-btns{display:flex;align-self:stretch;margin-left:8px;flex:0 0 auto}
-.win-btn{width:46px;height:40px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:0;font:600 13px/1 Consolas,monospace}
+#win-btns{display:flex;align-self:stretch;margin-left:8px;flex:0 0 auto;pointer-events:auto;position:relative;z-index:10;-webkit-app-region:no-drag}
+.win-btn{width:46px;height:40px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:0;font:600 13px/1 Consolas,monospace;pointer-events:auto;position:relative;z-index:10;-webkit-app-region:no-drag}
 .win-btn:hover{background:var(--bg-hover);color:var(--text)}
 #win-close:hover{background:#8B1E1E;color:#fff}
 #new-tab:hover{background:var(--bg-elev);color:var(--text);border-color:var(--stroke)}
@@ -208,7 +208,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   const SVG_DOT='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg>';
   const icoStarOn='\u2605';
   const icoStarOff='\u2606';
-  function cmd(name,args){const q=args?'?'+new URLSearchParams(args).toString():'';fetch('amnibrowse://cmd/'+name+q,{mode:'no-cors'}).catch(()=>{});}
+  function cmd(name,args){const qObj=Object.assign({},args||{});if(window.__amniToken)qObj.tok=window.__amniToken;const q='?'+new URLSearchParams(qObj).toString();fetch('amnibrowse://cmd/'+name+q,{mode:'no-cors'}).catch(()=>{});}
   function kbd(on){cmd('kbd',{on:on?'1':'0'})}
   const KBDSEL='input,button,.tab,[tabindex]';
   document.addEventListener('focusin',e=>{if(e.target&&e.target.closest&&e.target.closest(KBDSEL))kbd(1)});
@@ -252,7 +252,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   const loginBtn=$('#logins'),updBtn=$('#upd');
   function winH(){return Math.max(window.innerHeight,window.__amniWinH||0)}
   function applyState(s){if(s.winh)window.__amniWinH=Number(s.winh)||0;lastBackendUids=tabUids(s.tabs);const active=(s.tabs||[]).find(t=>t.active)||null;const icon=active&&active.icon?active.icon:null;setUrl(s.url||'',icon);setProgress(!!s.loading);setReloadStop(!!s.loading);setNavDisabled(!!s.canBack,!!s.canForward);renderTabs(s.tabs||[]);setZoom(s.zoom);setShield(s.shield!==false);setBookmarked(!!s.bookmarked);applyTheme(s.theme);const logs=s.logins||[];if(loginBtn){loginBtn.style.display=logs.length?'inline-flex':'none';loginBtn.title=(s.pm||'Passwords')+' · '+logs.length+' on this page';loginBtn.dataset.n=String(logs.length)}if(updBtn){updBtn.style.display=s.update?'inline-flex':'none';if(s.update)updBtn.title='Update '+s.update.version+' from '+s.update.source}const mx=$('#win-max');if(mx){mx.title=s.maximized?'Restore':'Maximize';mx.setAttribute('aria-label',mx.title)}}
-  async function poll(){try{const r=await fetch('amnibrowse://state',{cache:'no-store'});if(!r.ok)return;applyState(await r.json())}catch(e){}}
+  async function poll(){try{const q=window.__amniToken?'?tok='+encodeURIComponent(window.__amniToken):'';const r=await fetch('amnibrowse://state'+q,{cache:'no-store'});if(!r.ok)return;applyState(await r.json())}catch(e){}}
   url.addEventListener('focus',()=>{wrap.classList.add('focused');kbd(1);setTimeout(()=>{try{if(document.activeElement===url&&url.selectionStart===url.selectionEnd)url.select()}catch(e){}},0)});
   url.addEventListener('blur',()=>wrap.classList.remove('focused'));
   url.addEventListener('dblclick',()=>{try{url.select()}catch(e){}});

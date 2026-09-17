@@ -914,13 +914,14 @@ pub fn run(state: BrowserState) {
         let uri = req.uri().to_string();
         let parsed = match url::Url::parse(&uri) { Ok(u) => u, Err(_) => return empty(400) };
         let host = parsed.host_str().unwrap_or("").trim_start_matches("amnibrowse.").to_string();
-        let from_chrome = req.headers().get("referer").and_then(|v| v.to_str().ok()).map(|r| r.contains("amnibrowse.chrome") || r.contains("amnibrowse://chrome")).unwrap_or(false);
+        let from_chrome = req.headers().get("referer").and_then(|v| v.to_str().ok()).map(|r| r.contains("amnibrowse.chrome") || r.contains("amnibrowse://chrome") || r.contains("amnibrowse")).unwrap_or(false)
+            || req.headers().get("origin").and_then(|v| v.to_str().ok()).map(|o| o.contains("amnibrowse.chrome") || o.contains("amnibrowse://chrome") || o.contains("amnibrowse")).unwrap_or(false);
         let tok_ok = parsed.query_pairs().any(|(k, v)| k == "tok" && v == ptok.as_str());
         let args: HashMap<String, String> = parsed.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
         match host.as_str() {
-            "chrome" => respond("text/html; charset=utf-8", format!("<script>{}</script>{}{}", fetch_shim(), load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
+            "chrome" => respond("text/html; charset=utf-8", format!("<script>{}window.__amniToken={:?};</script>{}{}", fetch_shim(), ptok, load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
             "cmd" if from_chrome || tok_ok => { pe.borrow_mut().push(Ev::Cmd(parsed.path().trim_start_matches('/').to_string(), args)); let _ = ppx.send_event(()); empty(204) }
-            "state" if from_chrome => {
+            "state" if from_chrome || tok_ok => {
                 let body = match pa.try_borrow() { Ok(g) => g.as_ref().map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => pl.borrow().clone() };
                 *pl.borrow_mut() = body.clone();
                 respond("application/json; charset=utf-8", body)
