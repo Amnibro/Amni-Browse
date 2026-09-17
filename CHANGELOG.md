@@ -1,8 +1,11 @@
-## 0.13.1 - 2026-09-16 — Linux overlay stacking, focus routing & native WebKitGTK navigation
+## 0.13.1 - 2026-09-16 — Linux overlay stacking, focus routing, WebKitGTK Chrome parity & data clearing
 - **GtkOverlay hierarchy:** Replaced flat `GtkLayout` with `gtk::Overlay` wrapping the content canvas and layering the chrome canvas on top. The expanded menu, omnibox suggestions, tab context menus, and color picker now render cleanly above active tabs and reliably receive clicks instead of being covered by page webviews.
 - **Keyboard focus routing:** `focus_omnibox`, `focus_content`, and `show_app_menu` explicitly grab GTK widget focus so keyboard input reliably transitions to the omnibox on Ctrl+L / Ctrl+T instead of leaking to the page.
 - **Native WebKitGTK navigation:** Switched `go_back`, `go_forward`, `reload_page`, and `stop_page` from fragile JavaScript evals (`history.back()`, `window.stop()`) to native WebKitGTK C bindings (`go_back()`, `go_forward()`, `reload()`, `stop_loading()`).
-- **Privacy:** Wired Do Not Track header state directly into WebKitGTK `WebKitSettings::set_enable_do_not_track`.
+- **Chrome engine settings:** Enabled WebGL, WebAudio, WebRTC, MediaStream, MediaSource (MSE for 1080p/4K YouTube), smooth scrolling, encrypted media, back/forward navigation gestures, page cache, DNS prefetching, site-specific quirks, and web clipboard access.
+- **Full browsing data clearing on Linux:** Implemented WebKitGTK `clear_browsing_data` via `WebsiteDataManager` (clearing cookies, disk cache, local storage, indexeddb) from both in-app settings and automatic clear-on-exit shutdown.
+- **Platform User-Agent & local developer routing:** Switched Linux User-Agent to match native Linux Chrome platform metrics, and added automatic `localhost` / `localhost:port` URL routing in the omnibox.
+- **Privacy:** Wired Do Not Track and Global Privacy Control flags directly into page execution contexts.
 
 ## 0.16.9-android.0 - 2026-09-03 - tab groups collapse
 - Tap a group chip in the tab strip to collapse it (chip shows `name · count`), tap again to expand. Collapsing the group that holds the active tab jumps to the nearest tab outside it; switching into a collapsed group's tab (tab grid) expands it. Collapsed set persists in `amni_ui` prefs.

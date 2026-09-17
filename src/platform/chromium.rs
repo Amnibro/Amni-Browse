@@ -9,7 +9,7 @@ use tao::platform::unix::WindowExtUnix;
 #[cfg(not(windows))]
 use wry::WebViewBuilderExtUnix;
 #[cfg(not(windows))]
-use gtk::prelude::{BoxExt, LayoutExt, OverlayExt, WidgetExt as GtkWidgetExt};
+use gtk::prelude::{BoxExt, ContainerExt, LayoutExt, OverlayExt, WidgetExt as GtkWidgetExt};
 #[cfg(windows)]
 use wry::WebViewExtWindows;
 #[cfg(windows)]
@@ -25,7 +25,10 @@ type Core = ICoreWebView2;
 #[cfg(not(windows))]
 type Core = ();
 use crate::{app::BrowserState, engine::adblocker::AdBlocker, storage::{config::{APP_NAME, APP_VERSION}, downloads::{DownloadItem, DownloadManager, DownloadStatus}, session::{SessionManager, SessionTab}}, ui::internal_pages::{esc_html, newtab_html, theme_root_vars, SETTINGS_TPL, TUTORIAL_TPL}, ui::tokens::SERVO_CHROME_HEIGHT_CSS};
+#[cfg(windows)]
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+#[cfg(not(windows))]
+const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 #[cfg(windows)]
 const ENGINE: &str = "Chromium (WebView2)";
 #[cfg(not(windows))]
@@ -87,6 +90,7 @@ fn resolve_input(raw: &str, search_prefix: &str) -> Option<String> {
     if t.is_empty() { return None; }
     if let Some(rest) = t.strip_prefix("amnibrowse://") { return Some(internal_url(rest.trim_matches('/'))); }
     if t.contains("://") || t.starts_with("about:") || t.starts_with("view-source:") { return Some(t.to_string()); }
+    if t == "localhost" || t.starts_with("localhost:") { return Some(format!("http://{}", t)); }
     if std::path::Path::new(t).is_file() { return url::Url::from_file_path(std::fs::canonicalize(t).ok()?).ok().map(|u| u.to_string()); }
     match t.contains('.') && !t.contains(' ') {
         true => Some(format!("https://{}", t)),
@@ -213,10 +217,24 @@ fn attach_filter(view: &WebView, filter: Option<usize>, on: bool) {
 fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, dnt: bool, _autofill: bool) -> Option<Core> {
     use wry::WebViewExtUnix;
     use webkit2gtk::{SettingsExt, WebViewExt};
+    if dnt {
+        let _ = view.evaluate_script("try{Object.defineProperty(navigator,'doNotTrack',{value:'1',configurable:false});Object.defineProperty(navigator,'globalPrivacyControl',{value:true,configurable:false})}catch(e){}");
+    }
     let wv = view.webview();
-    if let Some(settings) = wv.settings() {
-        settings.set_enable_do_not_track(dnt);
+    if let Some(settings) = WebViewExt::settings(&wv) {
         settings.set_enable_developer_extras(true);
+        settings.set_enable_webgl(true);
+        settings.set_enable_webaudio(true);
+        settings.set_enable_media_stream(true);
+        settings.set_enable_mediasource(true);
+        settings.set_enable_webrtc(true);
+        settings.set_enable_smooth_scrolling(true);
+        settings.set_enable_encrypted_media(true);
+        settings.set_enable_back_forward_navigation_gestures(true);
+        settings.set_enable_page_cache(true);
+        settings.set_enable_dns_prefetching(true);
+        settings.set_enable_site_specific_quirks(true);
+        settings.set_javascript_can_access_clipboard(true);
     }
     let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
     wv.connect_load_changed(move |w, _| p1(Ev::History(uid, w.can_go_back(), w.can_go_forward())));
@@ -655,7 +673,13 @@ impl App {
     }
     fn apply_frame_color(&self) { self.window.set_background_color(hex_rgba(&self.state.themes.active_theme().bg_primary)); }
     #[cfg(not(windows))]
-    fn clear_browsing_data(&self, _kinds: u32) {}
+    fn clear_browsing_data(&self, _kinds: u32) {
+        use webkit2gtk::{WebContext, WebContextExt, WebsiteDataManagerExt, WebsiteDataTypes};
+        if let Some(ctx) = WebContext::default() {
+            let dm = ctx.website_data_manager();
+            dm.clear(WebsiteDataTypes::all(), webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
+        }
+    }
     #[cfg(windows)]
     fn clear_browsing_data(&self, kinds: COREWEBVIEW2_BROWSING_DATA_KINDS) {
         if let Some(c) = self.tabs.iter().find_map(|t| t.core.clone()) {
@@ -806,6 +830,12 @@ impl App {
             if c.clear_cache_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_DISK_CACHE); }
             if c.clear_cookies_on_exit { add(COREWEBVIEW2_BROWSING_DATA_KINDS_COOKIES); }
             if let Some(k) = kinds { self.clear_browsing_data(k); std::thread::sleep(std::time::Duration::from_millis(400)); }
+        }
+        #[cfg(not(windows))]
+        {
+            if c.clear_data_on_exit || c.clear_cache_on_exit || c.clear_cookies_on_exit {
+                self.clear_browsing_data(0);
+            }
         }
         if c.clear_history_on_exit || c.clear_data_on_exit { self.state.history.clear_all(); self.state.history.save(); }
         self.state.shutdown();
