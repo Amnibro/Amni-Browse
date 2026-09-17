@@ -674,7 +674,7 @@ impl App {
     fn apply_frame_color(&self) { self.window.set_background_color(hex_rgba(&self.state.themes.active_theme().bg_primary)); }
     #[cfg(not(windows))]
     fn clear_browsing_data(&self, _kinds: u32) {
-        use webkit2gtk::{WebContext, WebContextExt, WebsiteDataManagerExt, WebsiteDataTypes};
+        use webkit2gtk::{WebContext, WebContextExt, WebsiteDataManagerExtManual, WebsiteDataTypes};
         if let Some(ctx) = WebContext::default() {
             if let Some(dm) = ctx.website_data_manager() {
                 dm.clear(WebsiteDataTypes::all(), webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
