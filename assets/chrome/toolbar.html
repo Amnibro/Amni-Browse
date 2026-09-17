@@ -16,6 +16,8 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
 #find input:focus{border-color:var(--accent)}
 #ctx-scrim{display:none;position:absolute;inset:0;pointer-events:auto;z-index:8;background:transparent}
 #ctx-scrim.on{display:block}
+#fly-scrim{display:none;position:absolute;inset:0;pointer-events:auto;z-index:5;background:transparent}
+#fly-scrim.on{display:block}
 #ctxmenu{position:absolute;min-width:196px;max-width:280px;padding:4px 0;background:var(--bg-elev);border:1px solid var(--stroke);border-radius:3px;pointer-events:auto;z-index:9}
 #ctxmenu button{display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--text);padding:7px 14px;font:12px var(--font);cursor:pointer}
 #ctxmenu button:hover{background:var(--bg-hover)}
@@ -58,7 +60,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
 #suggest .sub,#panel .sub{color:var(--text-dim);font-size:10.5px;letter-spacing:.08em;display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 #panel h3{font-size:10px;letter-spacing:.18em;text-transform:uppercase;font-weight:650;color:var(--text-dim);padding:10px 12px 4px}
 #tabs{display:flex;align-items:flex-end;height:40px;padding:6px 8px 0;gap:2px;background:var(--bg-darkest);position:relative;z-index:2;box-shadow:inset 0 -1px 0 var(--stroke)}
-#tab-list{display:flex;align-items:flex-end;gap:1px;flex:1 1 auto;min-width:0;max-width:none;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:var(--stroke) transparent}
+#tab-list{display:flex;align-items:flex-end;gap:1px;flex:0 1 auto;min-width:0;max-width:calc(100% - 200px);overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;scrollbar-color:var(--stroke) transparent}
 .tab{display:flex;align-items:center;gap:7px;min-width:112px;max-width:220px;height:28px;margin-bottom:1px;padding:0 4px 0 10px;border:1px solid transparent;border-bottom:none;border-radius:var(--tab-radius);background:var(--tab-inactive);color:var(--text-dim);cursor:pointer;position:relative;font-size:12px;letter-spacing:.01em;transition:background .12s,color .12s,height .12s,margin .12s,border-color .12s}
 .tab:hover{background:var(--bg-hover);color:var(--text)}
 .tab.active{height:35px;margin-bottom:0;background:var(--tab-active);color:var(--text);z-index:3;border-color:var(--stroke);border-bottom-color:var(--tab-active);box-shadow:0 1px 0 var(--tab-active)}
@@ -194,6 +196,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   <div id="progress"><div id="progress-bar"></div></div>
   <div id="find"><input id="find-q" type="text" placeholder="Find in page" spellcheck="false"><button class="nav-btn" id="find-prev" title="Previous" aria-label="Previous">&#8593;</button><button class="nav-btn" id="find-next" title="Next" aria-label="Next">&#8595;</button><button class="nav-btn" id="find-x" title="Close" aria-label="Close find">&#215;</button></div>
 </div>
+<div id="fly-scrim"></div>
 <div id="suggest" role="listbox"></div>
 <div id="panel"></div>
 <div id="ctx-scrim"><div id="ctxmenu" role="menu"></div></div>
@@ -260,7 +263,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   url.addEventListener('dblclick',()=>{try{url.select()}catch(e){}});
   wrap.addEventListener('pointerdown',claimOmni,true);
   wrap.addEventListener('mousedown',claimOmni,true);
-  const suggest=$('#suggest'),panel=$('#panel'),findBar=$('#find'),findQ=$('#find-q');
+  const suggest=$('#suggest'),panel=$('#panel'),flyScrim=$('#fly-scrim'),findBar=$('#find'),findQ=$('#find-q');
   function overlay(h){cmd('overlay',{h:String(h||0)})}
   const ctxScrim=$('#ctx-scrim'),ctxMenu=$('#ctxmenu');
   const dlgScrim=$('#dlg-scrim'),dlgMsg=$('#dlg-msg'),dlgInput=$('#dlg-input'),dlgOk=$('#dlg-ok'),dlgCancel=$('#dlg-cancel');
@@ -268,7 +271,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   function hideDialog(){dlgScrim.classList.remove('on');dlgInput.classList.remove('on');dlgInput.value='';if(!ctxScrim.classList.contains('on')&&!suggest.classList.contains('on')&&!panel.classList.contains('on'))overlay(0)}
   function showDialog(m){suggest.classList.remove('on');panel.classList.remove('on');ctxScrim.classList.remove('on');ctxMenu.innerHTML='';dlgType=m.type||'alert';dlgMsg.textContent=m.message||'';const prompt=dlgType==='prompt';dlgInput.classList.toggle('on',prompt);dlgInput.value=prompt?(m.value||''):'';dlgCancel.style.display=dlgType==='alert'?'none':'';dlgScrim.classList.add('on');overlay(winH());if(prompt){dlgInput.focus();dlgInput.select()}else dlgOk.focus()}
   function hideEmbedder(){ctxScrim.classList.remove('on');ctxMenu.innerHTML='';hideDialog();colScrim.classList.remove('on');if(!suggest.classList.contains('on')&&!panel.classList.contains('on'))overlay(0)}
-  function hideFly(){suggest.classList.remove('on');panel.classList.remove('on');if(!ctxScrim.classList.contains('on')&&!dlgScrim.classList.contains('on'))overlay(0)}
+  function hideFly(){if(flyScrim)flyScrim.classList.remove('on');suggest.classList.remove('on');panel.classList.remove('on');if(!ctxScrim.classList.contains('on')&&!dlgScrim.classList.contains('on')&&!colScrim.classList.contains('on')&&(!tabMenu||!tabMenu.classList.contains('on')))overlay(0)}
   const colScrim=$('#col-scrim'),colPop=$('#colorpop'),colSv=$('#col-sv'),colHue=$('#col-hue'),colHex=$('#col-hex'),colPrev=$('#col-prev'),colSwatches=$('#col-swatches');
   const SWATCHES=['#000000','#404040','#808080','#C0C0C0','#FFFFFF','#FF3B30','#FF9500','#FFCC00','#34C759','#00C7BE','#30B0C7','#007AFF','#5856D6','#AF52DE','#FF2D55','#8B4513','#C89B4E','#E2BC7C','#0D0F12','#20242B'];
   let colH=0,colS=1,colV=1;
@@ -293,7 +296,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   dlgInput.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();cmd('dialog_ok',{v:dlgInput.value});hideDialog()}if(e.key==='Escape'){e.preventDefault();cmd('dialog_cancel');hideDialog()}});
   ctxScrim.addEventListener('mousedown',e=>{if(e.target===ctxScrim){e.preventDefault();cmd('ctx_dismiss');hideEmbedder();return}const b=e.target.closest('button');if(!b||!ctxMenu.contains(b))return;e.preventDefault();const id=b.dataset.id;const url=b.dataset.url||'';if(ctxMenu.dataset.kind==='select'){cmd('select_pick',{id:id});hideEmbedder();return}const args={id:id};if(url)args.url=url;cmd('ctx_pick',args);hideEmbedder()});
   let sugTimer=null;
-  async function showSuggest(q){try{const r=await fetch('amnibrowse://suggest?q='+encodeURIComponent(q||''),{cache:'no-store'});const list=await r.json();if(!Array.isArray(list)||!list.length){suggest.classList.remove('on');overlay(0);return}suggest.innerHTML=list.map(it=>'<button type="button" data-url="'+esc(it.url)+'"><span>'+esc(it.title||it.url)+'</span><span class="sub">'+esc(it.url)+'</span></button>').join('');suggest.classList.add('on');panel.classList.remove('on');overlay(Math.min(240,list.length*44+8))}catch(e){suggest.classList.remove('on')}}
+  async function showSuggest(q){try{const tok=window.__amniToken?'&tok='+encodeURIComponent(window.__amniToken):'';const r=await fetch('amnibrowse://suggest?q='+encodeURIComponent(q||'')+tok,{cache:'no-store'});const list=await r.json();if(!Array.isArray(list)||!list.length){suggest.classList.remove('on');if(flyScrim)flyScrim.classList.remove('on');overlay(0);return}suggest.innerHTML=list.map(it=>'<button type="button" data-url="'+esc(it.url)+'"><span>'+esc(it.title||it.url)+'</span><span class="sub">'+esc(it.url)+'</span></button>').join('');suggest.classList.add('on');panel.classList.remove('on');if(flyScrim)flyScrim.classList.add('on');overlay(Math.min(240,list.length*44+8))}catch(e){suggest.classList.remove('on');if(flyScrim)flyScrim.classList.remove('on');overlay(0)}}
   url.addEventListener('input',()=>{clearTimeout(sugTimer);const v=url.value.trim();sugTimer=setTimeout(()=>{v?showSuggest(v):hideFly()},80)});
   url.addEventListener('keydown',e=>{if(e.key==='Enter'){const v=url.value.trim();if(v)cmd('navigate',{url:v});url.blur();hideFly()}if(e.key==='Escape'){url.value=lastUrl;url.blur();hideFly()}});
   suggest.addEventListener('mousedown',e=>{const b=e.target.closest('button');if(!b)return;e.preventDefault();cmd('navigate',{url:b.dataset.url});hideFly();url.blur()});
@@ -304,9 +307,9 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   $('#find-next').addEventListener('click',()=>cmd('find',{q:findQ.value,dir:'1'}));
   $('#find-prev').addEventListener('click',()=>cmd('find',{q:findQ.value,dir:'-1'}));
   $('#find-x').addEventListener('click',hideFind);
-  async function showPanel(kind){hideFly();try{const path=kind==='dl'?'downloads':'history';const r=await fetch('amnibrowse://'+path,{cache:'no-store'});const list=await r.json();const title=kind==='dl'?'Downloads':'History';const rows=(list||[]).slice(0,20).map(it=>{const u=it.url||'';const t=it.title||it.filename||u;return '<button type="button" class="row" data-url="'+esc(u)+'"><span>'+esc(t)+'</span><span class="sub">'+esc(u||it.status||'')+'</span></button>'}).join('')||'<p class="sub" style="padding:10px 12px">Nothing here yet.</p>';panel.innerHTML='<h3>'+title+'</h3>'+rows;panel.classList.add('on');overlay(Math.min(240,48+(list||[]).length*40))}catch(e){}}
-  panel.addEventListener('mousedown',e=>{const b=e.target.closest('button');if(!b)return;e.preventDefault();if(b.dataset.fill){cmd('fill_login',{id:b.dataset.fill});hideFly();return}if(b.dataset.url){cmd('navigate',{url:b.dataset.url});hideFly()}});
-  function showLogins(list){hideFly();const rows=(list||[]).map(it=>'<button type="button" class="row" data-fill="'+esc(it.id)+'"><span>'+esc(it.username||it.id)+'</span><span class="sub">'+esc((it.source||'')+' · '+(it.site||''))+'</span></button>').join('')||'<p class="sub" style="padding:10px 12px">Unlock your password manager in Settings.</p>';panel.innerHTML='<h3>Fill login</h3>'+rows;panel.classList.add('on');overlay(Math.min(240,48+(list||[]).length*40))}
+  async function showPanel(kind){hideFly();try{const path=kind==='dl'?'downloads':'history';const tok=window.__amniToken?'?tok='+encodeURIComponent(window.__amniToken):'';const r=await fetch('amnibrowse://'+path+tok,{cache:'no-store'});const list=await r.json();const title=kind==='dl'?'Downloads':'History';const rows=(list||[]).slice(0,20).map(it=>{const u=it.url||'';const t=it.title||it.filename||u;const dlAttr=kind==='dl'?' data-dl="'+esc(it.id)+'"':'';return '<button type="button" class="row" data-url="'+esc(u)+'"'+dlAttr+'><span>'+esc(t)+'</span><span class="sub">'+esc(u||it.status||'')+'</span></button>'}).join('')||'<p class="sub" style="padding:10px 12px">Nothing here yet.</p>';const footer=kind==='dl'?'<div class="sep"></div><button type="button" class="row" data-action="downloads_page"><span>View all downloads...</span></button>':'<div class="sep"></div><button type="button" class="row" data-action="history_page"><span>View all history...</span></button>';panel.innerHTML='<h3>'+title+'</h3>'+rows+footer;panel.classList.add('on');if(flyScrim)flyScrim.classList.add('on');overlay(Math.min(280,48+(list||[]).length*40+40))}catch(e){}}
+  panel.addEventListener('mousedown',e=>{const b=e.target.closest('button');if(!b)return;e.preventDefault();if(b.dataset.fill){cmd('fill_login',{id:b.dataset.fill});hideFly();return}if(b.dataset.action==='downloads_page'){cmd('downloads');hideFly();return}if(b.dataset.action==='history_page'){cmd('history');hideFly();return}if(b.dataset.dl){cmd('open_download',{id:b.dataset.dl});hideFly();return}if(b.dataset.url){cmd('navigate',{url:b.dataset.url});hideFly()}});
+  function showLogins(list){hideFly();const rows=(list||[]).map(it=>'<button type="button" class="row" data-fill="'+esc(it.id)+'"><span>'+esc(it.username||it.id)+'</span><span class="sub">'+esc((it.source||'')+' · '+(it.site||''))+'</span></button>').join('')||'<p class="sub" style="padding:10px 12px">Unlock your password manager in Settings.</p>';panel.innerHTML='<h3>Fill login</h3>'+rows;panel.classList.add('on');if(flyScrim)flyScrim.classList.add('on');overlay(Math.min(240,48+(list||[]).length*40))}
   loginBtn&&loginBtn.addEventListener('click',async()=>{try{const r=await fetch('amnibrowse://state',{cache:'no-store'});const s=await r.json();showLogins(s.logins||[])}catch(e){}});
   updBtn&&updBtn.addEventListener('click',()=>cmd('menu'));
   document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(colScrim.classList.contains('on')){cmd('ctx_dismiss');hideColor();overlay(0);e.preventDefault();return}if(dlgScrim.classList.contains('on')){cmd('dialog_cancel');hideDialog();e.preventDefault();return}if(ctxScrim.classList.contains('on')){cmd('ctx_dismiss');hideEmbedder();e.preventDefault();return}hideFly();hideFind()}});
@@ -332,12 +335,16 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   function hideTabMenu(){tabMenu.classList.remove('on');tabMenu.innerHTML='';if(!suggest.classList.contains('on')&&!panel.classList.contains('on'))overlay(0)}
   $('#tabs').addEventListener('contextmenu',e=>{if(e.target.closest('.tab'))e.preventDefault()});
   $('#tabs').addEventListener('mouseup',e=>{if(e.button!==2)return;const t=e.target.closest('.tab');if(!t)return;e.preventDefault();const id=t.dataset.id,pinned=t.classList.contains('pinned'),group=t.dataset.group||'';tabMenu.innerHTML=`<button data-a="pin">${pinned?'Unpin tab':'Pin tab'}</button><button data-a="group">${group?'Move to group\u2026':'Add to group\u2026'}</button>${group?'<button data-a="ungroup">Remove from group</button>':''}<button data-a="dup">Duplicate</button><button data-a="close">Close tab</button>`;tabMenu.style.left=Math.min(e.clientX,window.innerWidth-200)+'px';tabMenu.style.top=(e.clientY+4)+'px';tabMenu.classList.add('on');overlay(winH());tabMenu.onclick=ev=>{const b=ev.target.closest('button');if(!b)return;const a=b.dataset.a;hideTabMenu();if(a==='pin')cmd('pin_tab',{id});else if(a==='group'){const name=window.prompt('Group name',group||'');if(name!=null)cmd('tab_set_group',{id,group:name})}else if(a==='ungroup')cmd('tab_set_group',{id,group:''});else if(a==='dup')cmd('duplicate_tab');else if(a==='close')cmd('close_tab',{id})}});
-  document.addEventListener('mousedown',e=>{if(tabMenu.classList.contains('on')&&!e.target.closest('#tabmenu'))hideTabMenu()});
+  document.addEventListener('mousedown',e=>{
+    if(tabMenu.classList.contains('on')&&!e.target.closest('#tabmenu'))hideTabMenu();
+    if(panel.classList.contains('on')&&!e.target.closest('#panel')&&!e.target.closest('#logins'))hideFly();
+    if(suggest.classList.contains('on')&&!e.target.closest('#suggest')&&!e.target.closest('#url'))hideFly();
+  });
+  if(flyScrim)flyScrim.addEventListener('mousedown',e=>{e.preventDefault();hideFly();hideEmbedder();hideTabMenu()});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&tabMenu.classList.contains('on'))hideTabMenu()});
   $('#tabs').addEventListener('mousedown',e=>{if(e.button!==0||e.target.closest('.tab')||e.target.closest('#new-tab')||e.target.closest('button'))return;cmd('win_drag')});
   window.__amni={setProgress,setUrl,setLock,showFind,showPanel,showEmbedder,hideEmbedder,chromeRev:'__CHROMEREV__'};
-  setLock(url.value,null);poll();setInterval(poll,250);
-})();
+  setLock(url.value,null);poll();setInterval(poll,250);overlay(0);})();
 </script>
 </body>
 </html>
