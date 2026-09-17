@@ -178,8 +178,18 @@ pub fn theme_root_vars(t: &Theme) -> String {
     )
 }
 pub fn bookmark_tiles(bookmarks: &[Bookmark]) -> String {
+    let default_sites = [
+        ("Amni OS", "https://amni-scient.com", "A", 45u32),
+        ("Google", "https://www.google.com", "G", 215u32),
+        ("YouTube", "https://www.youtube.com", "Y", 0u32),
+        ("GitHub", "https://github.com", "G", 270u32),
+        ("Wikipedia", "https://wikipedia.org", "W", 180u32),
+        ("DuckDuckGo", "https://duckduckgo.com", "D", 25u32),
+    ];
     match bookmarks.is_empty() {
-        true => "<p class='dim'>Bookmark pages with \u{2606} or Ctrl+D and they land here.</p>".into(),
+        true => default_sites.iter().map(|(name, url, ch, hue)| {
+            format!("<a class='tile' href='{}'><div class='mono' style='background:hsl({},45%,38%)'>{}</div><span>{}</span></a>", esc_html(url), hue, esc_html(ch), esc_html(name))
+        }).collect(),
         false => bookmarks.iter().take(12).map(|bm| {
             let host = url::Url::parse(&bm.url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_else(|| bm.title.clone());
             let ch: String = host.chars().next().unwrap_or('\u{2022}').to_uppercase().collect();

@@ -932,6 +932,7 @@ impl App {
             {"id":"new_tab","label":"New tab","enabled":true},
             {"id":"private_tab","label":"New private tab","enabled":true},
             {"id":"new_window","label":"New window","enabled":true},
+            {"id":"tile_view","label":"Tab tile view","enabled":true},
             {"sep":true},
             {"id":"am_history","label":"History","enabled":true},
             {"id":"am_downloads","label":"Downloads","enabled":true},
@@ -1085,6 +1086,10 @@ impl App {
             ("0", false, false) => self.command("zoom_reset", &HashMap::new()),
             ("tab", s, false) => { let n = self.tabs.len(); if n > 1 { let a = self.active; self.switch_tab(match s { true => (a + n - 1) % n, false => (a + 1) % n }); } }
             ("k", true, false) => self.command("duplicate_tab", &HashMap::new()),
+            ("a", true, false) => {
+                if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
+                self.chrome_js("window.__amni&&window.__amni.showTileView&&window.__amni.showTileView()");
+            }
             ("h", false, false) => self.chrome_js("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('hist')"),
             ("j", false, false) => self.chrome_js("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('dl')"),
             ("u", false, false) => self.command("view_source", &HashMap::new()),
@@ -1107,6 +1112,10 @@ impl App {
             "home" => { self.overlay_css = 0; let h = self.home_url(); self.navigate_active(&h); }
             "new_tab" => self.open_tab(a.get("url").cloned(), false),
             "private_tab" => self.open_tab(a.get("url").cloned(), true),
+            "tile_view" => {
+                if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
+                self.chrome_js("window.__amni&&window.__amni.showTileView&&window.__amni.showTileView()");
+            }
             "amni_newtab" => { if let Some(u) = a.get("url").cloned() { self.spawn_tab(&u, false, Some(self.active + 1)); self.layout(); } }
             "close_tab" => { if let Some(i) = a.get("id").and_then(|s| idx_of(s)) { self.close_tab(i); } }
             "switch_tab" => { if let Some(i) = a.get("id").and_then(|s| idx_of(s)) { self.switch_tab(i); } }
@@ -1302,6 +1311,11 @@ impl App {
                         }
                     }
                     "am_find" => { if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); } self.chrome_js("window.__amni&&window.__amni.showFind&&window.__amni.showFind()"); }
+                    "tile_view" => {
+                        if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
+                        self.chrome_js("window.__amni&&window.__amni.showTileView&&window.__amni.showTileView()");
+                        return;
+                    }
                     "am_newtab" => { let u = a.get("url").cloned().unwrap_or_default(); if !u.is_empty() { self.open_tab(Some(u), false); } }
                     other => { let mut args = a.clone(); args.remove("id"); let verb = other.to_string(); self.command(&verb, &args); }
                 }
