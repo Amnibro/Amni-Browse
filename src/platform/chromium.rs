@@ -352,16 +352,28 @@ impl App {
         wv.set_size_request(w.max(1), h.max(1));
         self.chrome_canvas.set_size_request(w.max(1), h.max(1));
     }
+    fn host_px(&self) -> PhysicalSize<u32> {
+        #[cfg(not(windows))]
+        {
+            use gtk::prelude::WidgetExt;
+            let a = self.canvas.allocation();
+            if a.width() > 1 && a.height() > 1 {
+                let s = self.scale();
+                return PhysicalSize::new(((a.width() as f64) * s).round() as u32, ((a.height() as f64) * s).round() as u32);
+            }
+        }
+        self.window.inner_size()
+    }
     fn frame_px(&self) -> u32 { match self.decorated || self.fullscreen || self.page_fullscreen || self.window.is_maximized() { true => 0, false => (FRAME_CSS * self.scale()).round() as u32 } }
     fn chrome_px(&self) -> u32 { match self.fullscreen || self.page_fullscreen { true => 0, false => (SERVO_CHROME_HEIGHT_CSS as f64 * self.scale()).round() as u32 } }
     fn chrome_rect(&self) -> Rect {
-        let sz = self.window.inner_size();
+        let sz = self.host_px();
         let f = self.frame_px();
         let h = ((self.overlay_css as f64 * self.scale()).round() as u32).max(self.chrome_px()).min(sz.height.saturating_sub(f).max(1));
         Rect { position: PhysicalPosition::new(f as i32, f as i32).into(), size: PhysicalSize::new(sz.width.saturating_sub(2 * f).max(1), h.max(1)).into() }
     }
     fn content_rect(&self) -> Rect {
-        let sz = self.window.inner_size();
+        let sz = self.host_px();
         let f = self.frame_px();
         let y = (self.chrome_px() + f).min(sz.height.saturating_sub(1));
         Rect { position: PhysicalPosition::new(f as i32, y as i32).into(), size: PhysicalSize::new(sz.width.saturating_sub(2 * f).max(1), sz.height.saturating_sub(y + f).max(1)).into() }
@@ -895,7 +907,9 @@ pub fn run(state: BrowserState) {
     let token = format!("{:016x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x5eed) ^ 0x9e37_79b9_7f4a_7c15u64);
     let ephemeral = std::env::args().any(|a| a == "--new-window");
     let saved = SessionManager::load().filter(|_| state.config.restore_session && !ephemeral);
-    let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(!cfg!(windows));
+    // Linux used to keep the compositor title bar. The chrome already has min /
+    // max / close, so that bar sat on top of the tab strip and ate the clicks.
+    let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(false);
     let event_loop = EventLoopBuilder::<()>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let (w, h) = saved.as_ref().map(|s| (s.window_width.max(720.0), s.window_height.max(480.0))).unwrap_or((1400.0, 900.0));
@@ -906,6 +920,20 @@ pub fn run(state: BrowserState) {
         builder = builder.with_position(LogicalPosition::new(x.max(mon.0).min((mon.0 + mon.2 - w).max(mon.0)), y.max(mon.1).min((mon.1 + mon.3 - h).max(mon.1))));
     }
     let window = builder.build(&event_loop).expect("window");
+    #[cfg(not(windows))]
+    {
+        use gtk::prelude::{Cast, GtkWindowExt, WidgetExt};
+        if let Some(vb) = window.default_vbox() {
+            if let Some(tl) = vb.toplevel() {
+                if let Ok(gw) = tl.downcast::<gtk::Window>() {
+                    gw.set_decorated(decorated);
+                    if !decorated {
+                        gw.set_titlebar(None::<&gtk::HeaderBar>);
+                    }
+                }
+            }
+        }
+    }
     let events: Rc<RefCell<Vec<Ev>>> = Rc::new(RefCell::new(Vec::new()));
     let last_state: Rc<RefCell<String>> = Rc::new(RefCell::new("{}".into()));
     let app: Rc<RefCell<Option<App>>> = Rc::new(RefCell::new(None));
