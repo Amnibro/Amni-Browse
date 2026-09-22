@@ -8,6 +8,9 @@ static AUTH_ALLOW: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     vec![
         // Google Identity Services (X, etc. Continuue with Google)
         "accounts.google.com",
+        "accounts.youtube.com",
+        "accounts.x.ai",
+        "auth.x.ai",
         "apis.google.com",
         "www.gstatic.com/gsi",
         "gstatic.com/gsi",
@@ -319,6 +322,8 @@ mod tests {
     fn test_allows_sso_sdks() {
         let mut blocker = AdBlocker::new(true, true);
         assert!(!blocker.should_block("https://connect.facebook.net/en_US/sdk.js"));
+        assert!(!blocker.should_block("https://accounts.x.ai/sign-in?redirect=oauth2-provider"));
+        assert!(!blocker.should_block("https://auth.x.ai/oauth/authorize"));
         assert!(!blocker.should_block("https://accounts.google.com/gsi/client"));
         assert!(!blocker.should_block("https://accounts.google.com/gsi/select"));
         assert!(!blocker.should_block("https://accounts.google.com/o/oauth2/v2/auth?client_id=x"));

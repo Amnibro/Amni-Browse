@@ -30,7 +30,7 @@ const BOOKMARKS_BAR_CSS: u32 = 28;
 #[cfg(windows)]
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 #[cfg(not(windows))]
-const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 #[cfg(windows)]
 const ENGINE: &str = "Chromium (WebView2)";
 #[cfg(not(windows))]
@@ -38,7 +38,19 @@ const ENGINE: &str = "WebKitGTK";
 const FRAME_CSS: f64 = 5.0;
 const DL_INTERRUPTED: i32 = 1;
 const DL_COMPLETED: i32 = 2;
-const AUTH_POPUP_HOSTS: &[&str] = &["accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com", "facebook.com/dialog", "facebook.com/login", "github.com/login", "auth0.com", "okta.com", "oauth", "openid", "signin", "sso."];
+const AUTH_POPUP_HOSTS: &[&str] = &[
+    "accounts.google.com", "accounts.youtube.com", "accounts.x.ai", "auth.x.ai",
+    "login.microsoftonline.com", "login.live.com", "login.microsoft.com",
+    "appleid.apple.com", "id.apple.com",
+    "facebook.com/dialog", "facebook.com/login",
+    "github.com/login", "github.com/sessions",
+    "auth0.com", "okta.com",
+    "oauth", "openid", "signin", "sign-in", "sso.",
+];
+/// Sites that branch on a Chrome user-agent then read `navigator.userAgentData`.
+/// WebKit does not implement Client Hints; without this shim the Chrome-shaped
+/// string sends xAI / Google / Apple sign-in down an API that throws.
+const UA_SCRIPT: &str = "(function(){try{if(navigator.userAgentData&&navigator.userAgentData.getHighEntropyValues)return;var ua=navigator.userAgent||'';var m=/Chrome\\/(\\d+)/.exec(ua);var major=m?m[1]:'153';var platform=/Windows/.test(ua)?'Windows':(/Mac/.test(ua)?'macOS':'Linux');var brands=[{brand:'Chromium',version:major},{brand:'Google Chrome',version:major},{brand:'Not)A;Brand',version:'24'}];var full=brands.map(function(b){return{brand:b.brand,version:b.version+'.0.0.0'}});var data={brands:brands,mobile:false,platform:platform,toJSON:function(){return{brands:brands,mobile:false,platform:platform}},getHighEntropyValues:function(){return Promise.resolve({brands:brands,mobile:false,platform:platform,platformVersion:'',architecture:'x86',bitness:'64',model:'',uaFullVersion:major+'.0.0.0',fullVersionList:full,wow64:false})}};Object.defineProperty(navigator,'userAgentData',{get:function(){return data},configurable:true});if(!window.chrome)window.chrome={}}catch(e){}})()";
 const FETCH_SHIM: &str = "(function(){var f=window.fetch.bind(window);window.fetch=function(u,o){if(typeof u==='string'&&u.indexOf('amnibrowse://')===0){u=u.replace(/^amnibrowse:\\/\\/([^\\/?#]+)\\/?/,function(_,h){return 'http://amnibrowse.'+h+'/'})}return f(u,o)}})()";
 const KEY_SCRIPT: &str = "(function(){document.addEventListener('keydown',function(e){var k=e.key.toLowerCase();var fn={f5:1,f11:1,f12:1,f3:1,escape:1};var alt={arrowleft:1,arrowright:1,home:1,d:1,a:1};var send=function(){e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'key',k:k,shift:e.shiftKey?1:0,alt:e.altKey?1:0}))}catch(_){}};if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&fn[k]){if(k==='escape'&&document.activeElement&&document.activeElement.tagName!=='BODY')return;send();return}if(e.altKey&&!e.ctrlKey&&alt[k]){send();return}if(!e.ctrlKey||e.altKey||e.metaKey)return;var hot={t:1,w:1,l:1,d:1,tab:1,h:1,j:1,u:1,f:1,p:1,r:1,n:1,s:1,g:1,e:1,k:1,pageup:1,pagedown:1,'1':1,'2':1,'3':1,'4':1,'5':1,'6':1,'7':1,'8':1,'9':1,'=':1,'+':1,'-':1,'0':1,i:e.shiftKey?1:0,b:e.shiftKey?1:0,o:e.shiftKey?1:0,a:e.shiftKey?1:0,delete:e.shiftKey?1:0};if(!hot[k])return;send()},true)})()";
 const ICON_SCRIPT: &str = "(function(){function s(){try{var l=document.querySelector('link[rel~=\"icon\"],link[rel=\"shortcut icon\"]');var h=l&&l.href?l.href:(location.origin+'/favicon.ico');if(/^https?:/.test(h))window.ipc.postMessage(JSON.stringify({type:'icon',href:h}))}catch(_){}}if(document.readyState==='complete')s();else window.addEventListener('load',s)})()";
@@ -108,6 +120,10 @@ struct App {
     token: String,
     next_uid: u64,
     overlay_css: u32,
+    /// Last placed chrome and content rectangles. Resize events fire while a page
+    /// is scrolled or hovered; re-placing an unchanged webview repaints the omnibar.
+    last_chrome: Cell<(i32, i32, u32, u32)>,
+    last_content: Cell<(i32, i32, u32, u32)>,
     fullscreen: bool,
     page_fullscreen: bool,
     find_query: String,
@@ -146,7 +162,15 @@ fn is_internal(url: &str) -> bool { url.starts_with("https://amnibrowse.") || ur
 fn display_url(url: &str) -> String {
     match url.strip_prefix("https://amnibrowse.").or_else(|| url.strip_prefix("http://amnibrowse.")) { Some(rest) => format!("amnibrowse://{}", rest.trim_end_matches('/')), None => url.to_string() }
 }
-fn wants_native_popup(url: &str) -> bool { let l = url.to_ascii_lowercase(); AUTH_POPUP_HOSTS.iter().any(|h| l.contains(h)) }
+fn wants_native_popup(url: &str) -> bool {
+    let l = url.trim().to_ascii_lowercase();
+    // OAuth SDKs open about:blank first, then assign the provider URL. Ignoring
+    // that window makes window.open return null and the site shows a generic error.
+    if l.is_empty() || l == "about:blank" || l.starts_with("about:blank") || l == "about:srcdoc" {
+        return true;
+    }
+    AUTH_POPUP_HOSTS.iter().any(|h| l.contains(h))
+}
 fn host_of(url: &str) -> String { url::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_default() }
 /// Hosts HTTPS-only leaves alone: localhost, .local, bare IPs.
 fn is_local_host(url: &str) -> bool {
@@ -609,6 +633,59 @@ fn perm_kind(req: &webkit2gtk::PermissionRequest) -> Option<PermissionType> {
 fn origin_of(uri: &str) -> String { url::Url::parse(uri).ok().and_then(|u| u.host_str().map(|h| h.to_string())).unwrap_or_else(|| match uri.starts_with("file:") { true => "This local file".into(), false => uri.to_string() }) }
 /// Errors WebKit reports for loads we cancelled ourselves (stop, policy ignore, a download
 /// taking over the navigation); those never get an error page.
+/// WebKit ITP and the default third-party cookie block drop the cookies Google,
+/// Apple, X and xAI need during sign-in. Firefox's partitioning still completes
+/// those top-level and popup flows. Relax both on this profile.
+#[cfg(not(windows))]
+fn allow_auth_storage(wv: &webkit2gtk::WebView) {
+    use webkit2gtk::{CookieAcceptPolicy, CookieManagerExt, WebContextExt, WebViewExt, WebsiteDataManagerExt};
+    let Some(ctx) = wv.context() else { return };
+    if let Some(cm) = ctx.cookie_manager() {
+        cm.set_accept_policy(CookieAcceptPolicy::Always);
+    }
+    if let Some(dm) = ctx.website_data_manager() {
+        dm.set_itp_enabled(false);
+    }
+}
+/// `window.open` for an auth provider is allowed by the policy handler, which
+/// makes WebKit emit `create`. Nothing was connected, so the call returned null
+/// and xAI (and the other providers) showed "Something went wrong". A related
+/// view keeps `window.opener` and the session cookies.
+#[cfg(not(windows))]
+thread_local! {
+    static AUTH_POPUPS: RefCell<Vec<gtk::Window>> = RefCell::new(Vec::new());
+}
+#[cfg(not(windows))]
+fn attach_auth_popup(parent: &webkit2gtk::WebView) {
+    use gtk::prelude::{Cast, ContainerExt, GtkWindowExt, WidgetExt};
+    use webkit2gtk::{URIRequestExt, WebViewExt};
+    parent.connect_create(|parent, action| {
+        let uri = action.request().and_then(|r| r.uri()).map(|u| u.to_string()).unwrap_or_default();
+        let child = webkit2gtk::WebView::with_related_view(parent);
+        let win = gtk::Window::new(gtk::WindowType::Toplevel);
+        win.set_title("Sign in");
+        win.set_default_size(520, 720);
+        if let Some(top) = parent.toplevel() {
+            if let Ok(pw) = top.downcast::<gtk::Window>() {
+                win.set_transient_for(Some(&pw));
+            }
+        }
+        win.set_destroy_with_parent(true);
+        child.set_hexpand(true);
+        child.set_vexpand(true);
+        win.add(&child);
+        let win_close = win.clone();
+        child.connect_close(move |_| { win_close.close(); });
+        let tracked = win.clone();
+        win.connect_destroy(move |_| {
+            AUTH_POPUPS.with(|popups| popups.borrow_mut().retain(|w| w != &tracked));
+        });
+        AUTH_POPUPS.with(|popups| popups.borrow_mut().push(win.clone()));
+        win.show_all();
+        info!("auth popup: {}", uri);
+        Some(child.upcast())
+    });
+}
 #[cfg(not(windows))]
 fn benign_load_error(e: &webkit2gtk::glib::Error) -> bool {
     if let Some(n) = e.kind::<webkit2gtk::NetworkError>() { return matches!(n, webkit2gtk::NetworkError::Cancelled); }
@@ -636,7 +713,12 @@ fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBloc
         settings.set_enable_page_cache(true);
         settings.set_enable_site_specific_quirks(true);
         settings.set_javascript_can_access_clipboard(true);
+        // Sign-in buttons often await a token, then window.open. WebKit treats
+        // that as not a user gesture unless this is on, and the call returns null.
+        settings.set_javascript_can_open_windows_automatically(true);
     }
+    allow_auth_storage(&wv);
+    attach_auth_popup(&wv);
     let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
     wv.connect_load_changed(move |w, _| p1(Ev::History(uid, w.can_go_back(), w.can_go_forward())));
     wv.connect_enter_fullscreen(move |_| { p2(Ev::PageFullscreen(uid, true)); false });
@@ -826,10 +908,51 @@ impl App {
         let y = (self.chrome_px() + f).min(sz.height.saturating_sub(1));
         Rect { position: PhysicalPosition::new(f as i32, y as i32).into(), size: PhysicalSize::new(sz.width.saturating_sub(2 * f).max(1), sz.height.saturating_sub(y + f).max(1)).into() }
     }
+    fn rect_key(r: &Rect, scale: f64) -> (i32, i32, u32, u32) {
+        let p = r.position.to_physical::<i32>(scale);
+        let s = r.size.to_physical::<u32>(scale);
+        (p.x, p.y, s.width, s.height)
+    }
+    fn css_rgb(hex: &str) -> (f64, f64, f64) {
+        let h = hex.trim().trim_start_matches('#');
+        if h.len() >= 6 {
+            if let (Ok(r), Ok(g), Ok(b)) = (u8::from_str_radix(&h[0..2], 16), u8::from_str_radix(&h[2..4], 16), u8::from_str_radix(&h[4..6], 16)) {
+                return (r as f64 / 255.0, g as f64 / 255.0, b as f64 / 255.0);
+            }
+        }
+        (8.0 / 255.0, 9.0 / 255.0, 11.0 / 255.0)
+    }
+    /// The chrome surface is transparent so menus can float over the page. While it
+    /// is only the toolbar, an opaque backdrop stops page repaints from flashing
+    /// through the omnibar. Menus expand the surface and need the clear color back.
+    fn paint_chrome_backdrop(&self) {
+        #[cfg(not(windows))]
+        {
+            use webkit2gtk::WebViewExt;
+            use wry::WebViewExtUnix;
+            let Some(c) = self.chrome.as_ref() else { return };
+            let expanded = self.overlay_css > self.chrome_css().saturating_add(2);
+            let (r, g, b, a) = if expanded {
+                (0.0, 0.0, 0.0, 0.0)
+            } else {
+                let hex = self.state().themes.active_theme().bg_primary.clone();
+                let (r, g, b) = Self::css_rgb(&hex);
+                (r, g, b, 1.0)
+            };
+            c.webview().set_background_color(&gtk::gdk::RGBA::new(r, g, b, a));
+        }
+    }
     fn layout(&self) {
         let hide_chrome = self.fullscreen || self.page_fullscreen;
+        let scale = self.scale();
         if let Some(c) = self.chrome.as_ref() {
-            self.place_chrome(c, self.chrome_rect());
+            let cr = self.chrome_rect();
+            let ck = Self::rect_key(&cr, scale);
+            if self.last_chrome.get() != ck {
+                self.place_chrome(c, cr);
+                self.last_chrome.set(ck);
+                self.paint_chrome_backdrop();
+            }
             let _ = c.set_visible(!hide_chrome);
             #[cfg(not(windows))]
             {
@@ -838,8 +961,14 @@ impl App {
             }
         }
         let r = self.content_rect();
-        for (i, t) in self.tabs.iter().enumerate() { self.place(&t.view, r); let _ = t.view.set_visible(i == self.active); }
-        self.raise_chrome();
+        let rk = Self::rect_key(&r, scale);
+        let moved = self.last_content.get() != rk;
+        if moved { self.last_content.set(rk); }
+        for (i, t) in self.tabs.iter().enumerate() {
+            if moved { self.place(&t.view, r); }
+            let _ = t.view.set_visible(i == self.active);
+        }
+        if moved { self.raise_chrome(); }
     }
     #[cfg(windows)]
     fn raise_chrome(&self) {
@@ -957,7 +1086,7 @@ impl App {
             .with_devtools(true)
             .with_hotkeys_zoom(true)
             .with_back_forward_navigation_gestures(true)
-            .with_initialization_script(&format!("{};{};{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT, LINK_SCRIPT))
+            .with_initialization_script(&format!("{};{};{};{};{};{}", fetch_shim(), UA_SCRIPT, KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT, LINK_SCRIPT))
             .with_navigation_handler(move |u| {
                 let blocked = shield.get() && !is_internal(&u) && blocker.borrow_mut().should_block(&u);
                 if blocked { info!("adblock: blocked navigation {}", u); return false; }
@@ -2163,6 +2292,8 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
         token,
         next_uid: 1,
         overlay_css: 0,
+        last_chrome: Cell::new((0, 0, 0, 0)),
+        last_content: Cell::new((0, 0, 0, 0)),
         fullscreen: false,
         page_fullscreen: false,
         find_query: String::new(),
@@ -2208,7 +2339,14 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
     {
         use webkit2gtk::WebViewExt;
         use wry::WebViewExtUnix;
-        chrome.webview().set_background_color(&gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0));
+        if let Some(settings) = webkit2gtk::WebViewExt::settings(&chrome.webview()) {
+            use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt};
+            // The GL compositor clears this transparent surface whenever the page
+            // underneath is damaged, which flashes the omnibar. Software compositing
+            // on the toolbar-sized view does not.
+            settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
+        }
+        chrome.webview().set_background_color(&gtk::gdk::RGBA::new(8.0 / 255.0, 9.0 / 255.0, 11.0 / 255.0, 1.0));
     }
     #[cfg(windows)]
     if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }
@@ -2271,4 +2409,19 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
             _ => {}
         }
     });
+}
+
+#[cfg(test)]
+mod popup_tests {
+    use super::wants_native_popup;
+
+    #[test]
+    fn auth_blank_and_provider_windows_stay_native() {
+        assert!(wants_native_popup("about:blank"));
+        assert!(wants_native_popup(""));
+        assert!(wants_native_popup("https://accounts.google.com/o/oauth2/v2/auth?client_id=x"));
+        assert!(wants_native_popup("https://accounts.x.ai/sign-in?redirect=oauth2-provider"));
+        assert!(wants_native_popup("https://appleid.apple.com/auth/authorize"));
+        assert!(!wants_native_popup("https://example.com/article"));
+    }
 }
