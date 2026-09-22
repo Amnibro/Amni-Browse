@@ -2162,6 +2162,11 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
     let ephemeral = std::env::args().any(|a| a == "--new-window");
     let saved = SessionManager::load().filter(|_| state.config.restore_session && !ephemeral);
     let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(false);
+    // The Wayland app id comes from the program name, which GTK takes from
+    // argv[0]. Pin it so a renamed or wrapped binary still maps to
+    // amni-browse.desktop and gets the browser's icon in the taskbar.
+    #[cfg(target_os = "linux")]
+    gtk::glib::set_prgname(Some("amni-browse"));
     let event_loop = EventLoopBuilder::<()>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<crate::net::single_instance::SingleInstanceMessage>();
