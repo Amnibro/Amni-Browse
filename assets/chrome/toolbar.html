@@ -138,8 +138,8 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
 #tile-view{width:28px;height:28px;border-radius:6px;background:transparent;color:var(--text-dim);border:1px solid transparent;cursor:pointer;margin:0 0 3px 2px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;pointer-events:auto;position:relative;z-index:10;transition:background .12s,color .12s,border-color .12s}
 #tile-view:hover{background:var(--bg-elev);color:var(--text);border-color:var(--stroke)}
 #tile-view:focus,#tile-view:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
-#tab-drag{flex:1 1 auto;min-width:24px;height:32px;align-self:stretch;-webkit-app-region:drag}
-#win-btns{display:flex;align-self:stretch;margin-left:8px;flex:0 0 auto;pointer-events:auto;position:relative;z-index:10;-webkit-app-region:no-drag}
+#tab-drag{flex:1 1 auto;min-width:24px;align-self:stretch;margin-top:-6px;-webkit-app-region:drag}
+#win-btns{display:flex;align-self:flex-start;height:40px;margin:-6px 0 0 8px;flex:0 0 auto;pointer-events:auto;position:relative;z-index:10;-webkit-app-region:no-drag}
 .win-btn{width:46px;height:40px;border:none;background:transparent;color:var(--text-dim);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;border-radius:0;font:600 13px/1 Consolas,monospace;pointer-events:auto;position:relative;z-index:10;-webkit-app-region:no-drag}
 .win-btn:hover{background:var(--bg-hover);color:var(--text)}
 #win-close:hover{background:#8B1E1E;color:#fff}
@@ -359,7 +359,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   const suggest=$('#suggest'),panel=$('#panel'),flyScrim=$('#fly-scrim'),findBar=$('#find'),findQ=$('#find-q');
   function overlay(h){cmd('overlay',{h:String(Math.max(0,Math.round(h||0)))})}
   function shellPx(){const n=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--shell-h'));return n>40?n:119}
-  function coverEl(el){const paint=()=>{if(!el||!el.classList||!el.classList.contains('on'))return;const b=el.getBoundingClientRect();overlay(Math.min(winH(),Math.max(shellPx()+64,Math.ceil(Math.max(b.bottom,shellPx()))+14)))};paint();requestAnimationFrame(paint)}
+  function coverEl(el){const paint=()=>{if(!el||!el.classList||!el.classList.contains('on'))return;const b=el.getBoundingClientRect();const cap=window.__amniWinH>0?winH():Infinity;overlay(Math.min(cap,Math.max(shellPx()+64,Math.ceil(Math.max(b.bottom,shellPx()))+14)))};paint();requestAnimationFrame(paint)}
   const ctxScrim=$('#ctx-scrim'),ctxMenu=$('#ctxmenu');
   const dlgScrim=$('#dlg-scrim'),dlgMsg=$('#dlg-msg'),dlgInput=$('#dlg-input'),dlgOk=$('#dlg-ok'),dlgCancel=$('#dlg-cancel');
   let dlgType='alert';
