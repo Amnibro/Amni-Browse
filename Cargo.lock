@@ -167,12 +167,13 @@ dependencies = [
 
 [[package]]
 name = "amni-browse"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
  "boa_engine",
  "bytes",
+ "cairo-rs",
  "chrono",
  "cpal",
  "cssparser 0.34.0",

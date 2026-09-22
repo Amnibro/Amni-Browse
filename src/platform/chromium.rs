@@ -1,4 +1,4 @@
-use std::{borrow::Cow, cell::{Cell, RefCell}, collections::HashMap, path::PathBuf, rc::Rc};
+use std::{borrow::Cow, cell::{Cell, RefCell}, collections::HashMap, path::PathBuf, rc::Rc, time::Instant};
 use log::{info, warn};
 use tao::{dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize}, event::{ElementState, Event, WindowEvent}, event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy}, keyboard::{Key, ModifiersState}, window::{Fullscreen, Window, WindowBuilder}};
 use wry::{http, PageLoadEvent, Rect, WebContext, WebView, WebViewBuilder};
@@ -24,7 +24,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{GetWindow, SetWindowPos, GW_CH
 type Core = ICoreWebView2;
 #[cfg(not(windows))]
 type Core = ();
-use crate::{app::BrowserState, engine::adblocker::AdBlocker, storage::{config::{APP_NAME, APP_VERSION}, downloads::{DownloadItem, DownloadManager, DownloadStatus}, session::{SessionManager, SessionTab}}, ui::internal_pages::{esc_html, newtab_html, theme_root_vars, SETTINGS_TPL, TUTORIAL_TPL}, ui::tokens::SERVO_CHROME_HEIGHT_CSS};
+use crate::{app::BrowserState, engine::{adblocker::AdBlocker, ai_search, permissions::{PermissionState, PermissionType}}, storage::{config::{APP_NAME, APP_VERSION}, downloads::{DownloadItem, DownloadManager, DownloadStatus}, session::{SessionManager, SessionTab}}, ui::internal_pages::{esc_html, newtab_html, theme_root_vars, SETTINGS_TPL, TUTORIAL_TPL}, ui::tokens::SERVO_CHROME_HEIGHT_CSS};
+/// Chrome's bookmarks bar height, added under the nav row when it is shown.
+const BOOKMARKS_BAR_CSS: u32 = 28;
 #[cfg(windows)]
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 #[cfg(not(windows))]
@@ -38,12 +40,51 @@ const DL_INTERRUPTED: i32 = 1;
 const DL_COMPLETED: i32 = 2;
 const AUTH_POPUP_HOSTS: &[&str] = &["accounts.google.com", "login.microsoftonline.com", "login.live.com", "appleid.apple.com", "facebook.com/dialog", "facebook.com/login", "github.com/login", "auth0.com", "okta.com", "oauth", "openid", "signin", "sso."];
 const FETCH_SHIM: &str = "(function(){var f=window.fetch.bind(window);window.fetch=function(u,o){if(typeof u==='string'&&u.indexOf('amnibrowse://')===0){u=u.replace(/^amnibrowse:\\/\\/([^\\/?#]+)\\/?/,function(_,h){return 'http://amnibrowse.'+h+'/'})}return f(u,o)}})()";
-const KEY_SCRIPT: &str = "(function(){document.addEventListener('keydown',function(e){var k=e.key.toLowerCase();var fn={f5:1,f11:1,f12:1,escape:1};var alt={arrowleft:1,arrowright:1,home:1};var send=function(){e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'key',k:k,shift:e.shiftKey?1:0,alt:e.altKey?1:0}))}catch(_){}};if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&fn[k]){if(k==='escape'&&document.activeElement&&document.activeElement.tagName!=='BODY')return;send();return}if(e.altKey&&!e.ctrlKey&&alt[k]){send();return}if(!e.ctrlKey||e.altKey||e.metaKey)return;var hot={t:1,w:1,l:1,d:1,tab:1,h:1,j:1,u:1,f:1,p:1,r:1,n:1,'1':1,'2':1,'3':1,'4':1,'5':1,'6':1,'7':1,'8':1,'9':1,'=':1,'+':1,'-':1,'0':1,k:e.shiftKey?1:0,i:e.shiftKey?1:0};if(!hot[k])return;send()},true)})()";
+const KEY_SCRIPT: &str = "(function(){document.addEventListener('keydown',function(e){var k=e.key.toLowerCase();var fn={f5:1,f11:1,f12:1,f3:1,escape:1};var alt={arrowleft:1,arrowright:1,home:1,d:1,a:1};var send=function(){e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'key',k:k,shift:e.shiftKey?1:0,alt:e.altKey?1:0}))}catch(_){}};if(!e.ctrlKey&&!e.altKey&&!e.metaKey&&fn[k]){if(k==='escape'&&document.activeElement&&document.activeElement.tagName!=='BODY')return;send();return}if(e.altKey&&!e.ctrlKey&&alt[k]){send();return}if(!e.ctrlKey||e.altKey||e.metaKey)return;var hot={t:1,w:1,l:1,d:1,tab:1,h:1,j:1,u:1,f:1,p:1,r:1,n:1,s:1,g:1,e:1,k:1,pageup:1,pagedown:1,'1':1,'2':1,'3':1,'4':1,'5':1,'6':1,'7':1,'8':1,'9':1,'=':1,'+':1,'-':1,'0':1,i:e.shiftKey?1:0,b:e.shiftKey?1:0,o:e.shiftKey?1:0,a:e.shiftKey?1:0,delete:e.shiftKey?1:0};if(!hot[k])return;send()},true)})()";
 const ICON_SCRIPT: &str = "(function(){function s(){try{var l=document.querySelector('link[rel~=\"icon\"],link[rel=\"shortcut icon\"]');var h=l&&l.href?l.href:(location.origin+'/favicon.ico');if(/^https?:/.test(h))window.ipc.postMessage(JSON.stringify({type:'icon',href:h}))}catch(_){}}if(document.readyState==='complete')s();else window.addEventListener('load',s)})()";
-const FIND_SCRIPT: &str ="(function(){var H=window.CSS&&CSS.highlights;var st={q:'',ranges:[],i:-1};function clear(){if(H){CSS.highlights.delete('amni-find');CSS.highlights.delete('amni-find-cur')}st={q:'',ranges:[],i:-1}}function collect(q){var out=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p)return NodeFilter.FILTER_REJECT;var t=p.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='NOSCRIPT')return NodeFilter.FILTER_REJECT;return n.nodeValue.toLowerCase().indexOf(q)>=0?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP}}),n;while((n=w.nextNode())){var s=n.nodeValue.toLowerCase(),k=0;while((k=s.indexOf(q,k))>=0){var r=document.createRange();r.setStart(n,k);r.setEnd(n,k+q.length);out.push(r);k+=q.length;if(out.length>5000)return out}}return out}function paint(){if(!H)return;var h=new Highlight();st.ranges.forEach(function(r){h.add(r)});CSS.highlights.set('amni-find',h);if(st.i>=0)CSS.highlights.set('amni-find-cur',new Highlight(st.ranges[st.i]))}function ensureCss(){if(document.getElementById('amni-find-css'))return;var s=document.createElement('style');s.id='amni-find-css';s.textContent='::highlight(amni-find){background:#ffd54a;color:#111}::highlight(amni-find-cur){background:#ff8a00;color:#111}';(document.head||document.documentElement).appendChild(s)}window.__amniFind=function(q,dir){q=(q||'').toLowerCase();if(!q){clear();return 0}ensureCss();if(q!==st.q){st.q=q;st.ranges=collect(q);st.i=st.ranges.length?0:-1}else if(st.ranges.length){st.i=(st.i+(dir<0?-1:1)+st.ranges.length)%st.ranges.length}if(!st.ranges.length){paint();return 0}var r=st.ranges[st.i];try{var sel=window.getSelection();sel.removeAllRanges();if(!H)sel.addRange(r)}catch(e){}try{var el=r.startContainer.parentElement;el&&el.scrollIntoView({block:'center',inline:'nearest'})}catch(e){}paint();return st.ranges.length};window.__amniFindClear=clear})()";
+const FIND_SCRIPT: &str ="(function(){var H=window.CSS&&CSS.highlights;var st={q:'',ranges:[],i:-1};function report(){try{window.ipc.postMessage(JSON.stringify({type:'find',n:st.ranges.length,i:st.i+1}))}catch(_){}}function clear(){if(H){CSS.highlights.delete('amni-find');CSS.highlights.delete('amni-find-cur')}st={q:'',ranges:[],i:-1}}function collect(q){var out=[],w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT,{acceptNode:function(n){var p=n.parentElement;if(!p)return NodeFilter.FILTER_REJECT;var t=p.tagName;if(t==='SCRIPT'||t==='STYLE'||t==='NOSCRIPT')return NodeFilter.FILTER_REJECT;return n.nodeValue.toLowerCase().indexOf(q)>=0?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_SKIP}}),n;while((n=w.nextNode())){var s=n.nodeValue.toLowerCase(),k=0;while((k=s.indexOf(q,k))>=0){var r=document.createRange();r.setStart(n,k);r.setEnd(n,k+q.length);out.push(r);k+=q.length;if(out.length>5000)return out}}return out}function paint(){if(!H)return;var h=new Highlight();st.ranges.forEach(function(r){h.add(r)});CSS.highlights.set('amni-find',h);if(st.i>=0)CSS.highlights.set('amni-find-cur',new Highlight(st.ranges[st.i]))}function ensureCss(){if(document.getElementById('amni-find-css'))return;var s=document.createElement('style');s.id='amni-find-css';s.textContent='::highlight(amni-find){background:#ffd54a;color:#111}::highlight(amni-find-cur){background:#ff8a00;color:#111}';(document.head||document.documentElement).appendChild(s)}window.__amniFind=function(q,dir){q=(q||'').toLowerCase();if(!q){clear();report();return 0}ensureCss();if(q!==st.q){st.q=q;st.ranges=collect(q);st.i=st.ranges.length?0:-1}else if(st.ranges.length){st.i=(st.i+(dir<0?-1:1)+st.ranges.length)%st.ranges.length}if(!st.ranges.length){paint();report();return 0}var r=st.ranges[st.i];try{var sel=window.getSelection();sel.removeAllRanges();if(!H)sel.addRange(r)}catch(e){}try{var el=r.startContainer.parentElement;el&&el.scrollIntoView({block:'center',inline:'nearest'})}catch(e){}paint();report();return st.ranges.length};window.__amniFindClear=function(){clear();report()}})()";
+/// Chrome niceties that live in the page: the link-target status bubble at the bottom-left,
+/// Ctrl/middle-click on links into a background tab, and a selection courier for "Ask AI"/"Search".
+const LINK_SCRIPT: &str = "(function(){if(window.top!==window)return;var b=null;function bub(){if(b)return b;b=document.createElement('div');b.id='__amni_status';b.style.cssText='position:fixed;left:0;bottom:0;max-width:60vw;padding:3px 9px;font:12px system-ui,sans-serif;background:#1c1f24;color:#e8e8e8;border:1px solid #2c3038;border-bottom:none;border-left:none;border-top-right-radius:5px;z-index:2147483647;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none';(document.body||document.documentElement).appendChild(b);return b}function link(e){var t=e.target;if(!t||!t.closest)return null;var a=t.closest('a[href]');return a&&/^(https?|file|ftp):/i.test(a.href)?a:null}document.addEventListener('mouseover',function(e){var a=link(e);if(!a){if(b)b.style.display='none';return}var x=bub();x.textContent=a.href;x.style.display='block'},true);document.addEventListener('mouseout',function(e){if(b&&link(e))b.style.display='none'},true);document.addEventListener('click',function(e){var a=link(e);if(!a||e.button!==0||!(e.ctrlKey||e.metaKey))return;e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'open',href:a.href,bg:e.shiftKey?0:1}))}catch(_){}},true);document.addEventListener('auxclick',function(e){var a=link(e);if(!a||e.button!==1)return;e.preventDefault();e.stopPropagation();try{window.ipc.postMessage(JSON.stringify({type:'open',href:a.href,bg:1}))}catch(_){}},true);window.__amniSel=function(p){var s='';try{s=String(window.getSelection())}catch(_){}try{window.ipc.postMessage(JSON.stringify({type:'sel',purpose:p,text:s}))}catch(_){}}})()";
 #[allow(dead_code)]
-enum Ev { Cmd(String, HashMap<String, String>), Title(u64, String), Load(u64, bool, String), Popup(String), Key(u64, String, bool, bool), History(u64, bool, bool), Favicon(u64, String), PageFullscreen(u64, bool), Audio(u64, bool), DlStart(String, String, String, Option<u64>), DlProgress(String, u64), DlState(String, i32, String) }
-struct Tab { uid: u64, view: WebView, core: Option<Core>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String> }
+enum Ev {
+    Cmd(String, HashMap<String, String>), Title(u64, String), Load(u64, bool, String), Popup(String), Key(u64, String, bool, bool), History(u64, bool, bool), Favicon(u64, String), PageFullscreen(u64, bool), Audio(u64, bool),
+    DlStart(String, String, String, Option<u64>), DlProgress(String, u64), DlState(String, i32, String),
+    /// Ctrl/middle-click on a link: open `url` next to the tab, in the background when `bg`.
+    Open(u64, String, bool),
+    /// Selection text couriered back from the page for `purpose` ("ask" | "search").
+    Sel(u64, String, String),
+    Find(u64, u32, u32),
+    /// A site asked for a permission we have no stored answer for.
+    #[cfg(not(windows))]
+    Perm(u64, PermissionType, String, webkit2gtk::PermissionRequest),
+    #[cfg(not(windows))]
+    LoadFailed(u64, String, String),
+    #[cfg(not(windows))]
+    TlsFail(u64, String, String, webkit2gtk::gio::TlsCertificate),
+    Crash(u64),
+    /// Page-context-menu pick: action id plus the link/image URL the hit test saw.
+    Ctx(u64, String, String),
+    /// http:// navigation intercepted by HTTPS-only mode.
+    Upgrade(u64, String),
+    Tick,
+}
+struct Tab {
+    uid: u64, view: WebView, core: Option<Core>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String>,
+    muted: bool,
+    /// Memory saver unloaded the page; `url` is reloaded when the tab is shown again.
+    discarded: bool,
+    last_active: Instant,
+    /// Script to run once the page finishes loading (Ask-AI composer fill).
+    inject: Option<String>,
+    /// HTTPS-only upgraded this http:// URL; a failed secure load falls back to it once.
+    upgraded_from: Option<String>,
+    #[cfg(not(windows))]
+    tls: Option<(String, webkit2gtk::gio::TlsCertificate)>,
+    find: (u32, u32),
+}
+#[cfg(not(windows))]
+struct PendingPerm { id: u64, uid: u64, kind: PermissionType, origin: String, req: webkit2gtk::PermissionRequest }
 struct App {
     window: Window,
     #[cfg(not(windows))]
@@ -61,7 +102,8 @@ struct App {
     chrome_hwnd: usize,
     tabs: Vec<Tab>,
     active: usize,
-    closed: Vec<(String, bool)>,
+    /// Recently closed tabs: (url, title, private), newest last.
+    closed: Vec<(String, String, bool)>,
     state: Rc<RefCell<BrowserState>>,
     token: String,
     next_uid: u64,
@@ -78,6 +120,20 @@ struct App {
     filter: Option<usize>,
     collapsed: Vec<String>,
     ephemeral: bool,
+    https_only: Rc<Cell<bool>>,
+    /// http:// URLs allowed through HTTPS-only once (the fallback after a failed upgrade).
+    http_allow: Rc<RefCell<Vec<String>>>,
+    ask_dl_location: Rc<Cell<bool>>,
+    bookmarks_bar: bool,
+    #[cfg(not(windows))]
+    perms: Vec<PendingPerm>,
+    #[cfg(not(windows))]
+    live_downloads: Rc<RefCell<HashMap<String, webkit2gtk::Download>>>,
+    next_perm: u64,
+    dl_progress_wired: bool,
+    /// Last shortcut handled: on GTK the same keypress reaches us twice (tao's window handler and
+    /// the in-page key script), so a repeat of the same combo inside ~100ms is dropped.
+    last_key: (String, bool, bool, Instant),
 }
 type Push = Rc<dyn Fn(Ev)>;
 fn load_toolbar_html() -> String {
@@ -91,6 +147,27 @@ fn display_url(url: &str) -> String {
     match url.strip_prefix("https://amnibrowse.").or_else(|| url.strip_prefix("http://amnibrowse.")) { Some(rest) => format!("amnibrowse://{}", rest.trim_end_matches('/')), None => url.to_string() }
 }
 fn wants_native_popup(url: &str) -> bool { let l = url.to_ascii_lowercase(); AUTH_POPUP_HOSTS.iter().any(|h| l.contains(h)) }
+fn host_of(url: &str) -> String { url::Url::parse(url).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string())).unwrap_or_default() }
+/// Hosts HTTPS-only leaves alone: localhost, .local, bare IPs.
+fn is_local_host(url: &str) -> bool {
+    let h = host_of(url);
+    h.is_empty() || h == "localhost" || h.ends_with(".localhost") || h.ends_with(".local") || h.parse::<std::net::IpAddr>().is_ok()
+}
+/// GTK "Save as" for downloads when Settings → Downloads asks where to save each file.
+#[cfg(not(windows))]
+fn pick_save_path(suggested: &std::path::Path) -> Option<PathBuf> {
+    use gtk::prelude::{DialogExt, FileChooserExt, GtkWindowExt, WidgetExt};
+    let dlg = gtk::FileChooserDialog::with_buttons::<gtk::Window>(Some("Save file"), None, gtk::FileChooserAction::Save, &[("Cancel", gtk::ResponseType::Cancel), ("Save", gtk::ResponseType::Accept)]);
+    dlg.set_do_overwrite_confirmation(true);
+    if let Some(dir) = suggested.parent() { let _ = dlg.set_current_folder(dir); }
+    if let Some(name) = suggested.file_name() { dlg.set_current_name(name.to_string_lossy().as_ref()); }
+    dlg.set_modal(true);
+    let r = dlg.run();
+    let out = match r == gtk::ResponseType::Accept { true => dlg.filename(), false => None };
+    dlg.close();
+    while gtk::events_pending() { gtk::main_iteration(); }
+    out
+}
 fn resolve_input(raw: &str, search_prefix: &str) -> Option<String> {
     let t = raw.trim();
     if t.is_empty() { return None; }
@@ -222,7 +299,7 @@ fn guess_filename(uri: &str, raw_path: &std::path::Path) -> String {
 }
 fn render_settings_html(state: &BrowserState, shield: bool, token: &str) -> String {
     let c = &state.config;
-    let engines = [("DuckDuckGo", "https://html.duckduckgo.com/html/?q="), ("Brave", "https://search.brave.com/search?q="), ("Startpage", "https://www.startpage.com/sp/search?query="), ("Google", "https://www.google.com/search?q=")];
+    let engines = [("DuckDuckGo", "https://html.duckduckgo.com/html/?q="), ("Brave", "https://search.brave.com/search?q="), ("Startpage", "https://www.startpage.com/sp/search?query="), ("Kagi", "https://kagi.com/search?q="), ("Google", "https://www.google.com/search?q=")];
     let radios: String = engines.iter().map(|(n, p)| format!("<label class='opt'><input type='radio' name='se' value='{}'{} onchange='set(\"search_engine\",this.value)'><span>{}</span></label>", p, match c.search_engine == *p { true => " checked", false => "" }, n)).collect();
     let zooms: String = [(0.8, "80%"), (0.9, "90%"), (1.0, "100%"), (1.1, "110%"), (1.25, "125%"), (1.5, "150%")].iter().map(|(z, l)| format!("<option value='{}'{}>{}</option>", z, match (*z - c.default_zoom).abs() < 0.01 { true => " selected", false => "" }, l)).collect();
     let bms: String = match state.bookmarks.bookmarks.is_empty() {
@@ -232,14 +309,33 @@ fn render_settings_html(state: &BrowserState, shield: bool, token: &str) -> Stri
     let active_id = state.themes.active_theme().id;
     let themes: String = state.themes.all_themes().iter().map(|t| format!("<label class='opt'><input type='radio' name='th' value='{}'{} onchange='set(\"theme\",this.value)'><span>{}</span></label>", esc_html(&t.id), match t.id == active_id { true => " checked", false => "" }, esc_html(&t.name))).collect();
     let home = match c.home_page.starts_with("http") { true => c.home_page.clone(), false => String::new() };
-    let toggles = format!("<label class='opt'><input type='checkbox'{} onchange='set(\"clear_data_on_exit\",this.checked?1:0)'><span>Clear browsing data (cookies, cache, history) when Amni Browse closes</span></label><label class='opt'><input type='checkbox'{} onchange='set(\"autofill_on_load\",this.checked?1:0)'><span>Let the engine save passwords and fill forms (Chromium profile store)</span></label><label class='opt'><input type='checkbox'{} onchange='set(\"enable_do_not_track\",this.checked?1:0)'><span>Send Do Not Track + Global Privacy Control headers</span></label><label class='opt'><input type='checkbox'{} onchange='set(\"enable_doh\",this.checked?1:0)'><span>DNS over HTTPS (restart to apply)</span></label>", match c.clear_data_on_exit { true => " checked", false => "" }, match c.autofill_on_load { true => " checked", false => "" }, match c.enable_do_not_track { true => " checked", false => "" }, match c.enable_doh { true => " checked", false => "" });
+    let chk = |b: bool| match b { true => " checked", false => "" };
+    let toggles = format!("<label class='opt'><input type='checkbox'{} onchange='set(\"clear_data_on_exit\",this.checked?1:0)'><span>Clear browsing data (cookies, cache, history) when Amni Browse closes</span></label><label class='opt'><input type='checkbox'{} onchange='set(\"autofill_on_load\",this.checked?1:0)'><span>Let the engine save passwords and fill forms (Chromium profile store)</span></label><label class='opt'><input type='checkbox'{} onchange='set(\"enable_do_not_track\",this.checked?1:0)'><span>Send Do Not Track + Global Privacy Control headers</span></label><label class='opt'><input type='checkbox'{} onchange='set(\"enable_doh\",this.checked?1:0)'><span>DNS over HTTPS (restart to apply)</span></label>", chk(c.clear_data_on_exit), chk(c.autofill_on_load), chk(c.enable_do_not_track), chk(c.enable_doh));
+    // Ask-AI pane: the provider the user already subscribes to, opened with the prompt prefilled.
+    let ai_radios: String = ai_search::PROVIDERS.iter().map(|p| format!("<label class='opt' title='{}'><input type='radio' name='ai' value='{}'{} onchange='set(\"ai_provider\",this.value)'><span>{}</span></label>", esc_html(p.note), p.id, chk(c.ai_provider == p.id), esc_html(p.name))).collect::<String>()
+        + &format!("<label class='opt' title='Any site: use %s where the prompt goes'><input type='radio' name='ai' value='custom'{} onchange='set(\"ai_provider\",this.value)'><span>Custom\u{2026}</span></label>", chk(c.ai_provider == "custom"));
+    let ai_pane = format!("<section class='pane' id='ai'><h2>Ask AI</h2><p class='note'>The \u{2726} button next to the address bar, <kbd>Alt+A</kbd>, or typing <kbd>@ai</kbd> sends your question to the AI you already pay for \u{2014} in its own website, signed in as you. Amni never proxies or stores the prompt.</p><div>{}</div><input type='text' value='{}' placeholder='Custom URL template, e.g. https://ai.example.com/?q=%s' onchange='set(\"ai_custom_url\",this.value)'><label class='switch'><input type='checkbox'{} onchange='set(\"ai_new_tab\",this.checked?1:0)'><span>Open answers in a new tab (off = reuse the current tab)</span></label><div class='call'><p><strong>How each one behaves</strong></p>{}</div><p class='dim'>\u{201c}Ask about this page\u{201d} (menu and right-click) sends the page title and address, not its contents; the AI reads the page itself. Selection prompts send the selected text.</p></section>",
+        ai_radios, esc_html(c.ai_custom_url.as_deref().unwrap_or("")), chk(c.ai_new_tab), ai_search::PROVIDERS.iter().map(|p| format!("<p class='dim'><strong>{}</strong> \u{2014} {}</p>", esc_html(p.name), esc_html(p.note))).collect::<String>());
+    let dl_dir = c.downloads_dir.clone().unwrap_or_else(|| DownloadManager::downloads_dir().to_string_lossy().to_string());
+    let dl_pane = format!("<section class='pane' id='downloads'><h2>Downloads</h2><label>Save files to<input type='text' value='{}' placeholder='Downloads folder' onchange='set(\"downloads_dir\",this.value)'></label><label class='switch'><input type='checkbox'{} onchange='set(\"ask_download_location\",this.checked?1:0)'><span>Ask where to save each file before downloading</span></label><p class='dim'><kbd>Ctrl+J</kbd> opens the downloads list; <kbd>Ctrl+S</kbd> saves the current page as a single .mhtml file.</p></section>", esc_html(&dl_dir), chk(c.ask_download_location));
+    let look_extra = format!("<label class='switch'><input type='checkbox'{} onchange='set(\"show_bookmarks_bar\",this.checked?1:0)'><span>Show bookmarks bar under the address bar (<kbd>Ctrl+Shift+B</kbd>)</span></label>", chk(c.show_bookmarks_bar));
+    let perm_rows: String = state.permissions.sites.iter().filter(|s| !s.permissions.is_empty()).map(|s| format!("<div class='row'><span>{} <span class='dim'>{}</span></span><button class='x' onclick='cmd(\"perm_reset\",{{host:\"{}\"}});this.closest(\".row\").remove()'>reset</button></div>", esc_html(&s.site), esc_html(&s.permissions.iter().map(|(k, v)| format!("{}: {:?}", k, v).to_lowercase()).collect::<Vec<_>>().join(", ")), esc_html(&s.site))).collect();
+    let priv_extra = format!("<label class='switch'><input type='checkbox'{} onchange='set(\"https_only\",this.checked?1:0)'><span>Always use secure connections (upgrade http:// to https://, fall back if it fails)</span></label><label class='switch'><input type='checkbox'{} onchange='set(\"memory_saver\",this.checked?1:0)'><span>Memory saver \u{2014} put background tabs to sleep after</span><select style='width:auto;display:inline-block;margin:0 0 0 8px' onchange='set(\"memory_saver_minutes\",this.value)'>{}</select></label><h2 style='margin-top:22px'>Site permissions</h2><p class='note'>Camera, microphone, location and notifications are asked per site and remembered here. Click the lock in the address bar to change a site.</p><div>{}</div>",
+        chk(c.https_only), chk(c.memory_saver), [(15u32, "15 min"), (30, "30 min"), (45, "45 min"), (90, "1.5 h"), (240, "4 h")].iter().map(|(m, l)| format!("<option value='{}'{}>{}</option>", m, match *m == c.memory_saver_minutes { true => " selected", false => "" }, l)).collect::<String>(), match perm_rows.is_empty() { true => "<p class='dim'>No site has asked for anything yet.</p>".to_string(), false => perm_rows });
     SETTINGS_TPL.replace("__THEME__", &theme_root_vars(&state.themes.active_theme())).replace("__THEMES__", &themes).replace("__VER__", APP_VERSION).replace("__RADIOS__", &radios).replace("__HOME__", &esc_html(&home)).replace("__ZOOMS__", &zooms)
-        .replace("__SHIELD__", match shield { true => " checked", false => "" }).replace("__RESTORE__", match c.restore_session { true => " checked", false => "" }).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__TOK__", token)
-        .replace("__VAULT__", "Chromium profile store").replace("__PMRADIOS__", &toggles).replace("__PMLABEL__", "").replace("__PMCLI__", "").replace("__PMDB__", "").replace("__AUTOFILL__", "").replace("__CHKUPD__", match c.check_updates { true => " checked", false => "" })
+        .replace("__SHIELD__", chk(shield)).replace("__RESTORE__", chk(c.restore_session)).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__TOK__", token)
+        .replace("__VAULT__", "Chromium profile store").replace("__PMRADIOS__", &toggles).replace("__PMLABEL__", "").replace("__PMCLI__", "").replace("__PMDB__", "").replace("__AUTOFILL__", "").replace("__CHKUPD__", chk(c.check_updates))
         .replace("__UPD__", "checked on the site feed").replace("__PROFS__", "<div class='row'><span>Local \u{00b7} active</span></div>").replace("__CRASH__", "").replace("__IMPORTNOTE__", "").replace("__BMS__", &bms).replace("__ENGINE__", ENGINE)
+        .replace("__NAVEXTRA__", "<button data-p='ai'>Ask AI</button><button data-p='downloads'>Downloads</button>").replace("__LOOKEXTRA__", &look_extra).replace("__AIPANE__", &ai_pane).replace("__DLPANE__", &dl_pane).replace("__PRIVEXTRA__", &priv_extra)
+        .replace("function rmbm(id)", "function cmd(n,a){fetch('amnibrowse://cmd/'+n+'?'+new URLSearchParams(Object.assign({tok:T},a||{})),{mode:'no-cors'}).catch(function(){})}\nfunction rmbm(id)")
 }
 fn render_tutorial_html(state: &BrowserState, token: &str) -> String {
+    let blurb = match cfg!(windows) { true => "Pages render in the Chromium engine (WebView2) under Amni\u{2019}s own chrome: no Google account, no sync, no telemetry.", false => "Pages render in WebKitGTK (the engine behind Safari and GNOME Web) under Amni\u{2019}s own chrome: no telemetry, no sync, your profile stays local." };
+    let ai = ai_search::provider_name(&state.config);
     TUTORIAL_TPL.replace("__THEME__", &theme_root_vars(&state.themes.active_theme())).replace("__VER__", APP_VERSION).replace("__TOK__", token).replace("__BROWSERS__", "<p class='dim'>Import from Settings once you are in.</p>")
+        .replace("__ENGINE__", ENGINE).replace("__ENGINEBLURB__", blurb)
+        .replace("__MEDIANOTE__", "Video, audio, WebRTC and DRM-protected streams play through the engine as they would in any WebKit browser. The shield blocks ad and tracker requests at the request level.")
+        .replace("__STEP3__", &format!("The \u{2726} button next to the address bar (or <kbd>Alt+A</kbd>, or typing <kbd>@ai</kbd>) hands your question to {} in its own website, signed in as you. Pick the AI you subscribe to under Settings \u{2192} Ask AI. Type <kbd>@tabs</kbd>, <kbd>@history</kbd> or <kbd>@bookmarks</kbd> to search those from the bar.", esc_html(&ai)))
 }
 fn render_downloads_html(state: &BrowserState, token: &str) -> String {
     let theme_vars = theme_root_vars(&state.themes.active_theme());
@@ -346,28 +442,25 @@ function cmd(name,args){{
 }
 fn render_history_html(state: &BrowserState, token: &str) -> String {
     let theme_vars = theme_root_vars(&state.themes.active_theme());
-    let entries = &state.history.entries;
-    let count = entries.len();
+    let entries = state.history.recent(500);
+    let count = state.history.entries.len();
     let rows: String = if entries.is_empty() {
         "<div class='call' style='text-align:center;padding:32px 16px;'><p style='font-size:16px;font-weight:600;margin-bottom:8px;'>No browsing history</p><p class='dim'>Pages you visit will appear here.</p></div>".to_string()
     } else {
-        entries.iter().rev().take(100).map(|e| {
+        let mut out = String::new();
+        let mut last_day = String::new();
+        let today = chrono::Local::now().date_naive();
+        for e in entries {
+            let local = e.last_visited.with_timezone(&chrono::Local);
+            let day = local.date_naive();
+            let label = match (today - day).num_days() { 0 => "Today".to_string(), 1 => "Yesterday".to_string(), _ => local.format("%A, %B %-d, %Y").to_string() };
+            if label != last_day { out.push_str(&format!("<h2 class='day' style='margin-top:22px'>{}</h2>", esc_html(&label))); last_day = label; }
             let u = esc_html(&e.url);
             let t = if e.title.trim().is_empty() { u.clone() } else { esc_html(&e.title) };
-            let date_str = e.last_visited.format("%b %d, %H:%M").to_string();
-            format!(
-                "<div class='row' style='display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--stroke);'>\
-                    <div style='flex:1;min-width:0;padding-right:16px;'>\
-                        <a href='{}' style='font-size:14px;font-weight:600;color:var(--text);text-decoration:none;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{}</a>\
-                        <div style='font-size:12px;color:var(--dim);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{}</div>\
-                    </div>\
-                    <span class='dim' style='font-size:12px;flex-shrink:0;'>{}</span>\
-                </div>",
-                u, t, u, date_str
-            )
-        }).collect()
+            out.push_str(&format!("<div class='row hrow' data-t='{}' data-u='{}' style='display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--stroke);'><span class='dim' style='font-size:12px;flex:0 0 46px;'>{}</span><div style='flex:1;min-width:0;'><a href='{}' style='font-size:14px;font-weight:600;color:var(--text);text-decoration:none;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{}</a><div style='font-size:12px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>{}</div></div><button class='x' title='Remove from history' onclick='rm(this)'>&times;</button></div>", t.to_lowercase(), u.to_lowercase(), local.format("%H:%M"), u, t, u));
+        }
+        out
     };
-
     format!(r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>History &#8212; Amni Browse</title><style>
 :root{{{}}}
 *{{box-sizing:border-box}}
@@ -381,10 +474,14 @@ nav button.on,nav button:hover{{color:var(--text);border-color:var(--stroke);bac
 main{{flex:1;padding:32px 36px 80px;max-width:760px}}
 h2{{color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.16em;margin:0 0 14px}}
 .row{{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--stroke)}}
+.row.hide{{display:none}}
 .x,.btn{{background:var(--elev);border:1px solid var(--stroke);border-radius:3px;color:var(--text);padding:8px 14px;cursor:pointer;font:650 11px inherit;letter-spacing:.1em;text-transform:uppercase;margin:0 4px}}
+.x{{padding:4px 9px;font-size:13px;color:var(--dim)}}
 .x:hover,.btn:hover{{border-color:var(--accent)}}
 .dim,.note{{color:var(--dim);font-size:13px;margin:8px 0}}
 .call{{border:1px solid var(--stroke);background:var(--elev);border-radius:3px;padding:14px 16px;margin:0 0 14px}}
+#q{{width:100%;max-width:460px;padding:9px 12px;background:var(--elev);border:1px solid var(--stroke);border-radius:3px;color:var(--text);font:inherit;margin:0 0 6px;outline:none}}
+#q:focus{{border-color:var(--accent)}}
 </style>
 <script>
 window.__amniToken={:?};
@@ -394,6 +491,8 @@ function cmd(name,args){{
     const q='?'+new URLSearchParams(qObj).toString();
     fetch('amnibrowse://cmd/'+name+q,{{mode:'no-cors'}}).catch(()=>{{}});
 }}
+function rm(b){{const r=b.closest('.hrow');cmd('history_remove',{{url:r.querySelector('a').getAttribute('href')}});r.remove()}}
+function filt(){{const v=document.getElementById('q').value.trim().toLowerCase();document.querySelectorAll('.hrow').forEach(r=>r.classList.toggle('hide',!!v&&!(r.dataset.t.includes(v)||r.dataset.u.includes(v))));document.querySelectorAll('h2.day').forEach(h=>{{let n=h.nextElementSibling,any=false;while(n&&!n.matches('h2.day')){{if(!n.classList.contains('hide'))any=true;n=n.nextElementSibling}}h.style.display=any?'':'none'}})}}
 </script>
 </head><body>
 <div class='wrap'>
@@ -405,13 +504,13 @@ function cmd(name,args){{
 <button onclick='window.location.href="amnibrowse://settings"'>Settings</button>
 </nav>
 <main>
-<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;'>
+<div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;'>
     <div>
         <h2>History</h2>
-        <p class='dim' style='margin:0;'>Recently visited pages</p>
+        <input id='q' type='search' placeholder='Search history' oninput='filt()' autofocus>
     </div>
     <div>
-        <button class='btn' onclick='cmd("clear_data");window.location.reload()'>Clear History</button>
+        <button class='btn' onclick='if(confirm("Clear all browsing history?")){{cmd("clear_data");window.location.reload()}}'>Clear History</button>
     </div>
 </div>
 <div>
@@ -498,9 +597,28 @@ fn attach_filter(view: &WebView, filter: Option<usize>, on: bool) {
 /// underlying WebKitWebView; favicons arrive through the ICON_SCRIPT ipc note; downloads report
 /// completion through wry's download-completed handler (see spawn_tab).
 #[cfg(not(windows))]
-fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, dnt: bool, _autofill: bool) -> Option<Core> {
+fn perm_kind(req: &webkit2gtk::PermissionRequest) -> Option<PermissionType> {
+    use webkit2gtk::glib::object::Cast;
+    use webkit2gtk::UserMediaPermissionRequestExt;
+    if req.dynamic_cast_ref::<webkit2gtk::GeolocationPermissionRequest>().is_some() { return Some(PermissionType::Location); }
+    if req.dynamic_cast_ref::<webkit2gtk::NotificationPermissionRequest>().is_some() { return Some(PermissionType::Notifications); }
+    if let Some(m) = req.dynamic_cast_ref::<webkit2gtk::UserMediaPermissionRequest>() { return Some(match m.is_for_video_device() { true => PermissionType::Camera, false => PermissionType::Microphone }); }
+    None
+}
+#[cfg(not(windows))]
+fn origin_of(uri: &str) -> String { url::Url::parse(uri).ok().and_then(|u| u.host_str().map(|h| h.to_string())).unwrap_or_else(|| match uri.starts_with("file:") { true => "This local file".into(), false => uri.to_string() }) }
+/// Errors WebKit reports for loads we cancelled ourselves (stop, policy ignore, a download
+/// taking over the navigation); those never get an error page.
+#[cfg(not(windows))]
+fn benign_load_error(e: &webkit2gtk::glib::Error) -> bool {
+    if let Some(n) = e.kind::<webkit2gtk::NetworkError>() { return matches!(n, webkit2gtk::NetworkError::Cancelled); }
+    e.kind::<webkit2gtk::PolicyError>().is_some() || e.kind::<webkit2gtk::PluginError>().is_some()
+}
+#[cfg(not(windows))]
+fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBlocker>>, _shield: Rc<Cell<bool>>, dnt: bool, _autofill: bool, state: Rc<RefCell<BrowserState>>) -> Option<Core> {
     use wry::WebViewExtUnix;
-    use webkit2gtk::{SettingsExt, WebViewExt};
+    use webkit2gtk::{ContextMenuExt, HitTestResultExt, NotificationExt, PermissionRequestExt, SettingsExt, WebViewExt};
+    use webkit2gtk::gio::prelude::ActionExt;
     if dnt {
         let _ = view.evaluate_script("try{Object.defineProperty(navigator,'doNotTrack',{value:'1',configurable:false});Object.defineProperty(navigator,'globalPrivacyControl',{value:true,configurable:false})}catch(e){}");
     }
@@ -524,12 +642,67 @@ fn wire_engine(view: &WebView, uid: u64, push: Push, _blocker: Rc<RefCell<AdBloc
     wv.connect_enter_fullscreen(move |_| { p2(Ev::PageFullscreen(uid, true)); false });
     wv.connect_leave_fullscreen(move |_| { p3(Ev::PageFullscreen(uid, false)); false });
     wv.connect_is_playing_audio_notify(move |w| p4(Ev::Audio(uid, w.is_playing_audio())));
+    // Permission prompts: stored per-site answers are applied silently, everything else asks in the chrome.
+    let (pp, ps) = (push.clone(), state.clone());
+    wv.connect_permission_request(move |w, req| {
+        use webkit2gtk::glib::object::Cast;
+        let origin = w.uri().map(|u| u.to_string()).unwrap_or_default();
+        if req.dynamic_cast_ref::<webkit2gtk::PointerLockPermissionRequest>().is_some() || req.dynamic_cast_ref::<webkit2gtk::MediaKeySystemPermissionRequest>().is_some() || req.dynamic_cast_ref::<webkit2gtk::WebsiteDataAccessPermissionRequest>().is_some() { req.allow(); return true; }
+        let Some(kind) = perm_kind(req) else { req.deny(); return true; };
+        let stored = ps.try_borrow().map(|st| st.permissions.get_permission(&origin, &kind)).unwrap_or(PermissionState::Ask);
+        match stored {
+            PermissionState::Allow => req.allow(),
+            PermissionState::Deny => req.deny(),
+            PermissionState::Ask => pp(Ev::Perm(uid, kind, origin_of(&origin), req.clone())),
+        }
+        true
+    });
+    // Web Notifications go to the desktop through notify-send (KDE/GNOME both pick it up).
+    wv.connect_show_notification(move |w, n| {
+        let host = w.uri().map(|u| origin_of(&u)).unwrap_or_default();
+        let _ = std::process::Command::new("notify-send").arg("-a").arg(APP_NAME).arg(n.title().map(|t| t.to_string()).unwrap_or(host)).arg(n.body().map(|b| b.to_string()).unwrap_or_default()).spawn();
+        true
+    });
+    let pf = push.clone();
+    wv.connect_load_failed(move |_, _, uri, err| {
+        if benign_load_error(err) { return false; }
+        pf(Ev::LoadFailed(uid, uri.to_string(), err.to_string()));
+        true
+    });
+    let pt = push.clone();
+    wv.connect_load_failed_with_tls_errors(move |_, uri, cert, flags| { pt(Ev::TlsFail(uid, uri.to_string(), format!("{:?}", flags), cert.clone())); true });
+    let pc = push.clone();
+    wv.connect_web_process_terminated(move |_, reason| { warn!("tab {} web process terminated: {:?}", uid, reason); pc(Ev::Crash(uid)); });
+    // Page context menu: Chrome's extras (open in new/private tab, search selection, Ask AI) on top of WebKit's stock items.
+    let (pm, sm) = (push.clone(), state.clone());
+    wv.connect_context_menu(move |_, menu, _, hit| {
+        let ai = sm.try_borrow().map(|st| ai_search::provider_name(&st.config)).unwrap_or_else(|_| "AI".into());
+        let link = hit.link_uri().map(|u| u.to_string()).filter(|u| u.starts_with("http"));
+        let image = hit.image_uri().map(|u| u.to_string());
+        let mut items: Vec<(String, String, String)> = Vec::new();
+        if let Some(l) = link.clone() { items.push(("open_bg".into(), "Open link in new tab".into(), l.clone())); items.push(("open_private".into(), "Open link in private tab".into(), l)); }
+        if let Some(i) = image.clone() { items.push(("open_bg".into(), "Open image in new tab".into(), i)); }
+        if hit.context_is_selection() { items.push(("search_sel".into(), "Search the web for selection".into(), String::new())); items.push(("ask_sel".into(), format!("Ask {} about selection", ai), String::new())); }
+        if link.is_none() && image.is_none() && !hit.context_is_selection() && !hit.context_is_editable() { items.push(("ask_page".into(), format!("Ask {} about this page", ai), String::new())); items.push(("screenshot".into(), "Take screenshot".into(), String::new())); }
+        if items.is_empty() { return false; }
+        let mut pos = 0;
+        for (n, (id, label, data)) in items.into_iter().enumerate() {
+            // The menu item holds the action; the closure holds the pick.
+            let act = webkit2gtk::gio::SimpleAction::new(&format!("amni{}", n), None);
+            let (p, id2, d2) = (pm.clone(), id.clone(), data.clone());
+            act.connect_activate(move |_, _| p(Ev::Ctx(uid, id2.clone(), d2.clone())));
+            menu.insert(&webkit2gtk::ContextMenuItem::from_gaction(&act, &label, None), pos);
+            pos += 1;
+        }
+        menu.insert(&webkit2gtk::ContextMenuItem::new_separator(), pos);
+        false
+    });
     None
 }
 #[cfg(not(windows))]
 fn dl_id(u: &str) -> String { format!("{:x}", u.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3))) }
 #[cfg(windows)]
-fn wire_engine(view: &WebView, uid: u64, push: Push, blocker: Rc<RefCell<AdBlocker>>, shield: Rc<Cell<bool>>, dnt: bool, autofill: bool) -> Option<ICoreWebView2> {
+fn wire_engine(view: &WebView, uid: u64, push: Push, blocker: Rc<RefCell<AdBlocker>>, shield: Rc<Cell<bool>>, dnt: bool, autofill: bool, _state: Rc<RefCell<BrowserState>>) -> Option<ICoreWebView2> {
     unsafe {
         let core = view.controller().CoreWebView2().ok()?;
         let env = core.cast::<ICoreWebView2_2>().and_then(|c| c.Environment()).ok()?;
@@ -639,7 +812,8 @@ impl App {
         self.overlay.check_resize();
     }
     fn frame_px(&self) -> u32 { match self.decorated || self.fullscreen || self.page_fullscreen || self.window.is_maximized() { true => 0, false => (FRAME_CSS * self.scale()).round() as u32 } }
-    fn chrome_px(&self) -> u32 { match self.fullscreen || self.page_fullscreen { true => 0, false => (SERVO_CHROME_HEIGHT_CSS as f64 * self.scale()).round() as u32 } }
+    fn chrome_css(&self) -> u32 { SERVO_CHROME_HEIGHT_CSS + match self.bookmarks_bar { true => BOOKMARKS_BAR_CSS, false => 0 } }
+    fn chrome_px(&self) -> u32 { match self.fullscreen || self.page_fullscreen { true => 0, false => (self.chrome_css() as f64 * self.scale()).round() as u32 } }
     fn chrome_rect(&self) -> Rect {
         let sz = self.window.inner_size();
         let f = self.frame_px();
@@ -775,6 +949,7 @@ impl App {
             builder = builder.with_custom_protocol("amnibrowse".to_string(), move |id, req| proto(id, req));
         }
 
+        let (https_only, http_allow, p7) = (self.https_only.clone(), self.http_allow.clone(), push.clone());
         builder = builder
             .with_url(url)
             .with_bounds(content_rect)
@@ -782,20 +957,31 @@ impl App {
             .with_devtools(true)
             .with_hotkeys_zoom(true)
             .with_back_forward_navigation_gestures(true)
-            .with_initialization_script(&format!("{};{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT))
+            .with_initialization_script(&format!("{};{};{};{};{}", fetch_shim(), KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT, LINK_SCRIPT))
             .with_navigation_handler(move |u| {
                 let blocked = shield.get() && !is_internal(&u) && blocker.borrow_mut().should_block(&u);
-                if blocked { info!("adblock: blocked navigation {}", u); }
-                !blocked
+                if blocked { info!("adblock: blocked navigation {}", u); return false; }
+                if https_only.get() && u.starts_with("http://") && !is_local_host(&u) {
+                    let mut allow = http_allow.borrow_mut();
+                    match allow.iter().position(|a| a == &u) {
+                        Some(i) => { allow.remove(i); }
+                        None => { p7(Ev::Upgrade(uid, u)); return false; }
+                    }
+                }
+                true
             })
             .with_new_window_req_handler(move |u| { match wants_native_popup(&u) { true => true, false => { p1(Ev::Popup(u)); false } } })
             .with_document_title_changed_handler(move |t| p2(Ev::Title(uid, t)))
             .with_on_page_load_handler(move |e, u| p3(Ev::Load(uid, matches!(e, PageLoadEvent::Started), u)))
             .with_ipc_handler(move |req| {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) {
+                    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
                     match v.get("type").and_then(|t| t.as_str()) {
-                        Some("key") => p4(Ev::Key(uid, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)),
-                        Some("icon") => { if let Some(h) = v.get("href").and_then(|h| h.as_str()) { p4(Ev::Favicon(uid, h.to_string())); } }
+                        Some("key") => p4(Ev::Key(uid, s("k"), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)),
+                        Some("icon") => { let h = s("href"); if !h.is_empty() { p4(Ev::Favicon(uid, h)); } }
+                        Some("open") => { let h = s("href"); if h.starts_with("http") || h.starts_with("file:") { p4(Ev::Open(uid, h, v.get("bg").and_then(|b| b.as_i64()).unwrap_or(1) == 1)); } }
+                        Some("sel") => p4(Ev::Sel(uid, s("purpose"), s("text"))),
+                        Some("find") => p4(Ev::Find(uid, v.get("n").and_then(|n| n.as_u64()).unwrap_or(0) as u32, v.get("i").and_then(|n| n.as_u64()).unwrap_or(0) as u32)),
                         _ => {}
                     }
                 }
@@ -803,10 +989,17 @@ impl App {
 
         if attach_downloads {
             let dl_dir_c = dl_dir.clone();
+            let ask_where = self.ask_dl_location.clone();
             builder = builder.with_download_started_handler(move |u, path| {
                 let name = guess_filename(&u, path);
                 std::fs::create_dir_all(&dl_dir_c).ok();
                 *path = unique_path(&dl_dir_c, &name);
+                #[cfg(not(windows))]
+                if ask_where.get() {
+                    match pick_save_path(path) { Some(p) => *path = p, None => { info!("download: cancelled by user {}", u); return false; } }
+                }
+                #[cfg(windows)]
+                let _ = &ask_where;
                 info!("download: {} -> {:?}", u, path);
                 #[cfg(not(windows))]
                 p5(Ev::DlStart(dl_id(&u), u.clone(), path.to_string_lossy().to_string(), None));
@@ -826,14 +1019,197 @@ impl App {
         let view = match view { Ok(v) => v, Err(e) => { warn!("webview2 tab failed: {}", e); return self.active; } };
         #[cfg(not(windows))]
         attach_filter(&view, self.filter, self.shield.get());
+        #[cfg(not(windows))]
+        if !private && !self.dl_progress_wired { self.wire_download_progress(&view); self.dl_progress_wired = true; }
         self.place(&view, content_rect);
-        let core = wire_engine(&view, uid, push, self.blocker.clone(), self.shield.clone(), dnt, autofill);
-        let _ = view.zoom(default_zoom.max(0.25));
-        let tab = Tab { uid, view, core, url: url.to_string(), title: String::new(), private, loading: true, zoom: default_zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None };
+        let core = wire_engine(&view, uid, push, self.blocker.clone(), self.shield.clone(), dnt, autofill, self.state.clone());
+        let zoom = self.site_zoom_for(url).unwrap_or(default_zoom);
+        let _ = view.zoom(zoom.max(0.25));
+        let tab = Tab { uid, view, core, url: url.to_string(), title: String::new(), private, loading: true, zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None, muted: false, discarded: false, last_active: Instant::now(), inject: None, upgraded_from: None, #[cfg(not(windows))] tls: None, find: (0, 0) };
         let idx = at.unwrap_or(self.tabs.len()).min(self.tabs.len());
         self.tabs.insert(idx, tab);
         self.raise_chrome();
         idx
+    }
+    fn site_zoom_for(&self, url: &str) -> Option<f64> {
+        let h = host_of(url);
+        match h.is_empty() { true => None, false => self.state().config.site_zoom.get(&h).copied() }
+    }
+    /// Chrome remembers zoom per site, not per tab.
+    fn remember_zoom(&self, url: &str, zoom: f64) {
+        let h = host_of(url);
+        if h.is_empty() || is_internal(url) { return; }
+        let mut st = self.state_mut();
+        let default = st.config.default_zoom;
+        match (zoom - default).abs() < 0.01 { true => { st.config.site_zoom.remove(&h); } false => { st.config.site_zoom.insert(h, zoom); } }
+        st.config.save();
+    }
+    /// Ask the configured AI: open its site with the prompt (new tab or in place per Settings).
+    fn ask_ai(&mut self, query: &str) {
+        let (url, inject, new_tab) = { let st = self.state(); let (u, j) = ai_search::ask(&st.config, query); (u, j, st.config.ai_new_tab) };
+        let idx = match new_tab || self.active_tab().map(|t| is_internal(&t.url)).unwrap_or(true) {
+            true => { let i = self.spawn_tab(&url, self.active_tab().map(|t| t.private).unwrap_or(false), Some(self.active + 1)); self.active = i; i }
+            false => { self.navigate_active(&url); self.active }
+        };
+        if let Some(t) = self.tabs.get_mut(idx) { t.inject = inject; }
+        self.layout();
+        self.sync_title();
+        self.focus_content();
+    }
+    fn ask_ai_about_page(&mut self) {
+        let Some(t) = self.active_tab() else { return };
+        if is_internal(&t.url) { self.ask_ai(""); return; }
+        let q = ai_search::page_prompt(&t.title, &display_url(&t.url));
+        self.ask_ai(&q);
+    }
+    fn search_url(&self, q: &str) -> String {
+        let se = self.state().config.search_engine.clone();
+        format!("{}{}", match se.starts_with("http") { true => se, false => "https://html.duckduckgo.com/html/?q=".into() }, urlencoding::encode(q))
+    }
+    #[cfg(not(windows))]
+    fn mute_tab(&mut self, idx: usize) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        if let Some(t) = self.tabs.get_mut(idx) { t.muted = !t.muted; t.view.webview().set_is_muted(t.muted); }
+    }
+    #[cfg(windows)]
+    fn mute_tab(&mut self, idx: usize) {
+        let m = match self.tabs.get_mut(idx) { Some(t) => { t.muted = !t.muted; t.muted } None => return };
+        if let Some(c) = self.tabs.get(idx).and_then(|t| t.core.as_ref()) { unsafe { if let Ok(c8) = c.cast::<ICoreWebView2_8>() { let _ = c8.SetIsMuted(BOOL(m as i32)); } } }
+    }
+    /// Memory saver: unload a background tab; it reloads when shown again.
+    fn discard_tab(&mut self, idx: usize) {
+        if idx == self.active { return; }
+        if let Some(t) = self.tabs.get_mut(idx) {
+            if t.discarded || t.pinned || t.audio || t.private || is_internal(&t.url) || t.loading { return; }
+            t.discarded = true;
+            let title = esc_html(match t.title.trim().is_empty() { true => &t.url, false => &t.title });
+            let _ = t.view.load_html(&format!("<!doctype html><title>{}</title><body style='background:#0D0F12'></body>", title));
+        }
+    }
+    fn hard_reload(&self) {
+        #[cfg(not(windows))]
+        {
+            use webkit2gtk::WebViewExt;
+            use wry::WebViewExtUnix;
+            if let Some(t) = self.active_tab() { t.view.webview().reload_bypass_cache(); }
+        }
+        #[cfg(windows)]
+        self.reload_page();
+    }
+    fn downloads_dir(&self) -> PathBuf { self.state().config.downloads_dir.clone().map(PathBuf::from).unwrap_or_else(DownloadManager::downloads_dir) }
+    fn file_stem_for_page(&self) -> String {
+        let t = self.active_tab().map(|t| match t.title.trim().is_empty() { true => host_of(&t.url), false => t.title.clone() }).unwrap_or_default();
+        let s = sanitize_filename(&t);
+        match s.is_empty() || s == "download" { true => "page".into(), false => s.chars().take(80).collect() }
+    }
+    /// Ctrl+S: the page as a single .mhtml file in Downloads.
+    #[cfg(not(windows))]
+    fn save_page(&mut self) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        let Some(t) = self.active_tab() else { return };
+        if is_internal(&t.url) { return; }
+        let dir = self.downloads_dir();
+        std::fs::create_dir_all(&dir).ok();
+        let path = unique_path(&dir, &format!("{}.mhtml", self.file_stem_for_page()));
+        let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
+        let id = format!("save{}", self.next_uid);
+        push(Ev::DlStart(id.clone(), u, p.clone(), None));
+        t.view.webview().save_to_file(&webkit2gtk::gio::File::for_path(&path), webkit2gtk::SaveMode::Mhtml, None::<&webkit2gtk::gio::Cancellable>, move |r| {
+            let ok = r.is_ok();
+            if let Err(e) = r { warn!("save page: {}", e); }
+            push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p));
+        });
+    }
+    #[cfg(windows)]
+    fn save_page(&mut self) {}
+    /// Screenshot of the visible page to Downloads as PNG.
+    #[cfg(not(windows))]
+    fn screenshot(&mut self) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        let Some(t) = self.active_tab() else { return };
+        let dir = self.downloads_dir();
+        std::fs::create_dir_all(&dir).ok();
+        let path = unique_path(&dir, &format!("{} {}.png", self.file_stem_for_page(), chrono::Local::now().format("%Y-%m-%d %H%M%S")));
+        let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
+        let id = format!("shot{}", self.next_uid);
+        push(Ev::DlStart(id.clone(), u, p.clone(), None));
+        t.view.webview().snapshot(webkit2gtk::SnapshotRegion::Visible, webkit2gtk::SnapshotOptions::NONE, None::<&webkit2gtk::gio::Cancellable>, move |r| {
+            let ok = r.ok().and_then(|s| gtk::cairo::ImageSurface::try_from(s).ok()).and_then(|img| std::fs::File::create(&path).ok().map(|mut f| img.write_to_png(&mut f).is_ok())).unwrap_or(false);
+            push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p));
+        });
+    }
+    #[cfg(windows)]
+    fn screenshot(&mut self) {}
+    fn interstitial(&self, kind: &str, title: &str, body: &str, url: &str, actions: &str) -> String {
+        let vars = theme_root_vars(&self.state().themes.active_theme());
+        format!("<!DOCTYPE html><html><head><meta charset='utf-8'><title>{t}</title><style>:root{{{v}}}body{{font:15px/1.55 'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh}}main{{max-width:560px;padding:32px}}.k{{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:0 0 10px}}h1{{font-size:22px;margin:0 0 12px}}p{{color:var(--dim);margin:0 0 10px}}code{{color:var(--text);word-break:break-all}}.acts{{margin-top:22px;display:flex;gap:8px;flex-wrap:wrap}}button{{font:650 11px/1 inherit;letter-spacing:.1em;text-transform:uppercase;padding:11px 16px;border-radius:3px;border:1px solid var(--stroke);background:var(--elev);color:var(--text);cursor:pointer}}button.primary{{background:var(--accent);color:#08090B;border-color:transparent}}button:hover{{border-color:var(--accent)}}</style></head><body><main><p class='k'>{k}</p><h1>{t}</h1>{b}<p><code>{u}</code></p><div class='acts'>{a}</div></main><script>window.__amniToken={tok:?};function cmd(n,a){{const q=new URLSearchParams(Object.assign({{tok:window.__amniToken}},a||{{}}));fetch('amnibrowse://cmd/'+n+'?'+q,{{mode:'no-cors'}}).catch(()=>{{}})}}</script></body></html>", v = vars, k = esc_html(kind), t = esc_html(title), b = body, u = esc_html(url), a = actions, tok = self.token)
+    }
+    #[cfg(not(windows))]
+    fn show_alternate(&self, idx: usize, html: &str, url: &str) {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        if let Some(t) = self.tabs.get(idx) { t.view.webview().load_alternate_html(html, url, Some(url)); }
+    }
+    #[cfg(not(windows))]
+    fn prompt_permission(&mut self, uid: u64, kind: PermissionType, origin: String, req: webkit2gtk::PermissionRequest) {
+        let id = self.next_perm;
+        self.next_perm += 1;
+        self.perms.push(PendingPerm { id, uid, kind: kind.clone(), origin: origin.clone(), req });
+        if self.tab_index(uid) == Some(self.active) { self.show_permission_prompt(); }
+    }
+    #[cfg(not(windows))]
+    fn show_permission_prompt(&self) {
+        let Some(active) = self.active_tab().map(|t| t.uid) else { return };
+        let Some(p) = self.perms.iter().find(|p| p.uid == active) else { return };
+        let what = match p.kind { PermissionType::Camera => "use your camera", PermissionType::Microphone => "use your microphone", PermissionType::Location => "know your location", PermissionType::Notifications => "show notifications", _ => "a permission" };
+        let payload = serde_json::json!({"kind":"dialog","type":"perm","id":p.id,"message":format!("{} wants to {}", p.origin, what),"ok":"Allow","cancel":"Block"});
+        if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
+        self.chrome_js(&format!("window.__amni&&window.__amni.showEmbedder&&window.__amni.showEmbedder({})", payload));
+    }
+    #[cfg(not(windows))]
+    fn answer_permission(&mut self, id: u64, allow: bool) {
+        use webkit2gtk::PermissionRequestExt;
+        let Some(pos) = self.perms.iter().position(|p| p.id == id) else { return };
+        let p = self.perms.remove(pos);
+        match allow { true => p.req.allow(), false => p.req.deny() }
+        {
+            let mut st = self.state_mut();
+            st.permissions.set_permission(&format!("https://{}/", p.origin), p.kind, match allow { true => PermissionState::Allow, false => PermissionState::Deny });
+        }
+        self.show_permission_prompt();
+    }
+    /// Download progress + cancel come from WebKit's Download objects on the shared context
+    /// (wry only reports start and completion).
+    #[cfg(not(windows))]
+    fn wire_download_progress(&self, view: &WebView) {
+        use webkit2gtk::{DownloadExt, URIRequestExt, WebContextExt, WebViewExt};
+        use wry::WebViewExtUnix;
+        let Some(ctx) = view.webview().context() else { return };
+        let (push, live) = (self.pusher(), self.live_downloads.clone());
+        ctx.connect_download_started(move |_, d| {
+            let Some(u) = d.request().and_then(|r| r.uri()).map(|u| u.to_string()) else { return };
+            let id = dl_id(&u);
+            live.borrow_mut().insert(id.clone(), d.clone());
+            let (p, id2) = (push.clone(), id.clone());
+            d.connect_received_data(move |d, _| p(Ev::DlProgress(id2.clone(), d.received_data_length())));
+            let (l2, id3) = (live.clone(), id.clone());
+            d.connect_finished(move |_| { l2.borrow_mut().remove(&id3); });
+            let (l3, id4) = (live.clone(), id);
+            d.connect_failed(move |_, _| { l3.borrow_mut().remove(&id4); });
+        });
+    }
+    #[cfg(not(windows))]
+    fn tls_proceed(&mut self) {
+        use webkit2gtk::{WebContextExt, WebViewExt};
+        use wry::WebViewExtUnix;
+        let Some(t) = self.tabs.get(self.active) else { return };
+        let Some((host, cert)) = t.tls.clone() else { return };
+        if let Some(ctx) = t.view.webview().context() { ctx.allow_tls_certificate_for_host(&cert, &host); }
+        let u = t.url.clone();
+        self.navigate_active(&u);
     }
     fn open_tab(&mut self, url: Option<String>, private: bool) {
         self.overlay_css = 0;
@@ -870,7 +1246,7 @@ impl App {
         let t = self.tabs.remove(idx);
         let _ = t.view.evaluate_script("try{window.stop()}catch(e){}try{document.querySelectorAll('video,audio').forEach(function(m){m.pause()})}catch(e){}");
         let _ = t.view.set_visible(false);
-        if !t.private && !is_internal(&t.url) { self.closed.push((t.url.clone(), t.private)); self.closed.truncate(20); }
+        if !t.private && !is_internal(&t.url) { self.closed.push((t.url.clone(), t.title.clone(), t.private)); if self.closed.len() > 25 { self.closed.remove(0); } }
         drop(t);
         if self.tabs.is_empty() { let h = self.home_url(); self.spawn_tab(&h, false, None); self.active = 0; } else if self.active >= self.tabs.len() { self.active = self.tabs.len() - 1; } else if idx < self.active { self.active -= 1; }
         self.layout();
@@ -881,7 +1257,12 @@ impl App {
     fn switch_tab(&mut self, idx: usize) {
         if idx < self.tabs.len() {
             self.overlay_css = 0;
+            if let Some(prev) = self.tabs.get_mut(self.active) { prev.last_active = Instant::now(); }
             self.active = idx;
+            if let Some(t) = self.tabs.get_mut(idx) {
+                t.last_active = Instant::now();
+                if t.discarded { t.discarded = false; t.loading = true; let _ = t.view.load_url(&t.url); }
+            }
             self.layout();
             self.sync_title();
             self.persist();
@@ -905,6 +1286,7 @@ impl App {
             t.url = url.to_string();
             t.loading = true;
             t.icon = None;
+            t.discarded = false;
             let _ = t.view.load_url(url);
         }
         self.layout();
@@ -928,6 +1310,7 @@ impl App {
         let zoom = self.active_tab().map(|t| t.zoom).unwrap_or(1.0);
         let internal = self.active_tab().map(|t| is_internal(&t.url)).unwrap_or(true);
         let bookmarked = self.active_tab().map(|t| self.state().bookmarks.find_by_url(&display_url(&t.url)).is_some()).unwrap_or(false);
+        let ai = ai_search::provider_name(&self.state().config);
         let items = serde_json::json!([
             {"id":"new_tab","label":"New tab","enabled":true},
             {"id":"private_tab","label":"New private tab","enabled":true},
@@ -937,8 +1320,14 @@ impl App {
             {"id":"am_history","label":"History","enabled":true},
             {"id":"am_downloads","label":"Downloads","enabled":true},
             {"id":"bookmark","label":match bookmarked { true => "Remove bookmark", false => "Bookmark this page" },"enabled":!internal},
+            {"id":"toggle_bookmarks_bar","label":match self.bookmarks_bar { true => "Hide bookmarks bar", false => "Show bookmarks bar" },"enabled":true},
             {"sep":true},
+            {"id":"ask_ai_page","label":format!("Ask {} about this page", ai),"enabled":!internal},
             {"id":"am_find","label":"Find on page","enabled":true},
+            {"id":"save_page","label":"Save page as\u{2026}","enabled":!internal},
+            {"id":"screenshot","label":"Take screenshot","enabled":!internal},
+            {"id":"translate","label":"Translate page (Google)","enabled":!internal},
+            {"id":"copy_url","label":"Copy link","enabled":!internal},
             {"id":"zoom_in","label":"Zoom in","enabled":true},
             {"id":"zoom_out","label":"Zoom out","enabled":true},
             {"id":"zoom_reset","label":format!("Reset zoom ({}%)", (zoom * 100.0).round() as i64),"enabled":(zoom - 1.0).abs() > 0.01},
@@ -953,7 +1342,7 @@ impl App {
             {"id":"settings","label":"Settings","enabled":true},
         ]);
         let w = self.window.inner_size().to_logical::<f64>(self.scale()).width;
-        let payload = serde_json::json!({"kind":"menu","x":(w - 244.0).max(4.0).round() as i64,"y":(SERVO_CHROME_HEIGHT_CSS as i64) - 8,"items":items});
+        let payload = serde_json::json!({"kind":"menu","x":(w - 244.0).max(4.0).round() as i64,"y":(self.chrome_css() as i64) - 8,"items":items});
         if let Some(c) = self.chrome.as_ref() {
             #[cfg(not(windows))]
             {
@@ -994,20 +1383,26 @@ impl App {
         let tabs: Vec<serde_json::Value> = self.tabs.iter().enumerate().map(|(i, t)| serde_json::json!({
             "id": format!("t{}", i), "title": match t.title.trim().is_empty() { true => match is_internal(&t.url) { true => "New Tab".to_string(), false => url::Url::parse(&t.url).ok().and_then(|u| u.host_str().map(|h| h.to_string())).unwrap_or_else(|| t.url.clone()) }, false => t.title.clone() },
             "url": display_url(&t.url), "active": i == self.active, "loading": t.loading, "engine": "chromium", "icon": t.icon, "is_private": t.private, "audio": t.audio, "pinned": t.pinned, "group": t.group, "collapsed": t.group.as_ref().map(|g| self.collapsed.contains(g)).unwrap_or(false),
+            "muted": t.muted, "discarded": t.discarded,
         })).collect();
-        let (theme, active_dl, bookmarked) = {
+        let (theme, active_dl, dl_count, bookmarked, ai, engine_name, bookmarks) = {
             let st = self.state();
             let th: serde_json::Value = serde_json::from_str(&st.themes.active_theme_json()).unwrap_or(serde_json::Value::Null);
             let adl = st.downloads.downloads.iter().filter(|d| matches!(d.status, DownloadStatus::Downloading | DownloadStatus::Pending)).count();
             let bm = !url.is_empty() && st.bookmarks.find_by_url(&url).is_some();
-            (th, adl, bm)
+            let se = st.config.search_engine.clone();
+            let engine_name = match se.as_str() { s if s.contains("duckduckgo") => "DuckDuckGo", s if s.contains("brave") => "Brave", s if s.contains("startpage") => "Startpage", s if s.contains("google") => "Google", s if s.contains("bing") => "Bing", s if s.contains("kagi") => "Kagi", _ => "the web" };
+            let bms: Vec<serde_json::Value> = match self.bookmarks_bar { true => st.bookmarks.bookmarks.iter().take(40).map(|b| serde_json::json!({"title": b.title, "url": b.url})).collect(), false => Vec::new() };
+            (th, adl, st.downloads.downloads.len(), bm, ai_search::provider_name(&st.config), engine_name, bms)
         };
+        let closed: Vec<serde_json::Value> = self.closed.iter().enumerate().rev().take(10).map(|(i, (u, t, _))| serde_json::json!({"idx": i, "url": u, "title": t})).collect();
         serde_json::json!({
             "url": shown, "title": active.map(|t| t.title.clone()).unwrap_or_default(), "loading": active.map(|t| t.loading).unwrap_or(false),
             "canBack": active.map(|t| t.can_back).unwrap_or(false), "canForward": active.map(|t| t.can_forward).unwrap_or(false), "tabs": tabs, "theme": theme,
             "zoom": active.map(|t| t.zoom).unwrap_or(1.0), "fullscreen": self.fullscreen, "maximized": self.window.is_maximized(), "canReopen": !self.closed.is_empty(),
-            "shield": self.shield.get(), "blocked": self.blocker.borrow().blocked_count(), "bookmarked": bookmarked, "vault": false, "downloads": active_dl, "profile": "Local",
-            "find": self.find_query, "winh": (self.window.inner_size().to_logical::<f64>(self.scale()).height).round() as i64, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": ENGINE, "decorated": self.decorated,
+            "shield": self.shield.get(), "blocked": self.blocker.borrow().blocked_count(), "bookmarked": bookmarked, "vault": false, "downloads": active_dl, "dlcount": dl_count, "profile": "Local",
+            "find": self.find_query, "findn": active.map(|t| t.find.0).unwrap_or(0), "findi": active.map(|t| t.find.1).unwrap_or(0), "winh": (self.window.inner_size().to_logical::<f64>(self.scale()).height).round() as i64, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": ENGINE, "decorated": self.decorated,
+            "ai": ai, "searchName": engine_name, "closed": closed, "bmbar": self.bookmarks_bar, "bookmarks": bookmarks, "chromeh": self.chrome_css(),
         }).to_string()
     }
     fn settings_html(&self) -> String {
@@ -1036,10 +1431,22 @@ impl App {
                 "autofill_on_load" => st.config.autofill_on_load = on,
                 "enable_do_not_track" => st.config.enable_do_not_track = on,
                 "enable_doh" => st.config.enable_doh = on,
+                "ai_provider" => st.config.ai_provider = v.to_string(),
+                "ai_custom_url" => st.config.ai_custom_url = Some(v.trim().to_string()).filter(|s| !s.is_empty()),
+                "ai_new_tab" => st.config.ai_new_tab = on,
+                "show_bookmarks_bar" => st.config.show_bookmarks_bar = on,
+                "https_only" => st.config.https_only = on,
+                "ask_download_location" => st.config.ask_download_location = on,
+                "memory_saver" => st.config.memory_saver = on,
+                "memory_saver_minutes" => st.config.memory_saver_minutes = v.parse().unwrap_or(45),
+                "downloads_dir" => st.config.downloads_dir = Some(v.trim().to_string()).filter(|s| !s.is_empty()),
                 _ => info!("setting_set: ignored {}={}", k, v),
             }
             st.config.save();
         }
+        if k == "https_only" { self.https_only.set(on); }
+        if k == "ask_download_location" { self.ask_dl_location.set(on); }
+        if k == "show_bookmarks_bar" && self.bookmarks_bar != on { self.bookmarks_bar = on; self.layout(); }
         if k == "theme" { self.apply_frame_color(); }
         if k == "block_ads" || k == "shield" { self.shield.set(on); self.reshield(); }
         if self.active_tab().map(|t| t.url.contains("amnibrowse.settings")).unwrap_or(false) && k == "theme" { self.active_js("location.reload()"); }
@@ -1064,11 +1471,27 @@ impl App {
         }
     }
     fn handle_key(&mut self, k: &str, shift: bool, alt: bool) {
+        if self.last_key.0 == k && self.last_key.1 == shift && self.last_key.2 == alt && self.last_key.3.elapsed() < std::time::Duration::from_millis(100) { return; }
+        self.last_key = (k.to_string(), shift, alt, Instant::now());
         match (k, shift, alt) {
             ("arrowleft", _, true) => self.command("back", &HashMap::new()),
             ("arrowright", _, true) => self.command("forward", &HashMap::new()),
             ("home", _, true) => self.command("home", &HashMap::new()),
             ("f5", _, _) | ("r", false, false) => self.command("reload", &HashMap::new()),
+            ("r", true, false) => self.hard_reload(),
+            ("s", false, false) => self.save_page(),
+            ("g", false, false) | ("f3", false, _) => self.command("find_next", &HashMap::new()),
+            ("g", true, false) | ("f3", true, _) => self.command("find_prev", &HashMap::new()),
+            ("e", false, false) | ("k", false, false) => self.focus_omnibox(true),
+            ("d", _, true) => self.focus_omnibox(false),
+            ("a", _, true) => self.command("ai_mode", &HashMap::new()),
+            ("pageup", false, false) | ("pagedown", false, false) => { let n = self.tabs.len(); if n > 1 { let a = self.active; self.switch_tab(match k { "pageup" => (a + n - 1) % n, _ => (a + 1) % n }); } }
+            ("pageup", true, false) | ("pagedown", true, false) => { let n = self.tabs.len(); if n > 1 { let a = self.active; let to = match k { "pageup" => (a + n - 1) % n, _ => (a + 1) % n }; let mut args = HashMap::new(); args.insert("from".into(), format!("t{}", a)); args.insert("to".into(), to.to_string()); self.command("move_tab", &args); } }
+            ("delete", true, false) => self.open_tab(Some(format!("{}#privacy", internal_url("settings"))), false),
+            ("b", true, false) => self.command("toggle_bookmarks_bar", &HashMap::new()),
+            ("o", true, false) => self.open_tab(Some(format!("{}#import", internal_url("settings"))), false),
+            ("w", true, false) => self.command("win_close", &HashMap::new()),
+            ("j", true, false) => self.open_devtools(),
             ("f11", _, _) => self.command("fullscreen", &HashMap::new()),
             ("f12", _, _) | ("i", true, false) => self.open_devtools(),
             ("escape", _, _) => self.command("stop", &HashMap::new()),
@@ -1103,7 +1526,9 @@ impl App {
             "navigate" => {
                 self.overlay_css = 0;
                 let se = self.state().config.search_engine.clone();
-                if let Some(u) = a.get("url").and_then(|u| resolve_input(u, &se)) { self.navigate_active(&u); }
+                if let Some(u) = a.get("url").and_then(|u| resolve_input(u, &se)) {
+                    match a.get("newtab").map(|v| v == "1").unwrap_or(false) { true => self.open_tab(Some(u), self.active_tab().map(|t| t.private).unwrap_or(false)), false => self.navigate_active(&u) }
+                }
             }
             "back" => { self.overlay_css = 0; self.go_back(); self.layout(); self.focus_content(); }
             "forward" => { self.overlay_css = 0; self.go_forward(); self.layout(); self.focus_content(); }
@@ -1125,9 +1550,18 @@ impl App {
                 }
             }
             "duplicate_tab" => { if let Some(t) = self.active_tab() { let (u, p) = (t.url.clone(), t.private); let i = self.spawn_tab(&u, p, Some(self.active + 1)); self.active = i; self.layout(); } }
-            "reopen_tab" => { if let Some((u, p)) = self.closed.pop() { self.open_tab(Some(u), p); } }
+            "reopen_tab" => {
+                let pick = a.get("idx").and_then(|i| i.parse::<usize>().ok()).filter(|i| *i < self.closed.len()).map(|i| self.closed.remove(i)).or_else(|| self.closed.pop());
+                if let Some((u, _, p)) = pick { self.open_tab(Some(u), p); }
+            }
             "zoom_in" | "zoom_out" | "zoom_reset" => {
-                if let Some(t) = self.tabs.get_mut(self.active) { t.zoom = match name { "zoom_in" => (t.zoom + 0.1).min(3.0), "zoom_out" => (t.zoom - 0.1).max(0.3), _ => 1.0 }; let _ = t.view.zoom(t.zoom); }
+                let default = self.state().config.default_zoom;
+                if let Some(t) = self.tabs.get_mut(self.active) {
+                    t.zoom = match name { "zoom_in" => (t.zoom + 0.1).min(3.0), "zoom_out" => (t.zoom - 0.1).max(0.3), _ => default };
+                    let _ = t.view.zoom(t.zoom);
+                    let (u, z) = (t.url.clone(), t.zoom);
+                    self.remember_zoom(&u, z);
+                }
             }
             "find" | "find_next" | "find_prev" => {
                 let q = a.get("q").cloned().unwrap_or_else(|| self.find_query.clone());
@@ -1270,6 +1704,15 @@ impl App {
                     let _ = std::process::Command::new(match cfg!(windows) { true => "explorer", false => "xdg-open" }).arg(&p).spawn();
                 }
             }
+            "download_cancel" => {
+                if let Some(id) = a.get("id") {
+                    #[cfg(not(windows))]
+                    { use webkit2gtk::DownloadExt; if let Some(d) = self.live_downloads.borrow().get(id) { d.cancel(); } }
+                    let mut st = self.state_mut();
+                    if let Some(d) = st.downloads.downloads.iter_mut().find(|d| &d.id == id) { d.status = DownloadStatus::Failed; }
+                    st.downloads.save();
+                }
+            }
             "download_remove" => {
                 if let Some(id) = a.get("id") {
                     let mut st = self.state_mut();
@@ -1290,6 +1733,74 @@ impl App {
                 st.history.save();
             }
             "menu" => self.show_app_menu(),
+            "ask_ai" => { let q = a.get("q").cloned().unwrap_or_default(); self.ask_ai(&q); }
+            "ask_ai_page" => self.ask_ai_about_page(),
+            "ai_mode" => { self.focus_omnibox(true); self.chrome_js("window.__amni&&window.__amni.aiMode&&window.__amni.aiMode()"); }
+            "ai_home" => self.ask_ai(""),
+            "mute_tab" => { if let Some(i) = a.get("id").and_then(|s| idx_of(s)) { self.mute_tab(i); } }
+            "discard_tab" => { if let Some(i) = a.get("id").and_then(|s| idx_of(s)) { self.discard_tab(i); self.layout(); } }
+            "close_others" => { if let Some(i) = a.get("id").and_then(|s| idx_of(s)).filter(|i| *i < self.tabs.len()) { self.switch_tab(i); let mut j = self.tabs.len(); while j > 0 { j -= 1; if j != self.active && !self.tabs[j].pinned { self.close_tab(j); } } } }
+            "close_right" => { if let Some(i) = a.get("id").and_then(|s| idx_of(s)).filter(|i| *i < self.tabs.len()) { if self.active > i { self.switch_tab(i); } let mut j = self.tabs.len(); while j > i + 1 { j -= 1; if !self.tabs[j].pinned { self.close_tab(j); } } } }
+            "reload_tab" => {
+                if let Some(i) = a.get("id").and_then(|s| idx_of(s)).filter(|i| *i < self.tabs.len()) {
+                    #[cfg(not(windows))]
+                    { use webkit2gtk::WebViewExt; use wry::WebViewExtUnix; let t = &mut self.tabs[i]; if t.discarded { t.discarded = false; let _ = t.view.load_url(&t.url); } else { t.view.webview().reload(); } }
+                    #[cfg(windows)]
+                    { let u = self.tabs[i].url.clone(); let _ = self.tabs[i].view.load_url(&u); }
+                }
+            }
+            "tab_new_window" => {
+                if let Some(i) = a.get("id").and_then(|s| idx_of(s)).filter(|i| *i < self.tabs.len()) {
+                    let u = self.tabs[i].url.clone();
+                    if !is_internal(&u) && std::process::Command::new(std::env::current_exe().unwrap_or_default()).arg("--new-window").arg(&u).spawn().is_ok() { self.close_tab(i); }
+                }
+            }
+            "new_tab_right" => { let h = self.home_url(); let i = self.spawn_tab(&h, false, Some(self.active + 1)); self.active = i; self.layout(); self.sync_title(); self.focus_omnibox(true); }
+            "hard_reload" => self.hard_reload(),
+            "save_page" => self.save_page(),
+            "screenshot" => self.screenshot(),
+            "translate" => {
+                if let Some(t) = self.active_tab() {
+                    let u = display_url(&t.url);
+                    if !is_internal(&u) {
+                        let lang = std::env::var("LANG").ok().and_then(|l| l.split(['_', '.']).next().map(|s| s.to_string())).filter(|l| !l.is_empty() && l != "C").unwrap_or_else(|| "en".into());
+                        let tu = format!("https://translate.google.com/translate?sl=auto&tl={}&u={}", lang, urlencoding::encode(&u));
+                        let i = self.spawn_tab(&tu, t.private, Some(self.active + 1)); self.active = i; self.layout(); self.sync_title();
+                    }
+                }
+            }
+            "copy_url" => { if let Some(t) = self.active_tab() { let u = display_url(&t.url); self.chrome_js(&format!("try{{navigator.clipboard.writeText({:?})}}catch(e){{}}", u)); } }
+            "toggle_bookmarks_bar" => {
+                self.bookmarks_bar = !self.bookmarks_bar;
+                { let mut st = self.state_mut(); st.config.show_bookmarks_bar = self.bookmarks_bar; st.config.save(); }
+                self.layout();
+            }
+            "history_remove" => { if let Some(u) = a.get("url") { let mut st = self.state_mut(); st.history.delete_by_url(u); } }
+            "perm_answer" => {
+                #[cfg(not(windows))]
+                if let Some(id) = a.get("id").and_then(|i| i.parse::<u64>().ok()) { self.answer_permission(id, a.get("allow").map(|v| v == "1").unwrap_or(false)); }
+                self.overlay_css = 0; self.layout(); self.focus_content();
+            }
+            "perm_set" => {
+                if let (Some(host), Some(kind), Some(state)) = (a.get("host"), a.get("kind"), a.get("state")) {
+                    let kind = match kind.as_str() { "Camera" => PermissionType::Camera, "Microphone" => PermissionType::Microphone, "Location" => PermissionType::Location, "Notifications" => PermissionType::Notifications, "Clipboard" => PermissionType::Clipboard, "Autoplay" => PermissionType::Autoplay, "Popups" => PermissionType::Popups, _ => PermissionType::Fullscreen };
+                    let st = match state.as_str() { "allow" => PermissionState::Allow, "deny" => PermissionState::Deny, _ => PermissionState::Ask };
+                    self.state_mut().permissions.set_permission(&format!("https://{}/", host), kind, st);
+                }
+            }
+            "perm_reset" => { match a.get("host") { Some(h) => self.state_mut().permissions.reset_site(&format!("https://{}/", h)), None => self.state_mut().permissions.reset_all() } }
+            "tls_proceed" => {
+                #[cfg(not(windows))]
+                self.tls_proceed();
+            }
+            "http_fallback" => {
+                if let Some(t) = self.tabs.get_mut(self.active) {
+                    if let Some(h) = t.upgraded_from.take() { self.http_allow.borrow_mut().push(h.clone()); self.navigate_active(&h); }
+                }
+            }
+            "search_sel" | "ask_sel" => self.active_js(&format!("window.__amniSel&&window.__amniSel({:?})", name.trim_end_matches("_sel"))),
+            "open_bg" => { if let Some(u) = a.get("url").cloned() { let p = self.active_tab().map(|t| t.private).unwrap_or(false); self.spawn_tab(&u, p, Some(self.active + 1)); self.layout(); } }
+            "open_private" => { if let Some(u) = a.get("url").cloned() { let i = self.spawn_tab(&u, true, Some(self.active + 1)); self.active = i; self.layout(); self.sync_title(); self.focus_content(); } }
             "ctx_pick" => {
                 self.overlay_css = 0;
                 let Some(id) = a.get("id").cloned() else { self.layout(); self.focus_content(); return };
@@ -1327,6 +1838,7 @@ impl App {
                 self.layout();
                 self.focus_content();
             }
+            "chrome_err" => warn!("chrome js error: {} (line {})", a.get("m").map(|s| s.as_str()).unwrap_or(""), a.get("l").map(|s| s.as_str()).unwrap_or("?")),
             "kbd" | "overlay_rect" | "favicon_cache" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
             other => info!("cmd: unhandled {}", other),
         }
@@ -1365,9 +1877,19 @@ impl App {
             Ev::Title(uid, t) => { if let Some(i) = self.tab_index(uid) { self.tabs[i].title = t; if i == self.active { self.sync_title(); } } }
             Ev::Load(uid, started, u) => {
                 if let Some(i) = self.tab_index(uid) {
+                    if self.tabs[i].discarded { return; }
+                    let site_zoom = self.site_zoom_for(&u);
+                    let default_zoom = self.state().config.default_zoom;
                     let t = &mut self.tabs[i];
                     t.loading = started;
-                    if !u.is_empty() { if t.url != u { t.icon = None; } t.url = u.clone(); }
+                    if !u.is_empty() && t.url != u {
+                        t.icon = None;
+                        if host_of(&t.url) != host_of(&u) { let z = site_zoom.unwrap_or(default_zoom); if (z - t.zoom).abs() > 0.001 { t.zoom = z; let _ = t.view.zoom(z); } }
+                        t.url = u.clone();
+                    }
+                    if started { t.find = (0, 0); }
+                    if !started && u.starts_with("https://") { t.upgraded_from = None; }
+                    if !started { if let Some(js) = t.inject.take() { let _ = t.view.evaluate_script(&js); } }
                     let (private, title) = (t.private, t.title.clone());
                     if !started && !private && !is_internal(&u) && u.starts_with("http") {
                         let mut st = self.state_mut();
@@ -1403,8 +1925,12 @@ impl App {
                 self.chrome_js("window.__amni&&window.__amni.showPanel&&window.__amni.showPanel('dl')");
             }
             Ev::DlProgress(id, n) => {
+                #[cfg(not(windows))]
+                let total = { use webkit2gtk::{DownloadExt, URIResponseExt}; self.live_downloads.borrow().get(&id).and_then(|d| d.response()).map(|r| r.content_length()).filter(|t| *t > 0) };
+                #[cfg(windows)]
+                let total: Option<u64> = None;
                 let mut st = self.state_mut();
-                if let Some(d) = st.downloads.downloads.iter_mut().find(|d| d.id == id) { d.downloaded_bytes = n; }
+                if let Some(d) = st.downloads.downloads.iter_mut().find(|d| d.id == id) { d.downloaded_bytes = n; if d.total_bytes.is_none() { d.total_bytes = total; } }
             }
             Ev::DlState(id, st, path) => {
                 let mut state = self.state_mut();
@@ -1416,6 +1942,88 @@ impl App {
             }
             Ev::Popup(u) => { let i = self.spawn_tab(&u, self.active_tab().map(|t| t.private).unwrap_or(false), Some(self.active + 1)); self.active = i; self.layout(); }
             Ev::Key(_, k, shift, alt) => self.handle_key(&k, shift, alt),
+            Ev::Open(uid, u, bg) => {
+                let (private, at) = self.tab_index(uid).map(|i| (self.tabs[i].private, i + 1)).unwrap_or((false, self.tabs.len()));
+                let i = self.spawn_tab(&u, private, Some(at));
+                if !bg { self.active = i; self.sync_title(); }
+                self.layout();
+                if !bg { self.focus_content(); }
+            }
+            Ev::Sel(uid, purpose, text) => {
+                let text = text.trim().to_string();
+                if text.is_empty() { return; }
+                let Some(i) = self.tab_index(uid) else { return };
+                let (u, p) = (display_url(&self.tabs[i].url), self.tabs[i].private);
+                match purpose.as_str() {
+                    "ask" => { let q = ai_search::selection_prompt(&text, &u); self.ask_ai(&q); }
+                    _ => { let su = self.search_url(&text.chars().take(400).collect::<String>()); let n = self.spawn_tab(&su, p, Some(i + 1)); self.active = n; self.layout(); self.sync_title(); self.focus_content(); }
+                }
+            }
+            Ev::Find(uid, n, i) => { if let Some(t) = self.tab_index(uid) { self.tabs[t].find = (n, i); } }
+            #[cfg(not(windows))]
+            Ev::Perm(uid, kind, origin, req) => self.prompt_permission(uid, kind, origin, req),
+            #[cfg(not(windows))]
+            Ev::LoadFailed(uid, u, msg) => {
+                let Some(i) = self.tab_index(uid) else { return };
+                if let Some(h) = self.tabs[i].upgraded_from.take() {
+                    if u.starts_with("https://") { info!("https-only: {} failed, falling back to http", u); self.http_allow.borrow_mut().push(h.clone()); self.tabs[i].url = h.clone(); let _ = self.tabs[i].view.load_url(&h); return; }
+                }
+                self.tabs[i].loading = false;
+                let host = host_of(&u);
+                let html = self.interstitial("Can\u{2019}t reach this site", &match host.is_empty() { true => "This page isn\u{2019}t available".to_string(), false => format!("{} isn\u{2019}t responding", host) }, &format!("<p>{}</p><p>Check the address, your connection, or try again in a moment.</p>", esc_html(&msg)), &u, &format!("<button class='primary' onclick='cmd(\"reload\")'>Try again</button><button onclick='cmd(\"back\")'>Go back</button>{}", match self.state().config.https_only && u.starts_with("https://") { true => "<button onclick='cmd(\"http_fallback\")'>Try http://</button>", false => "" }));
+                self.show_alternate(i, &html, &u);
+                if i == self.active { self.sync_title(); }
+            }
+            #[cfg(not(windows))]
+            Ev::TlsFail(uid, u, flags, cert) => {
+                let Some(i) = self.tab_index(uid) else { return };
+                let host = host_of(&u);
+                self.tabs[i].tls = Some((url::Url::parse(&u).ok().and_then(|p| p.host_str().map(|h| h.to_string())).unwrap_or(host.clone()), cert));
+                self.tabs[i].loading = false;
+                let why = match flags.as_str() { f if f.contains("EXPIRED") => "The site\u{2019}s certificate has expired.", f if f.contains("UNKNOWN_CA") => "The site\u{2019}s certificate isn\u{2019}t issued by a trusted authority.", f if f.contains("BAD_IDENTITY") => "The certificate doesn\u{2019}t match this site\u{2019}s name.", f if f.contains("REVOKED") => "The certificate has been revoked.", _ => "The site\u{2019}s certificate can\u{2019}t be verified." };
+                let html = self.interstitial("Your connection is not private", &format!("Attackers might be trying to steal your information from {}", host), &format!("<p>{}</p><p class='dim'>({})</p>", why, esc_html(&flags)), &u, "<button class='primary' onclick='cmd(\"back\")'>Back to safety</button><button onclick='if(confirm(\"Proceed to an unverified site? Anyone on the network could read what you send.\"))cmd(\"tls_proceed\")'>Proceed (unsafe)</button>");
+                self.show_alternate(i, &html, &u);
+            }
+            Ev::Crash(uid) => {
+                #[cfg(not(windows))]
+                if let Some(i) = self.tab_index(uid) {
+                    let u = self.tabs[i].url.clone();
+                    self.tabs[i].loading = false;
+                    let html = self.interstitial("Aw, snap", "This page crashed", "<p>Something went wrong while displaying this page.</p>", &u, "<button class='primary' onclick='cmd(\"reload\")'>Reload</button>");
+                    self.show_alternate(i, &html, &u);
+                }
+                #[cfg(windows)]
+                let _ = uid;
+            }
+            Ev::Ctx(uid, action, data) => {
+                let Some(i) = self.tab_index(uid) else { return };
+                let private = self.tabs[i].private;
+                match action.as_str() {
+                    "open_bg" => { self.spawn_tab(&data, private, Some(i + 1)); self.layout(); }
+                    "open_private" => { let n = self.spawn_tab(&data, true, Some(i + 1)); self.active = n; self.layout(); self.sync_title(); self.focus_content(); }
+                    "search_sel" | "ask_sel" => { let _ = self.tabs[i].view.evaluate_script(&format!("window.__amniSel&&window.__amniSel({:?})", action.trim_end_matches("_sel"))); }
+                    "ask_page" => { if i != self.active { self.switch_tab(i); } self.ask_ai_about_page(); }
+                    "screenshot" => { if i != self.active { self.switch_tab(i); } self.screenshot(); }
+                    _ => {}
+                }
+            }
+            Ev::Upgrade(uid, u) => {
+                let Some(i) = self.tab_index(uid) else { return };
+                let https = format!("https://{}", &u["http://".len()..]);
+                info!("https-only: {} -> {}", u, https);
+                let t = &mut self.tabs[i];
+                t.upgraded_from = Some(u);
+                t.url = https.clone();
+                t.loading = true;
+                let _ = t.view.load_url(&https);
+            }
+            Ev::Tick => {
+                let (on, mins) = { let st = self.state(); (st.config.memory_saver, st.config.memory_saver_minutes.max(5)) };
+                if !on { return; }
+                let idle = std::time::Duration::from_secs(mins as u64 * 60);
+                let stale: Vec<usize> = self.tabs.iter().enumerate().filter(|(i, t)| *i != self.active && !t.discarded && !t.pinned && !t.audio && !t.private && !t.loading && !is_internal(&t.url) && t.last_active.elapsed() > idle).map(|(i, _)| i).collect();
+                for i in stale { info!("memory saver: discarding tab {}", i); self.discard_tab(i); }
+            }
         }
     }
 }
@@ -1448,11 +2056,10 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
         let uri = req.uri().to_string();
         let parsed = match url::Url::parse(&uri) { Ok(u) => u, Err(_) => return empty(400) };
         let host = parsed.host_str().unwrap_or("").trim_start_matches("amnibrowse.").to_string();
+        // Every caller that may drive the browser (the chrome, settings, history, downloads, interstitials)
+        // is rendered with the per-run token; web pages never see it, so a page cannot issue commands.
         let tok_ok = parsed.query_pairs().any(|(k, v)| k == "tok" && v == ptok.as_str());
-        let from_chrome = cfg!(not(windows))
-            || tok_ok
-            || req.headers().get("referer").and_then(|v| v.to_str().ok()).map(|r| r.contains("amnibrowse.chrome") || r.contains("amnibrowse://chrome") || r.contains("amnibrowse")).unwrap_or(false)
-            || req.headers().get("origin").and_then(|v| v.to_str().ok()).map(|o| o.contains("amnibrowse.chrome") || o.contains("amnibrowse://chrome") || o.contains("amnibrowse")).unwrap_or(false);
+        let from_chrome = tok_ok;
         let args: HashMap<String, String> = parsed.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
         match host.as_str() {
             "chrome" => respond("text/html; charset=utf-8", format!("<script>{}window.__amniToken={:?};</script>{}{}", fetch_shim(), ptok, load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
@@ -1464,13 +2071,52 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
             }
             "suggest" if from_chrome || tok_ok => {
                 let q = args.get("q").cloned().unwrap_or_default();
+                let scope = args.get("scope").cloned().unwrap_or_default();
+                let ql = q.to_lowercase();
+                let mut rows: Vec<serde_json::Value> = Vec::new();
+                // Open tabs ("Switch to this tab"), like Chrome's tab-switch suggestions and @tabs.
+                if scope.is_empty() || scope == "tabs" {
+                    if let Ok(g) = pa.try_borrow() {
+                        if let Some(a) = g.as_ref() {
+                            for (i, t) in a.tabs.iter().enumerate() {
+                                if i == a.active || is_internal(&t.url) { continue; }
+                                let du = display_url(&t.url);
+                                if ql.is_empty() && scope.is_empty() { continue; }
+                                if ql.is_empty() || t.title.to_lowercase().contains(&ql) || du.to_lowercase().contains(&ql) { rows.push(serde_json::json!({"kind": "tab", "id": format!("t{}", i), "title": t.title, "url": du})); }
+                                if rows.len() >= 3 && scope.is_empty() { break; }
+                            }
+                        }
+                    }
+                }
+                if scope.is_empty() || scope == "history" || scope == "bookmarks" {
+                    if let Ok(st) = pstate.try_borrow() {
+                        let limit = match scope.is_empty() { true => 8usize.saturating_sub(rows.len()), false => 12 };
+                        let body = match scope.as_str() {
+                            "bookmarks" => { let mut v: Vec<serde_json::Value> = st.bookmarks.bookmarks.iter().filter(|b| ql.is_empty() || b.title.to_lowercase().contains(&ql) || b.url.to_lowercase().contains(&ql)).take(limit).map(|b| serde_json::json!({"kind": "bookmark", "title": b.title, "url": b.url})).collect(); v.drain(..).collect::<Vec<_>>() }
+                            "history" => serde_json::from_str::<Vec<serde_json::Value>>(&st.history.omnibox_json(&q, &[], limit)).unwrap_or_default().into_iter().map(|mut r| { r["kind"] = "history".into(); r }).collect(),
+                            _ => {
+                                let bms: Vec<(String, String)> = st.bookmarks.bookmarks.iter().map(|b| (b.url.clone(), b.title.clone())).collect();
+                                let extra: Vec<(&str, &str)> = bms.iter().map(|(u, t)| (u.as_str(), t.as_str())).collect();
+                                serde_json::from_str::<Vec<serde_json::Value>>(&st.history.omnibox_json(&q, &extra, limit)).unwrap_or_default().into_iter().map(|mut r| { let is_bm = r.get("url").and_then(|u| u.as_str()).map(|u| st.bookmarks.find_by_url(u).is_some()).unwrap_or(false); r["kind"] = (if is_bm { "bookmark" } else { "history" }).into(); r }).collect()
+                            }
+                        };
+                        rows.extend(body);
+                    }
+                }
+                respond("application/json; charset=utf-8", serde_json::Value::Array(rows).to_string())
+            }
+            "siteinfo" if from_chrome || tok_ok => {
+                let u = args.get("url").cloned().unwrap_or_default();
+                let host = host_of(&u);
                 let body = match pstate.try_borrow() {
                     Ok(st) => {
-                        let bms: Vec<(String, String)> = st.bookmarks.bookmarks.iter().map(|b| (b.url.clone(), b.title.clone())).collect();
-                        let extra: Vec<(&str, &str)> = bms.iter().map(|(u, t)| (u.as_str(), t.as_str())).collect();
-                        st.history.omnibox_json(&q, &extra, 8)
+                        let kinds = [PermissionType::Camera, PermissionType::Microphone, PermissionType::Location, PermissionType::Notifications];
+                        let site = st.permissions.sites.iter().find(|s| s.site == host || s.site == format!("www.{}", host));
+                        let perms: Vec<serde_json::Value> = kinds.iter().map(|k| serde_json::json!({"kind": k.to_string(), "state": match site.and_then(|s| s.permissions.get(k)) { Some(PermissionState::Allow) => "allow", Some(PermissionState::Deny) => "deny", _ => "ask" }})).collect();
+                        let zoom = st.config.site_zoom.get(&host).copied();
+                        serde_json::json!({"host": host, "secure": u.starts_with("https://"), "perms": perms, "zoom": zoom, "shield": pshield.get(), "dnt": st.config.enable_do_not_track}).to_string()
                     }
-                    Err(_) => "[]".into(),
+                    Err(_) => "{}".into(),
                 };
                 respond("application/json; charset=utf-8", body)
             }
@@ -1529,7 +2175,24 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
         filter: compile_filter(),
         collapsed: Vec::new(),
         ephemeral,
+        https_only: Rc::new(Cell::new(state.borrow().config.https_only)),
+        http_allow: Rc::new(RefCell::new(Vec::new())),
+        ask_dl_location: Rc::new(Cell::new(state.borrow().config.ask_download_location)),
+        bookmarks_bar: state.borrow().config.show_bookmarks_bar,
+        #[cfg(not(windows))]
+        perms: Vec::new(),
+        #[cfg(not(windows))]
+        live_downloads: Rc::new(RefCell::new(HashMap::new())),
+        next_perm: 1,
+        dl_progress_wired: false,
+        last_key: (String::new(), false, false, Instant::now()),
     };
+    // Memory saver / housekeeping tick.
+    #[cfg(not(windows))]
+    {
+        let push = a.pusher();
+        gtk::glib::timeout_add_local(std::time::Duration::from_secs(60), move || { push(Ev::Tick); gtk::glib::ControlFlow::Continue });
+    }
     let chrome_proto = protocol.clone();
     let kpush = a.pusher();
     let chrome = WebViewBuilder::new()

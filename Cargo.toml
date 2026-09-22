@@ -1,6 +1,6 @@
 [package]
 name = "amni-browse"
-version = "0.13.1"
+version = "0.14.0"
 edition = "2021"
 description = "Amni Browse — A privacy-first, zero-telemetry web browser by Amni-Scient"
 authors = ["Amni-Scient"]
@@ -72,6 +72,7 @@ rusqlite = { version = "0.38", features = ["bundled"] }
 rfd = { version = "0.15", optional = true }
 [target.'cfg(not(windows))'.dependencies]
 gtk = "0.18"
+cairo-rs = { version = "0.18", features = ["png"] }
 webkit2gtk = { version = "=2.0.1", features = ["v2_38"] }
 webkit2gtk-sys = { version = "=2.0.1", features = ["v2_38"] }
 

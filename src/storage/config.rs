@@ -47,7 +47,32 @@ pub struct BrowserConfig {
     pub update_feed: Option<String>,
     #[serde(default)]
     pub seen_onboarding: bool,
+    /// Ask-AI provider id (see engine::ai_search::PROVIDERS) or "custom".
+    #[serde(default = "default_ai")]
+    pub ai_provider: String,
+    /// Custom Ask-AI URL template; `%s` is replaced with the encoded query.
+    #[serde(default)]
+    pub ai_custom_url: Option<String>,
+    #[serde(default = "default_true")]
+    pub ai_new_tab: bool,
+    #[serde(default)]
+    pub show_bookmarks_bar: bool,
+    /// Upgrade http:// navigations to https:// and fall back once when the secure load fails.
+    #[serde(default)]
+    pub https_only: bool,
+    #[serde(default)]
+    pub ask_download_location: bool,
+    /// Discard background tabs after `memory_saver_minutes` (pinned, audible and private tabs are kept).
+    #[serde(default = "default_true")]
+    pub memory_saver: bool,
+    #[serde(default = "default_ms_minutes")]
+    pub memory_saver_minutes: u32,
+    /// Per-host zoom levels, Chrome-style.
+    #[serde(default)]
+    pub site_zoom: std::collections::HashMap<String, f64>,
 }
+fn default_ai() -> String { "claude".into() }
+fn default_ms_minutes() -> u32 { 45 }
 fn default_true() -> bool { true }
 fn default_pm() -> String { "amni".into() }
 
@@ -82,6 +107,15 @@ impl Default for BrowserConfig {
             check_updates: true,
             update_feed: None,
             seen_onboarding: false,
+            ai_provider: default_ai(),
+            ai_custom_url: None,
+            ai_new_tab: true,
+            show_bookmarks_bar: false,
+            https_only: false,
+            ask_download_location: false,
+            memory_saver: true,
+            memory_saver_minutes: default_ms_minutes(),
+            site_zoom: std::collections::HashMap::new(),
         }
     }
 }

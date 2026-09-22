@@ -43,3 +43,4 @@ pub mod cache_api;
 pub mod daily_driver;
 pub mod stream_extract;
 pub mod servo_compat;
+pub mod ai_search;

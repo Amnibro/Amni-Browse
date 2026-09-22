@@ -34,6 +34,7 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:3px;padd
 <p class='dim' style='letter-spacing:.1em;text-transform:uppercase;font-size:10px'>v__VER__</p>
 <button class='on' data-p='start'>Start</button>
 <button data-p='look'>Look</button>
+__NAVEXTRA__
 <button data-p='keys'>Passwords</button>
 <button data-p='import'>Import</button>
 <button data-p='privacy'>Privacy</button>
@@ -52,7 +53,10 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:3px;padd
 <p class='note'>Amni Scient is graphite + brass. Pick Amni Light only if you want a pale chrome.</p>
 <div>__THEMES__</div>
 <label>User-agent override (blank = Servo default — better site CSS)<input type='text' value='__UA__' placeholder='Servo default' onchange='set("custom_user_agent",this.value)'></label>
+__LOOKEXTRA__
 </section>
+__AIPANE__
+__DLPANE__
 <section class='pane' id='keys'>
 <h2>Passwords</h2>
 <p class='note'>Saved logins live in the Amni vault on this PC, or in a manager you already run. Not passkeys / FIDO — those stay in Chrome or Edge.</p>
@@ -82,6 +86,7 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:3px;padd
 <h2>Privacy</h2>
 <label class='switch'><input type='checkbox'__SHIELD__ onchange='set("block_ads",this.checked)'><span>Shield — block ads and trackers</span></label>
 <label class='switch'><input type='checkbox'__RESTORE__ onchange='set("restore_session",this.checked)'><span>Restore tabs when Amni starts (Chrome-style)</span></label>
+__PRIVEXTRA__
 <p class='dim'>__CRASH__</p>
 </section>
 <section class='pane' id='system'>
@@ -105,7 +110,9 @@ const T='__TOK__';
 function set(k,v){fetch('amnibrowse://cmd/setting_set?tok='+T+'&k='+encodeURIComponent(k)+'&v='+encodeURIComponent(v),{mode:'no-cors'}).catch(function(){})}
 function rmbm(id){fetch('amnibrowse://cmd/bookmark_remove?tok='+T+'&id='+encodeURIComponent(id),{mode:'no-cors'}).catch(function(){});var e=document.getElementById('bm-'+id);e&&e.remove()}
 function imp(src){document.getElementById('imp-note').textContent='Importing '+src+'…';set('import_browser',src);setTimeout(async()=>{try{const r=await fetch('amnibrowse://import/last');const j=await r.json();document.getElementById('imp-note').textContent=(j.source||src)+': '+j.bookmarks+' bookmarks, '+j.history+' history, '+j.passwords+' passwords'+(j.notes&&j.notes[0]?' — '+j.notes[0]:'')}catch(e){document.getElementById('imp-note').textContent='Import finished'}},1400)}
-document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===b.dataset.p))});
+function pane(id){document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('on',x.dataset.p===id));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id===id))}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{pane(b.dataset.p);history.replaceState(null,'','#'+b.dataset.p)});
+const h0=location.hash.replace('#','');if(h0&&document.getElementById(h0)&&document.querySelector('nav button[data-p="'+h0+'"]'))pane(h0);
 </script></body></html>"##;
 pub const NEWTAB_TPL: &str = r##"<!DOCTYPE html><html><head><meta charset='utf-8'><title>New Tab</title><style>
 :root{__THEME__}
@@ -135,10 +142,10 @@ button.primary{background:var(--accent);color:#08090B;border-color:transparent;f
 kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padding:1px 6px;font:12px ui-monospace,monospace}
 </style></head><body>
 <h1>Welcome to Amni Browse</h1>
-<p class='tag'>v__VER__ &#183; Real Servo &#183; your data stays on this machine</p>
+<p class='tag'>v__VER__ &#183; __ENGINE__ &#183; your data stays on this machine</p>
 <div class='dots' id='dots'></div>
 <section class='step on' data-s='0'>
-<p>This is a real browser engine &#8212; Servo &#8212; not a Chromium wrapper. Tabs, the URL bar, and the shield live in the gold strip above.</p>
+<p>__ENGINEBLURB__ Tabs, the URL bar, and the shield live in the gold strip above.</p>
 <p>Takes about a minute. You can skip anytime.</p>
 </section>
 <section class='step' data-s='1'>
@@ -149,10 +156,10 @@ kbd{background:var(--elev);border:1px solid var(--stroke);border-radius:4px;padd
 </section>
 <section class='step' data-s='2'>
 <p><kbd>Ctrl+L</kbd> jumps to the URL bar. Type a site or a search. <kbd>Ctrl+T</kbd> / <kbd>Ctrl+W</kbd> tabs. The shield strips trackers. The star bookmarks the page.</p>
-<p class='dim'>YouTube plays in Servo when we can extract a progressive stream. Netflix-class DRM stays in the same window, same chrome, as an in-tab pane.</p>
+<p class='dim'>__MEDIANOTE__</p>
 </section>
 <section class='step' data-s='3'>
-<p>Settings &#8594; Password manager: Amni vault, Bitwarden (<code>bw</code>), 1Password (<code>op</code>), or KeePassXC. Unlock once. A key icon appears in the URL bar when a page has matches &#8212; pick one to fill, like Chrome.</p>
+<p>__STEP3__</p>
 </section>
 <section class='step' data-s='4'>
 <p>You&#8217;re set. New tabs open the start page. Updates check amni-scient.com then GitHub. Set Amni as the default browser from Settings when you&#8217;re ready.</p>
