@@ -347,6 +347,8 @@ impl Theme {
 pub struct ThemeConfig {
     pub active_theme_id: String,
     pub custom_themes: Vec<Theme>,
+    #[serde(default)]
+    pub follow_system: Option<bool>,
 }
 
 impl Default for ThemeConfig {
@@ -354,6 +356,7 @@ impl Default for ThemeConfig {
         Self {
             active_theme_id: "amni-dark".into(),
             custom_themes: Vec::new(),
+            follow_system: Some(true),
         }
     }
 }
@@ -382,7 +385,19 @@ impl ThemeConfig {
         }
     }
 
+    pub fn follows_system(&self) -> bool {
+        self.follow_system.unwrap_or(self.active_theme_id == "amni-dark")
+    }
+    pub fn system_is_light() -> bool {
+        let base = std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")));
+        let Some(base) = base else { return false };
+        let kde = fs::read_to_string(base.join("kdeglobals")).ok().and_then(|s| s.lines().find(|l| l.starts_with("ColorScheme=")).map(|l| l.contains("Light")));
+        kde.or_else(|| fs::read_to_string(base.join("amni-os/look")).ok().map(|s| s.starts_with("light"))).unwrap_or(false)
+    }
     pub fn active_theme(&self) -> Theme {
+        if self.follows_system() {
+            return match Self::system_is_light() { true => Theme::amni_light(), false => Theme::amni_dark() };
+        }
         if let Some(custom) = self.custom_themes.iter().find(|t| t.id == self.active_theme_id) {
             return custom.clone();
         }
@@ -393,7 +408,8 @@ impl ThemeConfig {
     }
 
     pub fn set_theme(&mut self, theme_id: &str) {
-        self.active_theme_id = theme_id.to_string();
+        self.follow_system = Some(theme_id == "system");
+        if theme_id != "system" { self.active_theme_id = theme_id.to_string(); }
         self.save();
     }
 
@@ -505,9 +521,17 @@ mod theme_luma_tests {
 
     #[test]
     fn active_is_dark_follows_selection() {
-        let mut c = ThemeConfig::default();
+        let mut c = ThemeConfig { follow_system: Some(false), ..ThemeConfig::default() };
         assert!(c.active_is_dark());
         c.active_theme_id = "amni-light".into();
         assert!(!c.active_is_dark());
+    }
+    #[test]
+    fn saved_default_follows_system_but_explicit_picks_stay() {
+        let old: ThemeConfig = serde_json::from_str(r#"{"active_theme_id":"amni-dark","custom_themes":[]}"#).unwrap();
+        assert!(old.follows_system());
+        let picked: ThemeConfig = serde_json::from_str(r#"{"active_theme_id":"amni-cosmos","custom_themes":[]}"#).unwrap();
+        assert!(!picked.follows_system());
+        assert_eq!(picked.active_theme().id, "amni-cosmos");
     }
 }

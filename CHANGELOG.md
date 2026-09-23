@@ -1,3 +1,8 @@
+## 0.14.4 - 2026-09-23 — Browse follows the system light/dark mode
+
+- **Match system (light or dark)** is a new theme choice at the top of Settings → Appearance, and the default. The toolbar switches between Amni Scient and Amni Light within a quarter second of the desktop changing mode (read from KDE's colour scheme, falling back to Amni OS's saved look), including Plasma's automatic day/night switch. Installs whose saved theme is the old default Amni Scient move to Match system; any other theme a user picked stays put.
+- **Toolbar colours follow the theme.** The window buttons, their hover tiles and the separators under the tab strip and address bar were fixed light-on-dark values and disappeared on light themes. They now come from the theme's text and border colours.
+
 ## 0.14.3 - 2026-09-23 — window buttons match Amni OS; Amni-Connect viewer on Amni OS
 
 - **The Amni-Connect viewer runs in Browse on Amni OS.** Browse already turns on WebKitGTK's WebRTC and media-stream settings, but stock Arch WebKitGTK is built without WebRTC, so `RTCPeerConnection` did not exist and the viewer stayed black. Amni OS now ships webkit2gtk-4.1 2.52.6-1.1 with WebRTC compiled in (GStreamer webrtcbin); Browse needs no code change for it.
