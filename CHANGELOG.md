@@ -1,3 +1,11 @@
+## Unreleased - window buttons match Amni OS
+
+- **Minimize, maximize and close look like the Amni OS title bar.** They were Consolas text
+  glyphs in 46px squares with a hardcoded dark-red close. They are now the system decoration's
+  11px line glyphs (1.4px stroke), 29px apart and 14px from the edge, with a 26px hover tile at
+  the theme radius; close turns the theme's danger red with dark ink. Maximize switches to a
+  restore glyph while the window is maximized. Same spec as Haven Desktop's welcome window.
+
 ## 0.14.1 - 2026-09-22 — Downloads menu, sign-in popups, omnibar flicker
 - **Downloads (and the other chrome menus) paint above the page.** The menu asked the chrome surface to grow by the menu's own height, which is shorter than the toolbar, so only the "DOWNLOADS" heading cleared the bar and the rows sat under the page webview. The surface now grows to the measured bottom of the open menu.
 - **Sign-in popups.** On Linux, allowing an OAuth `window.open` told WebKit to create a window and nothing handled `create`, so the call returned null and xAI, Google, Apple, GitHub and the rest showed "Something went wrong". Those opens (including the `about:blank` window the SDK assigns next) now get a related WebKit view, so `window.opener` and the session survive. Third-party cookies are accepted and Intelligent Tracking Prevention is off for this profile, matching what those flows get in Firefox. A `navigator.userAgentData` shim keeps the Chrome user-agent from sending sites down a Client Hints path WebKit does not implement. `accounts.x.ai` and `auth.x.ai` are on the shield allowlist.
