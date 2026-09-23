@@ -1,4 +1,6 @@
-## Unreleased - window buttons match Amni OS
+## 0.14.3 - 2026-09-23 — window buttons match Amni OS; Amni-Connect viewer on Amni OS
+
+- **The Amni-Connect viewer runs in Browse on Amni OS.** Browse already turns on WebKitGTK's WebRTC and media-stream settings, but stock Arch WebKitGTK is built without WebRTC, so `RTCPeerConnection` did not exist and the viewer stayed black. Amni OS now ships webkit2gtk-4.1 2.52.6-1.1 with WebRTC compiled in (GStreamer webrtcbin); Browse needs no code change for it.
 
 - **Minimize, maximize and close look like the Amni OS title bar.** They were Consolas text
   glyphs in 46px squares with a hardcoded dark-red close. They are now the system decoration's
