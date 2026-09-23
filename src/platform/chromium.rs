@@ -29,8 +29,12 @@ use crate::{app::BrowserState, engine::{adblocker::AdBlocker, ai_search, permiss
 const BOOKMARKS_BAR_CSS: u32 = 28;
 #[cfg(windows)]
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+// Linux runs WebKitGTK, so say so. Claiming Chrome on a WebKit engine is what
+// bot checks look for: Cloudflare Turnstile saw the mismatch, reset the checkbox
+// after every click and blocked some sites outright. This is the Safari-style
+// string WebKitGTK browsers (GNOME Web) send, and they pass.
 #[cfg(not(windows))]
-const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
+const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 #[cfg(windows)]
 const ENGINE: &str = "Chromium (WebView2)";
 #[cfg(not(windows))]
@@ -48,6 +52,7 @@ const AUTH_POPUP_HOSTS: &[&str] = &[
     "oauth", "openid", "signin", "sign-in", "sso.",
 ];
 /// Sites that branch on a Chrome user-agent then read `navigator.userAgentData`.
+/// Only injected when the user agent claims Chrome (Windows, or a custom one).
 /// WebKit does not implement Client Hints; without this shim the Chrome-shaped
 /// string sends xAI / Google / Apple sign-in down an API that throws.
 const UA_SCRIPT: &str = "(function(){try{if(navigator.userAgentData&&navigator.userAgentData.getHighEntropyValues)return;var ua=navigator.userAgent||'';var m=/Chrome\\/(\\d+)/.exec(ua);var major=m?m[1]:'153';var platform=/Windows/.test(ua)?'Windows':(/Mac/.test(ua)?'macOS':'Linux');var brands=[{brand:'Chromium',version:major},{brand:'Google Chrome',version:major},{brand:'Not)A;Brand',version:'24'}];var full=brands.map(function(b){return{brand:b.brand,version:b.version+'.0.0.0'}});var data={brands:brands,mobile:false,platform:platform,toJSON:function(){return{brands:brands,mobile:false,platform:platform}},getHighEntropyValues:function(){return Promise.resolve({brands:brands,mobile:false,platform:platform,platformVersion:'',architecture:'x86',bitness:'64',model:'',uaFullVersion:major+'.0.0.0',fullVersionList:full,wow64:false})}};Object.defineProperty(navigator,'userAgentData',{get:function(){return data},configurable:true});if(!window.chrome)window.chrome={}}catch(e){}})()";
@@ -1086,7 +1091,7 @@ impl App {
             .with_devtools(true)
             .with_hotkeys_zoom(true)
             .with_back_forward_navigation_gestures(true)
-            .with_initialization_script(&format!("{};{};{};{};{};{}", fetch_shim(), UA_SCRIPT, KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT, LINK_SCRIPT))
+            .with_initialization_script(&format!("{};{};{};{};{};{}", fetch_shim(), if ua.contains("Chrome/") { UA_SCRIPT } else { "" }, KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT, LINK_SCRIPT))
             .with_navigation_handler(move |u| {
                 let blocked = shield.get() && !is_internal(&u) && blocker.borrow_mut().should_block(&u);
                 if blocked { info!("adblock: blocked navigation {}", u); return false; }
@@ -2162,6 +2167,11 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
     let ephemeral = std::env::args().any(|a| a == "--new-window");
     let saved = SessionManager::load().filter(|_| state.config.restore_session && !ephemeral);
     let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(false);
+    // The Wayland app id comes from the program name, which GTK takes from
+    // argv[0]. Pin it so a renamed or wrapped binary still maps to
+    // amni-browse.desktop and gets the browser's icon in the taskbar.
+    #[cfg(target_os = "linux")]
+    gtk::glib::set_prgname(Some("amni-browse"));
     let event_loop = EventLoopBuilder::<()>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<crate::net::single_instance::SingleInstanceMessage>();
