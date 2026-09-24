@@ -8,6 +8,8 @@ mod engine;
 mod app;
 use log::info;
 fn main() {
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    if let Some(code) = platform::cef_tabs::subprocess() { std::process::exit(code) }
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info,wgpu_core=warn,wgpu_hal=warn,naga=warn,egui_wgpu=warn")).init();
     let single_instance = match net::single_instance::init() {
         net::single_instance::SingleInstance::Forwarded => return,
