@@ -1093,7 +1093,7 @@ impl App {
         let uid = self.next_uid;
         let (s, r) = (self.scale(), self.content_rect());
         let (p, z) = (r.position.to_physical::<i32>(s), r.size.to_physical::<u32>(s));
-        let c = super::cef_tabs::CefTab::new(uid, &self.canvas, (p.x, p.y, z.width as i32, z.height as i32), url)?;
+        let c = super::cef_tabs::CefTab::new(uid, &self.canvas, (p.x, p.y, z.width as i32, z.height as i32), url, private)?;
         self.next_uid += 1;
         let zoom = self.site_zoom_for(url).unwrap_or(self.state().config.default_zoom);
         c.zoom(zoom);
@@ -1139,7 +1139,7 @@ impl App {
     }
     fn spawn_tab(&mut self, url: &str, private: bool, at: Option<usize>) -> usize {
         #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-        if !private && super::cef_tabs::wants(url) { if let Some(i) = self.spawn_cef_tab(url, private, at) { debug!("tab {} cef {}", self.tabs[i].uid, url); return i; } }
+        if super::cef_tabs::wants(url) { if let Some(i) = self.spawn_cef_tab(url, private, at) { debug!("tab {} cef {}", self.tabs[i].uid, url); return i; } }
         let uid = self.next_uid;
         self.next_uid += 1;
         let push = self.pusher();
@@ -1466,6 +1466,8 @@ impl App {
         let _ = t.view.set_visible(false);
         if !t.private && !is_internal(&t.url) { self.closed.push((t.url.clone(), t.title.clone(), t.private)); if self.closed.len() > 25 { self.closed.remove(0); } }
         drop(t);
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if !self.tabs.iter().any(|t| t.private && t.view.is_cef()) { super::cef_tabs::end_private(); }
         if self.tabs.is_empty() { let h = self.home_url(); self.spawn_tab(&h, false, None); self.active = 0; } else if self.active >= self.tabs.len() { self.active = self.tabs.len() - 1; } else if idx < self.active { self.active -= 1; }
         self.layout();
         self.sync_title();
@@ -1502,13 +1504,13 @@ impl App {
     fn navigate_active(&mut self, url: &str) {
         self.overlay_css = 0;
         #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-        if let Some(t) = self.tabs.get(self.active).filter(|t| !t.private && t.view.is_cef() != super::cef_tabs::wants(url)) {
+        if let Some(t) = self.tabs.get(self.active).filter(|t| t.view.is_cef() != super::cef_tabs::wants(url)) {
             debug!("engine switch tab {} ({}) -> {}", t.uid, if t.view.is_cef() { "cef" } else { "webkit" }, url);
-            let (pinned, group, at) = (t.pinned, t.group.clone(), self.active);
+            let (pinned, group, at, private) = (t.pinned, t.group.clone(), self.active, t.private);
             let old = self.tabs.remove(at);
             let _ = old.view.set_visible(false);
             drop(old);
-            let i = self.spawn_tab(url, false, Some(at));
+            let i = self.spawn_tab(url, private, Some(at));
             if let Some(n) = self.tabs.get_mut(i) { n.pinned = pinned; n.group = group; }
             self.active = i;
             self.last_content.set((0, 0, 0, 0));

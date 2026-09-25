@@ -226,7 +226,7 @@ impl Holder {
 impl Drop for Holder { fn drop(&mut self) { unsafe { (self.xl.XDestroyWindow)(self.d, self.win); (self.xl.XCloseDisplay)(self.d); } } }
 pub struct CefTab { browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)> }
 impl CefTab {
-    pub fn new(uid: u64, parent: &gtk::Layout, r: (i32, i32, i32, i32), url: &str) -> Option<Self> {
+    pub fn new(uid: u64, parent: &gtk::Layout, r: (i32, i32, i32, i32), url: &str, private: bool) -> Option<Self> {
         use gtk::prelude::*;
         parent.realize();
         let gw = parent.bin_window()?;
@@ -236,7 +236,8 @@ impl CefTab {
         let holder = Holder::new(xid, r)?;
         let info = WindowInfo { runtime_style: RuntimeStyle::ALLOY, ..Default::default() }.set_as_child(holder.win as _, &Rect { x: 0, y: 0, width: r.2.max(1), height: r.3.max(1) });
         let mut client = TabClient::new(uid);
-        let browser = browser_host_create_browser_sync(Some(&info), Some(&mut client), Some(&CefString::from(url)), Some(&BrowserSettings::default()), None, None)?;
+        let mut ctx = if private { Some(private_ctx()?) } else { None };
+        let browser = browser_host_create_browser_sync(Some(&info), Some(&mut client), Some(&CefString::from(url)), Some(&BrowserSettings::default()), None, ctx.as_mut())?;
         Some(Self { browser, holder, rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)) })
     }
     fn host(&self) -> Option<BrowserHost> { self.browser.host() }
@@ -290,7 +291,10 @@ thread_local! {
     static FOCUS_XID: std::cell::Cell<xlib::Window> = const { std::cell::Cell::new(0) };
     static TOOLBAR_KBD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static SHOWN: std::cell::Cell<Option<(xlib::Window, xlib::Window)>> = const { std::cell::Cell::new(None) };
+    static PRIVATE: RefCell<Option<RequestContext>> = const { RefCell::new(None) };
 }
+pub fn end_private() { PRIVATE.with(|p| p.borrow_mut().take()); }
+fn private_ctx() -> Option<RequestContext> { PRIVATE.with(|p| { let mut p = p.borrow_mut(); if p.is_none() { *p = request_context_create_context(Some(&RequestContextSettings::default()), None); } p.clone() }) }
 pub fn set_toolbar_focus(on: bool) { TOOLBAR_KBD.with(|t| t.set(on)); if on { grab_x_focus(); } }
 pub fn watch_clicks() {
     use x11_dl::xinput2;
