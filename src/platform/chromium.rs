@@ -1,6 +1,6 @@
 use std::{borrow::Cow, cell::{Cell, RefCell}, collections::HashMap, path::PathBuf, rc::Rc, time::Instant};
 use log::{debug, info, warn};
-use tao::{dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize}, event::{ElementState, Event, WindowEvent}, event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy}, keyboard::{Key, ModifiersState}, window::{Fullscreen, Window, WindowBuilder}};
+use tao::{dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize}, event::{ElementState, Event, WindowEvent}, event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget}, keyboard::{Key, ModifiersState}, window::{Fullscreen, Window, WindowBuilder}};
 use wry::{http, PageLoadEvent, Rect, WebContext, WebView, WebViewBuilder};
 #[cfg(windows)]
 use tao::platform::windows::WindowExtWindows;
@@ -87,6 +87,29 @@ enum Ev {
     Upgrade(u64, String),
     Tick,
 }
+impl Ev {
+    fn uid(&self) -> Option<u64> {
+        match self {
+            Ev::Title(u, _) | Ev::Load(u, _, _) | Ev::Key(u, _, _, _) | Ev::History(u, _, _) | Ev::Favicon(u, _) | Ev::PageFullscreen(u, _) | Ev::Audio(u, _) | Ev::Open(u, _, _) | Ev::Sel(u, _, _) | Ev::Find(u, _, _) | Ev::Crash(u) | Ev::Ctx(u, _, _) | Ev::Upgrade(u, _) => Some(*u),
+            #[cfg(not(windows))]
+            Ev::Perm(u, _, _, _) | Ev::LoadFailed(u, _, _) | Ev::TlsFail(u, _, _, _) => Some(*u),
+            _ => None,
+        }
+    }
+}
+enum WinReq { Open(Option<String>, bool), Close(u64) }
+type Proto = Rc<dyn Fn(&str, http::Request<Vec<u8>>) -> http::Response<Cow<'static, [u8]>>>;
+#[derive(Clone)]
+struct Seed {
+    state: Rc<RefCell<BrowserState>>, token: String, decorated: bool, protocol: Proto, events: Rc<RefCell<Vec<(u64, Ev)>>>, proxy: EventLoopProxy<()>, blocker: Rc<RefCell<AdBlocker>>, shield: Rc<Cell<bool>>,
+    https_only: Rc<Cell<bool>>, http_allow: Rc<RefCell<Vec<String>>>, ask_dl_location: Rc<Cell<bool>>, next_uid: Rc<Cell<u64>>, reg: [Rc<Cell<bool>>; 3], winq: Rc<RefCell<Vec<WinReq>>>,
+    #[cfg(not(windows))]
+    web_context: Rc<RefCell<Option<WebContext>>>,
+    #[cfg(not(windows))]
+    live_downloads: Rc<RefCell<HashMap<String, webkit2gtk::Download>>>,
+    #[cfg(not(windows))]
+    filter: Option<usize>,
+}
 enum View { Wry(WebView), #[cfg(all(feature = "cef-engine", target_os = "linux"))] Cef(super::cef_tabs::CefTab) }
 impl View {
     fn wry(&self) -> Option<&WebView> { match self { View::Wry(v) => Some(v), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(_) => None } }
@@ -142,6 +165,8 @@ struct Tab {
 struct PendingPerm { id: u64, uid: u64, kind: PermissionType, origin: String, answer: Box<dyn FnOnce(bool)> }
 struct App {
     window: Window,
+    wk: u64,
+    winq: Rc<RefCell<Vec<WinReq>>>,
     #[cfg(not(windows))]
     overlay: gtk::Overlay,
     #[cfg(not(windows))]
@@ -149,9 +174,9 @@ struct App {
     #[cfg(not(windows))]
     chrome_canvas: gtk::Layout,
     #[cfg(not(windows))]
-    web_context: Option<WebContext>,
-    dl_handler_registered: bool,
-    proto_registered: bool,
+    web_context: Rc<RefCell<Option<WebContext>>>,
+    dl_handler_registered: Rc<Cell<bool>>,
+    proto_registered: Rc<Cell<bool>>,
     decorated: bool,
     chrome: Option<WebView>,
     chrome_hwnd: usize,
@@ -161,7 +186,7 @@ struct App {
     closed: Vec<(String, String, bool)>,
     state: Rc<RefCell<BrowserState>>,
     token: String,
-    next_uid: u64,
+    next_uid: Rc<Cell<u64>>,
     overlay_css: u32,
     #[cfg(all(feature = "cef-engine", target_os = "linux"))]
     backdrop: Rc<RefCell<Option<(f64, f64, gtk::cairo::ImageSurface)>>>,
@@ -172,8 +197,8 @@ struct App {
     fullscreen: bool,
     page_fullscreen: bool,
     find_query: String,
-    protocol: Rc<dyn Fn(&str, http::Request<Vec<u8>>) -> http::Response<Cow<'static, [u8]>>>,
-    events: Rc<RefCell<Vec<Ev>>>,
+    protocol: Proto,
+    events: Rc<RefCell<Vec<(u64, Ev)>>>,
     proxy: EventLoopProxy<()>,
     blocker: Rc<RefCell<AdBlocker>>,
     shield: Rc<Cell<bool>>,
@@ -191,7 +216,7 @@ struct App {
     #[cfg(not(windows))]
     live_downloads: Rc<RefCell<HashMap<String, webkit2gtk::Download>>>,
     next_perm: u64,
-    dl_progress_wired: bool,
+    dl_progress_wired: Rc<Cell<bool>>,
     /// Last shortcut handled: on GTK the same keypress reaches us twice (tao's window handler and
     /// the in-page key script), so a repeat of the same combo inside ~100ms is dropped.
     last_key: (String, bool, bool, Instant),
@@ -242,7 +267,8 @@ fn resolve_input(raw: &str, search_prefix: &str) -> Option<String> {
     if t.is_empty() { return None; }
     if let Some(rest) = t.strip_prefix("amnibrowse://") { return Some(internal_url(rest.trim_matches('/'))); }
     if t.contains("://") || t.starts_with("about:") || t.starts_with("view-source:") { return Some(t.to_string()); }
-    if t == "localhost" || t.starts_with("localhost:") { return Some(format!("http://{}", t)); }
+    let h = host_of(&format!("http://{}", t));
+    if t == "localhost" || (!t.contains(' ') && (t.contains('.') || t.contains(':')) && !h.is_empty() && is_local_host(&format!("http://{}", t))) { return Some(format!("http://{}", t)); }
     if std::path::Path::new(t).is_file() { return url::Url::from_file_path(std::fs::canonicalize(t).ok()?).ok().map(|u| u.to_string()); }
     match t.contains('.') && !t.contains(' ') {
         true => Some(format!("https://{}", t)),
@@ -280,7 +306,7 @@ fn focus_on_click(v: &WebView) {
     use wry::WebViewExtUnix;
     let wv = v.webview();
     wv.set_can_focus(true);
-    wv.connect_button_press_event(|w, _| { #[cfg(all(feature = "cef-engine", target_os = "linux"))] super::cef_tabs::grab_x_focus(); if !w.has_focus() { w.grab_focus(); } gtk::glib::Propagation::Proceed });
+    wv.connect_button_press_event(|w, _| { #[cfg(all(feature = "cef-engine", target_os = "linux"))] super::cef_tabs::grab_x_focus(w); if !w.has_focus() { w.grab_focus(); } gtk::glib::Propagation::Proceed });
 }
 /// gtk::Layout, not gtk::Fixed: a Fixed re-allocates children at their original put() spot with
 /// their original size request on every pass, so views stayed the size the window opened at and
@@ -1082,9 +1108,8 @@ impl App {
         match hp.starts_with("http") { true => hp, false => internal_url("newtab") }
     }
     fn pusher(&self) -> Push {
-        let ev = self.events.clone();
-        let px = self.proxy.clone();
-        Rc::new(move |e: Ev| { ev.borrow_mut().push(e); let _ = px.send_event(()); })
+        let (ev, px, wk) = (self.events.clone(), self.proxy.clone(), self.wk);
+        Rc::new(move |e: Ev| { ev.borrow_mut().push((wk, e)); let _ = px.send_event(()); })
     }
     fn reshield(&mut self) {
         #[cfg(not(windows))]
@@ -1092,11 +1117,11 @@ impl App {
     }
     #[cfg(all(feature = "cef-engine", target_os = "linux"))]
     fn spawn_cef_tab(&mut self, url: &str, private: bool, at: Option<usize>) -> Option<usize> {
-        let uid = self.next_uid;
+        let uid = self.next_uid.get();
         let (s, r) = (self.scale(), self.content_rect());
         let (p, z) = (r.position.to_physical::<i32>(s), r.size.to_physical::<u32>(s));
         let c = super::cef_tabs::CefTab::new(uid, &self.canvas, (p.x, p.y, z.width as i32, z.height as i32), url, private)?;
-        self.next_uid += 1;
+        self.next_uid.set(uid + 1);
         let zoom = self.site_zoom_for(url).unwrap_or(self.state().config.default_zoom);
         c.zoom(zoom);
         let tab = Tab { uid, view: View::Cef(c), core: None, url: url.to_string(), title: String::new(), private, loading: true, zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None, muted: false, discarded: false, last_active: Instant::now(), inject: None, upgraded_from: None, tls: None, find: (0, 0) };
@@ -1128,13 +1153,13 @@ impl App {
                 let stored = self.state().permissions.get_permission(&format!("https://{}/", host), &kind);
                 match stored { PermissionState::Allow => answer(true), PermissionState::Deny => answer(false), PermissionState::Ask => self.prompt_permission(u, kind, host, answer) }
             }
-            C::Relaunch(url) => self.handle_single_instance(crate::net::single_instance::SingleInstanceMessage { url, private: false }),
-            C::PageClick => self.chrome_js("try{document.activeElement&&document.activeElement.blur()}catch(e){}"),
+            C::Relaunch(url) => self.handle_single_instance(crate::net::single_instance::SingleInstanceMessage { url, private: false, new_window: false }),
+            C::PageClick(_) => self.chrome_js("try{document.activeElement&&document.activeElement.blur()}catch(e){}"),
             C::Focused(u) => { if self.tab_index(u) == Some(self.active) { self.chrome_js("try{document.activeElement&&document.activeElement.blur()}catch(e){}"); } }
             C::Title(u, t) => self.handle(Ev::Title(u, t)),
             C::Address(u, url) => { let l = self.tab_index(u).map(|i| self.tabs[i].loading).unwrap_or(true); self.handle(Ev::Load(u, l, url)) }
             C::Loading(u, l, b, f) => { self.handle(Ev::History(u, b, f)); let url = self.tab_index(u).map(|i| self.tabs[i].url.clone()).unwrap_or_default(); self.handle(Ev::Load(u, l, url)) }
-            C::Popup(url) => self.handle(Ev::Popup(url)),
+            C::Popup(_, url) => self.handle(Ev::Popup(url)),
             C::Ipc(u, body) => { if let Some(ev) = ipc_ev(u, &body) { self.handle(ev) } }
             C::Fullscreen(u, on) => self.handle(Ev::PageFullscreen(u, on)),
             C::Created(u) => { debug!("cef created {} active={:?}", u, self.active_tab().map(|t| t.uid)); self.last_content.set((0, 0, 0, 0)); self.layout(); }
@@ -1143,8 +1168,8 @@ impl App {
     fn spawn_tab(&mut self, url: &str, private: bool, at: Option<usize>) -> usize {
         #[cfg(all(feature = "cef-engine", target_os = "linux"))]
         if super::cef_tabs::wants(url) { if let Some(i) = self.spawn_cef_tab(url, private, at) { debug!("tab {} cef {}", self.tabs[i].uid, url); return i; } }
-        let uid = self.next_uid;
-        self.next_uid += 1;
+        let uid = self.next_uid.get();
+        self.next_uid.set(uid + 1);
         let push = self.pusher();
         let (p1, p2, p3, p4) = (push.clone(), push.clone(), push.clone(), push.clone());
         #[cfg(not(windows))]
@@ -1166,19 +1191,24 @@ impl App {
         #[cfg(not(windows))]
         let host = self.canvas.clone();
         #[cfg(not(windows))]
-        let already_registered = !private && self.proto_registered;
+        let already_registered = !private && self.proto_registered.get();
         #[cfg(windows)]
         let already_registered = false;
         if !private {
-            self.proto_registered = true;
+            self.proto_registered.set(true);
         }
-        let attach_downloads = private || !self.dl_handler_registered;
+        let attach_downloads = private || !self.dl_handler_registered.get();
         if attach_downloads && !private {
-            self.dl_handler_registered = true;
+            self.dl_handler_registered.set(true);
         }
 
+        let wid = format!("w{}", self.wk);
         #[cfg(not(windows))]
-        let mut builder = match (!private, self.web_context.as_mut()) {
+        let wcr = self.web_context.clone();
+        #[cfg(not(windows))]
+        let mut wc = wcr.borrow_mut();
+        #[cfg(not(windows))]
+        let mut builder = match (!private, wc.as_mut()) {
             (true, Some(ctx)) => WebViewBuilder::with_web_context(ctx),
             _ => WebViewBuilder::new().with_incognito(private),
         };
@@ -1191,6 +1221,7 @@ impl App {
 
         let (https_only, http_allow, p7) = (self.https_only.clone(), self.http_allow.clone(), push.clone());
         builder = builder
+            .with_id(&wid)
             .with_url(url)
             .with_bounds(content_rect)
             .with_user_agent(&ua)
@@ -1248,7 +1279,7 @@ impl App {
         #[cfg(not(windows))]
         attach_filter(&view, self.filter, self.shield.get());
         #[cfg(not(windows))]
-        if !private && !self.dl_progress_wired { self.wire_download_progress(&view); self.dl_progress_wired = true; }
+        if !private && !self.dl_progress_wired.get() { self.wire_download_progress(&view); self.dl_progress_wired.set(true); }
         self.place(&view, content_rect);
         let core = wire_engine(&view, uid, push, self.blocker.clone(), self.shield.clone(), dnt, autofill, self.state.clone());
         let zoom = self.site_zoom_for(url).unwrap_or(default_zoom);
@@ -1337,7 +1368,7 @@ impl App {
         std::fs::create_dir_all(&dir).ok();
         let path = unique_path(&dir, &format!("{}.mhtml", self.file_stem_for_page()));
         let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
-        let id = format!("save{}", self.next_uid);
+        let id = format!("save{}", self.next_uid.get());
         push(Ev::DlStart(id.clone(), u, p.clone(), None));
         #[cfg(all(feature = "cef-engine", target_os = "linux"))]
         if let View::Cef(c) = &t.view { c.capture(true, path, move |ok| push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p))); return; }
@@ -1359,7 +1390,7 @@ impl App {
         std::fs::create_dir_all(&dir).ok();
         let path = unique_path(&dir, &format!("{} {}.png", self.file_stem_for_page(), chrono::Local::now().format("%Y-%m-%d %H%M%S")));
         let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
-        let id = format!("shot{}", self.next_uid);
+        let id = format!("shot{}", self.next_uid.get());
         push(Ev::DlStart(id.clone(), u, p.clone(), None));
         #[cfg(all(feature = "cef-engine", target_os = "linux"))]
         if let View::Cef(c) = &t.view { c.capture(false, path, move |ok| push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p))); return; }
@@ -1502,7 +1533,7 @@ impl App {
             {
                 use gtk::prelude::WidgetExt;
                 #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-                if !t.view.is_cef() { super::cef_tabs::grab_x_focus(); }
+                if !t.view.is_cef() { super::cef_tabs::grab_x_focus(&self.overlay); }
                 if let Some(w) = t.view.webview() { w.grab_focus(); }
             }
             let _ = t.view.focus();
@@ -1542,7 +1573,7 @@ impl App {
     }
     fn focus_omnibox(&self, clear: bool) {
         #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-        { use wry::WebViewExtUnix; for t in &self.tabs { if let View::Cef(c) = &t.view { c.blur(); } } super::cef_tabs::grab_x_focus(); }
+        { use wry::WebViewExtUnix; for t in &self.tabs { if let View::Cef(c) = &t.view { c.blur(); } } super::cef_tabs::grab_x_focus(&self.overlay); }
         if let Some(c) = self.chrome.as_ref() {
             #[cfg(not(windows))]
             {
@@ -1744,7 +1775,7 @@ impl App {
             ("j", true, false) => self.open_devtools(),
             ("f11", _, _) => self.command("fullscreen", &HashMap::new()),
             ("f12", _, _) | ("i", true, false) => self.open_devtools(),
-            ("escape", _, _) => self.command("stop", &HashMap::new()),
+            ("escape", _, _) => match self.overlay_css > self.chrome_css().saturating_add(2) { true => self.chrome_js("try{window.__amniEsc&&window.__amniEsc()}catch(e){}"), false => self.command("stop", &HashMap::new()) },
             ("t", false, false) => self.open_tab(None, false),
             ("t", true, false) => self.command("reopen_tab", &HashMap::new()),
             ("n", true, false) => self.open_tab(None, true),
@@ -1807,7 +1838,7 @@ impl App {
                 std::fs::create_dir_all(&dir).ok();
                 let path = unique_path(&dir, &format!("Amni bookmarks {}.html", chrono::Local::now().format("%Y-%m-%d")));
                 let ok = std::fs::write(&path, self.state().bookmarks.export_html()).is_ok();
-                let (id, p) = (format!("bmx{}", self.next_uid), path.to_string_lossy().to_string());
+                let (id, p) = (format!("bmx{}", self.next_uid.get()), path.to_string_lossy().to_string());
                 self.handle(Ev::DlStart(id.clone(), "amnibrowse://bookmarks/".into(), p.clone(), None));
                 self.handle(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p));
             }
@@ -1874,7 +1905,7 @@ impl App {
                     match self.collapsed.iter().position(|x| x == &g) { Some(p) => { self.collapsed.remove(p); } None => { self.collapsed.push(g.clone()); if self.active_tab().and_then(|t| t.group.clone()).as_deref() == Some(g.as_str()) { if let Some(n) = self.tabs.iter().position(|t| t.group.as_deref() != Some(g.as_str())) { self.switch_tab(n); } } } }
                 }
             }
-            "new_window" => { let _ = std::process::Command::new(std::env::current_exe().unwrap_or_default()).arg("--new-window").spawn(); }
+            "new_window" => { self.winq.borrow_mut().push(WinReq::Open(None, false)); let _ = self.proxy.send_event(()); }
             "bookmark" => {
                 if let Some(t) = self.active_tab() {
                     let (u, ti) = (display_url(&t.url), match t.title.trim().is_empty() { true => display_url(&t.url), false => t.title.clone() });
@@ -1960,12 +1991,12 @@ impl App {
             "overlay" => {
                 self.overlay_css = a.get("h").and_then(|h| h.parse::<u32>().ok()).unwrap_or(0);
                 #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-                if self.overlay_css > self.chrome_css().saturating_add(2) { for t in &self.tabs { if let View::Cef(c) = &t.view { c.blur(); } } if let Some(c) = self.chrome.as_ref() { use gtk::prelude::WidgetExt; use wry::WebViewExtUnix; c.webview().grab_focus(); let _ = c.focus(); } super::cef_tabs::set_toolbar_focus(true); }
+                if self.overlay_css > self.chrome_css().saturating_add(2) { for t in &self.tabs { if let View::Cef(c) = &t.view { c.blur(); } } if let Some(c) = self.chrome.as_ref() { use gtk::prelude::WidgetExt; use wry::WebViewExtUnix; c.webview().grab_focus(); let _ = c.focus(); } super::cef_tabs::set_toolbar_focus(&self.overlay, true); }
                 self.layout();
             }
             "win_min" => self.window.set_minimized(true),
             "win_max" => { let m = !self.window.is_maximized(); self.window.set_maximized(m); }
-            "win_close" => { self.shutdown(); std::process::exit(0); }
+            "win_close" => { self.winq.borrow_mut().push(WinReq::Close(self.wk)); let _ = self.proxy.send_event(()); }
             "win_drag" => { let _ = self.window.drag_window(); }
             "fullscreen" => { self.fullscreen = !self.fullscreen; self.window.set_fullscreen(match self.fullscreen { true => Some(Fullscreen::Borderless(None)), false => None }); self.layout(); }
             "print" => { if let Some(t) = self.active_tab() { let _ = t.view.print(); } }
@@ -2035,7 +2066,7 @@ impl App {
             "tab_new_window" => {
                 if let Some(i) = a.get("id").and_then(|s| idx_of(s)).filter(|i| *i < self.tabs.len()) {
                     let u = self.tabs[i].url.clone();
-                    if !is_internal(&u) && std::process::Command::new(std::env::current_exe().unwrap_or_default()).arg("--new-window").arg(&u).spawn().is_ok() { self.close_tab(i); }
+                    if !is_internal(&u) { self.winq.borrow_mut().push(WinReq::Open(Some(u), self.tabs[i].private)); let _ = self.proxy.send_event(()); self.close_tab(i); }
                 }
             }
             "new_tab_right" => { let h = self.home_url(); let i = self.spawn_tab(&h, false, Some(self.active + 1)); self.active = i; self.layout(); self.sync_title(); self.focus_omnibox(true); }
@@ -2123,7 +2154,7 @@ impl App {
                 self.focus_content();
             }
             "chrome_err" => warn!("chrome js error: {} (line {})", a.get("m").map(|s| s.as_str()).unwrap_or(""), a.get("l").map(|s| s.as_str()).unwrap_or("?")),
-            "kbd" => { #[cfg(all(feature = "cef-engine", target_os = "linux"))] super::cef_tabs::set_toolbar_focus(a.get("on").map(|v| v == "1").unwrap_or(false)); }
+            "kbd" => { #[cfg(all(feature = "cef-engine", target_os = "linux"))] super::cef_tabs::set_toolbar_focus(&self.overlay, a.get("on").map(|v| v == "1").unwrap_or(false)); }
             "overlay_rect" | "favicon_cache" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
             other => info!("cmd: unhandled {}", other),
         }
@@ -2312,15 +2343,130 @@ impl App {
         }
     }
 }
+fn build_app(target: &EventLoopWindowTarget<()>, sd: &Seed, wk: u64, ephemeral: bool, saved: Option<crate::storage::session::SessionState>, urls: Vec<(String, bool)>, size: Option<(f64, f64)>) -> App {
+    let (w, h) = size.or(saved.as_ref().map(|s| (s.window_width.max(720.0), s.window_height.max(480.0)))).unwrap_or((1400.0, 900.0));
+    let mut builder = WindowBuilder::new().with_title(APP_NAME).with_decorations(sd.decorated).with_inner_size(LogicalSize::new(w, h)).with_min_inner_size(LogicalSize::new(720.0, 480.0)).with_maximized(saved.as_ref().map(|s| s.maximized).unwrap_or(false));
+    if let Some(c) = hex_rgba(&sd.state.borrow().themes.active_theme().bg_primary) { builder = builder.with_background_color(c); }
+    if let Some((x, y)) = saved.as_ref().and_then(|s| Some((s.window_x?, s.window_y?))) {
+        let mon = target.primary_monitor().map(|m| { let s = m.scale_factor(); let sz = m.size(); let p = m.position(); (p.x as f64 / s, p.y as f64 / s, sz.width as f64 / s, sz.height as f64 / s - 48.0) }).unwrap_or((0.0, 0.0, f64::MAX, f64::MAX));
+        builder = builder.with_position(LogicalPosition::new(x.max(mon.0).min((mon.0 + mon.2 - w).max(mon.0)), y.max(mon.1).min((mon.1 + mon.3 - h).max(mon.1))));
+    }
+    let window = builder.build(target).expect("window");
+    #[cfg(windows)]
+    let parent = (window.hwnd() as isize) as HWND;
+    #[cfg(not(windows))]
+    let (overlay, canvas, chrome_canvas) = gtk_host(&window);
+    let bar = sd.state.borrow().config.show_bookmarks_bar;
+    let mut a = App {
+        window,
+        wk,
+        winq: sd.winq.clone(),
+        #[cfg(not(windows))]
+        overlay,
+        #[cfg(not(windows))]
+        canvas,
+        #[cfg(not(windows))]
+        chrome_canvas,
+        #[cfg(not(windows))]
+        web_context: sd.web_context.clone(),
+        dl_handler_registered: sd.reg[0].clone(),
+        proto_registered: sd.reg[1].clone(),
+        decorated: sd.decorated,
+        chrome: None,
+        chrome_hwnd: 0,
+        tabs: Vec::new(),
+        active: 0,
+        closed: Vec::new(),
+        state: sd.state.clone(),
+        token: sd.token.clone(),
+        next_uid: sd.next_uid.clone(),
+        overlay_css: 0,
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        backdrop: Rc::new(RefCell::new(None)),
+        last_chrome: Cell::new((0, 0, 0, 0)),
+        last_content: Cell::new((0, 0, 0, 0)),
+        fullscreen: false,
+        page_fullscreen: false,
+        find_query: String::new(),
+        protocol: sd.protocol.clone(),
+        events: sd.events.clone(),
+        proxy: sd.proxy.clone(),
+        blocker: sd.blocker.clone(),
+        shield: sd.shield.clone(),
+        #[cfg(not(windows))]
+        filter: sd.filter,
+        collapsed: Vec::new(),
+        ephemeral,
+        https_only: sd.https_only.clone(),
+        http_allow: sd.http_allow.clone(),
+        ask_dl_location: sd.ask_dl_location.clone(),
+        bookmarks_bar: bar,
+        #[cfg(not(windows))]
+        perms: Vec::new(),
+        #[cfg(not(windows))]
+        live_downloads: sd.live_downloads.clone(),
+        next_perm: 1,
+        dl_progress_wired: sd.reg[2].clone(),
+        last_key: (String::new(), false, false, Instant::now()),
+    };
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    if super::cef_tabs::enabled() {
+        use gtk::prelude::*;
+        super::cef_tabs::install_focus_proxy(&a.overlay);
+        let bd = a.backdrop.clone();
+        a.canvas.connect_draw(move |_, cr| { if let Some((x, y, sf)) = bd.borrow().as_ref() { let _ = cr.set_source_surface(sf, *x, *y); let _ = cr.paint(); } gtk::glib::Propagation::Proceed });
+    }
+    let (chrome_proto, kpush, wid) = (sd.protocol.clone(), a.pusher(), format!("w{}", wk));
+    let chrome = WebViewBuilder::new()
+        .with_id(&wid)
+        .with_url(&internal_url("chrome"))
+        .with_bounds(a.chrome_rect())
+        .with_devtools(true)
+        .with_transparent(true)
+        .with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT))
+        .with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
+        .with_ipc_handler(move |req| { if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) { if v.get("type").and_then(|t| t.as_str()) == Some("key") { kpush(Ev::Key(0, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)); } } });
+    let chrome = build_view(chrome, a.chrome_host()).expect("chrome webview");
+    #[cfg(not(windows))]
+    {
+        use webkit2gtk::WebViewExt;
+        use wry::WebViewExtUnix;
+        if let Some(settings) = webkit2gtk::WebViewExt::settings(&chrome.webview()) {
+            use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt};
+            settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
+        }
+        chrome.webview().set_background_color(&gtk::gdk::RGBA::new(8.0 / 255.0, 9.0 / 255.0, 11.0 / 255.0, 1.0));
+    }
+    #[cfg(windows)]
+    if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }
+    a.place_chrome(&chrome, a.chrome_rect());
+    a.chrome = Some(chrome);
+    #[cfg(windows)]
+    { a.chrome_hwnd = unsafe { GetWindow(parent, GW_CHILD) } as usize; }
+    let mut active = 0;
+    for t in saved.map(|s| s.tabs).unwrap_or_default().iter() {
+        let u = match t.url.strip_prefix("amnibrowse://") { Some(rest) => internal_url(rest.trim_matches('/')), None => t.url.clone() };
+        if !(u.starts_with("http") || u.starts_with("file:")) { continue; }
+        let i = a.spawn_tab(&u, false, None);
+        if let Some(tab) = a.tabs.get_mut(i) { tab.pinned = t.pinned; tab.group = t.group.clone(); }
+        if t.is_active { active = a.tabs.len().saturating_sub(1); }
+    }
+    for (u, private) in urls { a.spawn_tab(&u, private, None); active = a.tabs.len() - 1; }
+    if a.tabs.is_empty() { let h = a.home_url(); a.spawn_tab(&h, false, None); }
+    a.active = active.min(a.tabs.len().saturating_sub(1));
+    a.layout();
+    a.sync_title();
+    a.focus_content();
+    info!("  Window {}: {} \u{2014} {} tab(s), chrome {}px, frameless={}", wk, engine(), a.tabs.len(), a.chrome_px(), !sd.decorated);
+    a
+}
+fn route(g: &[App], uid: Option<u64>, wk: u64, focus: u64) -> usize { uid.filter(|u| *u != 0).and_then(|u| g.iter().position(|a| a.tab_index(u).is_some())).or_else(|| g.iter().position(|a| a.wk == wk)).or_else(|| g.iter().position(|a| a.wk == focus)).unwrap_or(0) }
 pub fn run(state: BrowserState, single_instance: Option<crate::net::single_instance::SingleInstanceListener>) {
     privacy_env(&state.config);
     let token = format!("{:016x}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0x5eed) ^ 0x9e37_79b9_7f4a_7c15u64);
     let ephemeral = std::env::args().any(|a| a == "--new-window");
     let saved = SessionManager::load().filter(|_| state.config.restore_session && !ephemeral);
     let decorated = std::env::var("AMNI_DECORATIONS").map(|v| v != "0").unwrap_or(false);
-    // The Wayland app id comes from the program name, which GTK takes from
-    // argv[0]. Pin it so a renamed or wrapped binary still maps to
-    // amni-browse.desktop and gets the browser's icon in the taskbar.
     #[cfg(target_os = "linux")]
     gtk::glib::set_prgname(Some("amni-browse"));
     #[cfg(all(feature = "cef-engine", target_os = "linux"))]
@@ -2329,38 +2475,29 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
     let proxy = event_loop.create_proxy();
     let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<crate::net::single_instance::SingleInstanceMessage>();
     let mut _instance_guard = single_instance.map(|l| l.listen(proxy.clone(), ipc_tx));
-    let (w, h) = saved.as_ref().map(|s| (s.window_width.max(720.0), s.window_height.max(480.0))).unwrap_or((1400.0, 900.0));
-    let mut builder = WindowBuilder::new().with_title(APP_NAME).with_decorations(decorated).with_inner_size(LogicalSize::new(w, h)).with_min_inner_size(LogicalSize::new(720.0, 480.0)).with_maximized(saved.as_ref().map(|s| s.maximized).unwrap_or(false));
-    if let Some(c) = hex_rgba(&state.themes.active_theme().bg_primary) { builder = builder.with_background_color(c); }
-    if let Some((x, y)) = saved.as_ref().and_then(|s| Some((s.window_x?, s.window_y?))) {
-        let mon = event_loop.primary_monitor().map(|m| { let s = m.scale_factor(); let sz = m.size(); let p = m.position(); (p.x as f64 / s, p.y as f64 / s, sz.width as f64 / s, sz.height as f64 / s - 48.0) }).unwrap_or((0.0, 0.0, f64::MAX, f64::MAX));
-        builder = builder.with_position(LogicalPosition::new(x.max(mon.0).min((mon.0 + mon.2 - w).max(mon.0)), y.max(mon.1).min((mon.1 + mon.3 - h).max(mon.1))));
-    }
-    let window = builder.build(&event_loop).expect("window");
     let state = Rc::new(RefCell::new(state));
     let blocker = Rc::new(RefCell::new(AdBlocker::new(state.borrow().config.block_ads, state.borrow().config.block_trackers)));
     let shield = Rc::new(Cell::new(state.borrow().config.block_ads));
-    let events: Rc<RefCell<Vec<Ev>>> = Rc::new(RefCell::new(Vec::new()));
-    let last_state: Rc<RefCell<String>> = Rc::new(RefCell::new("{}".into()));
-    let app: Rc<RefCell<Option<App>>> = Rc::new(RefCell::new(None));
-    let (pa, pe, pl, ptok, ppx, pstate, pshield) = (app.clone(), events.clone(), last_state.clone(), token.clone(), proxy.clone(), state.clone(), shield.clone());
-    let protocol: Rc<dyn Fn(&str, http::Request<Vec<u8>>) -> http::Response<Cow<'static, [u8]>>> = Rc::new(move |_id, req| {
+    let events: Rc<RefCell<Vec<(u64, Ev)>>> = Rc::new(RefCell::new(Vec::new()));
+    let last_state: Rc<RefCell<HashMap<u64, String>>> = Rc::new(RefCell::new(HashMap::new()));
+    let apps: Rc<RefCell<Vec<App>>> = Rc::new(RefCell::new(Vec::new()));
+    let (pa, pe, pl, ptok, ppx, pstate, pshield) = (apps.clone(), events.clone(), last_state.clone(), token.clone(), proxy.clone(), state.clone(), shield.clone());
+    let protocol: Proto = Rc::new(move |id, req| {
+        let wk = id.strip_prefix('w').and_then(|n| n.parse::<u64>().ok()).unwrap_or(0);
         let uri = req.uri().to_string();
         let parsed = match url::Url::parse(&uri) { Ok(u) => u, Err(_) => return empty(400) };
         let host = parsed.host_str().unwrap_or("").trim_start_matches("amnibrowse.").to_string();
-        // Every caller that may drive the browser (the chrome, settings, history, downloads, interstitials)
-        // is rendered with the per-run token; web pages never see it, so a page cannot issue commands.
         let tok_ok = parsed.query_pairs().any(|(k, v)| k == "tok" && v == ptok.as_str());
         let from_chrome = tok_ok;
         let args: HashMap<String, String> = parsed.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
         match host.as_str() {
             "chrome" => respond("text/html; charset=utf-8", format!("<script>{}window.__amniToken={:?};</script>{}{}", fetch_shim(), ptok, load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
-            "cmd" if from_chrome || tok_ok => { pe.borrow_mut().push(Ev::Cmd(parsed.path().trim_start_matches('/').to_string(), args)); let _ = ppx.send_event(()); empty(204) }
+            "cmd" if from_chrome || tok_ok => { pe.borrow_mut().push((wk, Ev::Cmd(parsed.path().trim_start_matches('/').to_string(), args))); let _ = ppx.send_event(()); empty(204) }
             "bmdata" if tok_ok => respond("application/json; charset=utf-8", pstate.try_borrow().map(|s| s.bookmarks.manager_json()).unwrap_or_else(|_| "{\"bookmarks\":[],\"folders\":[]}".into())),
             "state" if from_chrome || tok_ok => {
-                let body = match pa.try_borrow() { Ok(g) => g.as_ref().map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => { debug!("state poll while app busy"); pl.borrow().clone() } };
-                if *pl.borrow() != body { debug!("state changed: {}", body.chars().take(900).collect::<String>()); }
-                *pl.borrow_mut() = body.clone();
+                let body = match pa.try_borrow() { Ok(g) => g.iter().find(|a| a.wk == wk).or(g.first()).map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => { debug!("state poll while app busy"); pl.borrow().get(&wk).cloned().unwrap_or_else(|| "{}".into()) } };
+                if pl.borrow().get(&wk) != Some(&body) { debug!("state changed: {}", body.chars().take(900).collect::<String>()); }
+                pl.borrow_mut().insert(wk, body.clone());
                 respond("application/json; charset=utf-8", body)
             }
             "suggest" if from_chrome || tok_ok => {
@@ -2371,7 +2508,7 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
                 // Open tabs ("Switch to this tab"), like Chrome's tab-switch suggestions and @tabs.
                 if scope.is_empty() || scope == "tabs" {
                     if let Ok(g) = pa.try_borrow() {
-                        if let Some(a) = g.as_ref() {
+                        if let Some(a) = g.iter().find(|a| a.wk == wk).or(g.first()) {
                             for (i, t) in a.tabs.iter().enumerate() {
                                 if i == a.active || is_internal(&t.url) { continue; }
                                 let du = display_url(&t.url);
@@ -2423,149 +2560,58 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
             },
         }
     });
-    #[cfg(windows)]
-    let parent = (window.hwnd() as isize) as HWND;
-    #[cfg(not(windows))]
-    let (overlay, canvas, chrome_canvas) = gtk_host(&window);
     #[cfg(not(windows))]
     let web_context = {
-        let data_dir = dirs::data_local_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".local").join("share"))
-            .join("amni-browse");
+        let data_dir = dirs::data_local_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".local").join("share")).join("amni-browse");
         std::fs::create_dir_all(&data_dir).ok();
-        Some(WebContext::new(Some(data_dir)))
+        Rc::new(RefCell::new(Some(WebContext::new(Some(data_dir)))))
     };
-    let mut a = App {
-        window,
-        #[cfg(not(windows))]
-        overlay,
-        #[cfg(not(windows))]
-        canvas,
-        #[cfg(not(windows))]
-        chrome_canvas,
+    let (https, ask) = (state.borrow().config.https_only, state.borrow().config.ask_download_location);
+    let seed = Seed {
+        token, decorated, protocol, events: events.clone(), proxy: proxy.clone(), blocker, shield,
+        https_only: Rc::new(Cell::new(https)), http_allow: Rc::new(RefCell::new(Vec::new())), ask_dl_location: Rc::new(Cell::new(ask)),
+        next_uid: Rc::new(Cell::new(1)), reg: [Rc::new(Cell::new(false)), Rc::new(Cell::new(false)), Rc::new(Cell::new(false))], winq: Rc::new(RefCell::new(Vec::new())), state,
         #[cfg(not(windows))]
         web_context,
-        dl_handler_registered: false,
-        proto_registered: false,
-        decorated,
-        chrome: None,
-        chrome_hwnd: 0,
-        tabs: Vec::new(),
-        active: 0,
-        closed: Vec::new(),
-        state: state.clone(),
-        token,
-        next_uid: 1,
-        overlay_css: 0,
-        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-        backdrop: Rc::new(RefCell::new(None)),
-        last_chrome: Cell::new((0, 0, 0, 0)),
-        last_content: Cell::new((0, 0, 0, 0)),
-        fullscreen: false,
-        page_fullscreen: false,
-        find_query: String::new(),
-        protocol: protocol.clone(),
-        events: events.clone(),
-        proxy: proxy.clone(),
-        blocker,
-        shield,
-        #[cfg(not(windows))]
-        filter: compile_filter(),
-        collapsed: Vec::new(),
-        ephemeral,
-        https_only: Rc::new(Cell::new(state.borrow().config.https_only)),
-        http_allow: Rc::new(RefCell::new(Vec::new())),
-        ask_dl_location: Rc::new(Cell::new(state.borrow().config.ask_download_location)),
-        bookmarks_bar: state.borrow().config.show_bookmarks_bar,
-        #[cfg(not(windows))]
-        perms: Vec::new(),
         #[cfg(not(windows))]
         live_downloads: Rc::new(RefCell::new(HashMap::new())),
-        next_perm: 1,
-        dl_progress_wired: false,
-        last_key: (String::new(), false, false, Instant::now()),
+        #[cfg(not(windows))]
+        filter: compile_filter(),
     };
-    // Memory saver / housekeeping tick.
     #[cfg(not(windows))]
     {
-        let push = a.pusher();
-        gtk::glib::timeout_add_local(std::time::Duration::from_secs(60), move || { push(Ev::Tick); gtk::glib::ControlFlow::Continue });
+        let (ev, px) = (events.clone(), proxy.clone());
+        gtk::glib::timeout_add_local(std::time::Duration::from_secs(60), move || { ev.borrow_mut().push((0, Ev::Tick)); let _ = px.send_event(()); gtk::glib::ControlFlow::Continue });
     }
     #[cfg(all(feature = "cef-engine", target_os = "linux"))]
     if super::cef_tabs::enabled() {
-        use gtk::prelude::*;
         let px = proxy.clone();
         super::cef_tabs::set_wake(move || { let _ = px.send_event(()); });
-        let (blocker, shield, https_only, http_allow, push) = (a.blocker.clone(), a.shield.clone(), a.https_only.clone(), a.http_allow.clone(), a.pusher());
+        let (blocker, shield, https_only, http_allow, ev, px) = (seed.blocker.clone(), seed.shield.clone(), seed.https_only.clone(), seed.http_allow.clone(), events.clone(), proxy.clone());
         super::cef_tabs::set_nav_filter(move |uid, u| {
             if shield.get() && !is_internal(u) && blocker.try_borrow_mut().map(|mut b| b.should_block(u)).unwrap_or(false) { info!("adblock: blocked navigation {}", u); return false; }
             if https_only.get() && u.starts_with("http://") && !is_local_host(u) {
                 let mut allow = http_allow.borrow_mut();
-                match allow.iter().position(|x| x == u) { Some(i) => { allow.remove(i); } None => { push(Ev::Upgrade(uid, u.to_string())); return false; } }
+                match allow.iter().position(|x| x == u) { Some(i) => { allow.remove(i); } None => { ev.borrow_mut().push((0, Ev::Upgrade(uid, u.to_string()))); let _ = px.send_event(()); return false; } }
             }
             true
         });
         super::cef_tabs::set_page_script(&format!("{};{};{};{}", KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT, LINK_SCRIPT));
-        super::cef_tabs::install_focus_proxy(&a.overlay);
         super::cef_tabs::watch_clicks();
-        let bd = a.backdrop.clone();
-        a.canvas.connect_draw(move |_, cr| { if let Some((x, y, sf)) = bd.borrow().as_ref() { let _ = cr.set_source_surface(sf, *x, *y); let _ = cr.paint(); } gtk::glib::Propagation::Proceed });
         info!("  Tabs: Chromium (CEF) for web pages, WebKitGTK for Amni pages and private tabs");
     }
-    let chrome_proto = protocol.clone();
-    let kpush = a.pusher();
-    let chrome = WebViewBuilder::new()
-        .with_url(&internal_url("chrome"))
-        .with_bounds(a.chrome_rect())
-        .with_devtools(true)
-        .with_transparent(true)
-        .with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT))
-        .with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
-        .with_ipc_handler(move |req| { if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) { if v.get("type").and_then(|t| t.as_str()) == Some("key") { kpush(Ev::Key(0, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)); } } });
-    let chrome = build_view(chrome, a.chrome_host()).expect("chrome webview");
-    #[cfg(not(windows))]
-    {
-        use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
-        if let Some(settings) = webkit2gtk::WebViewExt::settings(&chrome.webview()) {
-            use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt};
-            // The GL compositor clears this transparent surface whenever the page
-            // underneath is damaged, which flashes the omnibar. Software compositing
-            // on the toolbar-sized view does not.
-            settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
-        }
-        chrome.webview().set_background_color(&gtk::gdk::RGBA::new(8.0 / 255.0, 9.0 / 255.0, 11.0 / 255.0, 1.0));
-    }
-    #[cfg(windows)]
-    if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }
-    a.place_chrome(&chrome, a.chrome_rect());
-    a.chrome = Some(chrome);
-    #[cfg(windows)]
-    { a.chrome_hwnd = unsafe { GetWindow(parent, GW_CHILD) } as usize; }
-    let restore: Vec<SessionTab> = saved.map(|s| s.tabs).unwrap_or_default();
-    let mut active = 0;
-    for t in restore.iter() {
-        let u = match t.url.strip_prefix("amnibrowse://") { Some(rest) => internal_url(rest.trim_matches('/')), None => t.url.clone() };
-        if !(u.starts_with("http") || u.starts_with("file:")) { continue; }
-        let i = a.spawn_tab(&u, false, None);
-        if let Some(tab) = a.tabs.get_mut(i) { tab.pinned = t.pinned; tab.group = t.group.clone(); }
-        if t.is_active { active = a.tabs.len().saturating_sub(1); }
-    }
-    if let Some(cli) = std::env::args().skip(1).find(|x| !x.starts_with('-')).and_then(|x| resolve_input(&x, &a.state().config.search_engine)) { a.spawn_tab(&cli, false, None); active = a.tabs.len() - 1; }
-    if a.tabs.is_empty() { let h = a.home_url(); a.spawn_tab(&h, false, None); }
-    a.active = active.min(a.tabs.len().saturating_sub(1));
-    a.layout();
-    a.sync_title();
-    a.focus_content();
-    info!("  Engine: {} \u{2014} {} tab(s), chrome {}px, frameless={}", engine(), a.tabs.len(), a.chrome_px(), !decorated);
-    *app.borrow_mut() = Some(a);
-    let app_loop = app.clone();
+    let cli: Vec<(String, bool)> = std::env::args().skip(1).find(|x| !x.starts_with('-')).and_then(|x| resolve_input(&x, &seed.state.borrow().config.search_engine)).map(|u| (u, false)).into_iter().collect();
+    apps.borrow_mut().push(build_app(&event_loop, &seed, 1, ephemeral, saved, cli, None));
+    let (focus, mut next_wk) = (Cell::new(1u64), 2u64);
     let mut mods = ModifiersState::empty();
-    event_loop.run(move |event, _, control_flow| {
+    event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
+        let at = |g: &Vec<App>, id: tao::window::WindowId| g.iter().position(|a| a.window.id() == id);
+        let mut close: Option<tao::window::WindowId> = None;
         match event {
             Event::WindowEvent { event: WindowEvent::ModifiersChanged(m), .. } => { mods = m; }
-            Event::WindowEvent { event: WindowEvent::KeyboardInput { event: key, .. }, .. } if key.state == ElementState::Pressed => {
+            Event::WindowEvent { window_id, event: WindowEvent::Focused(true), .. } => { if let Ok(g) = apps.try_borrow() { if let Some(i) = at(&g, window_id) { focus.set(g[i].wk); } } }
+            Event::WindowEvent { window_id, event: WindowEvent::KeyboardInput { event: key, .. }, .. } if key.state == ElementState::Pressed => {
                 let k = match &key.logical_key { Key::Character(c) => c.to_lowercase(), Key::Tab => "tab".into(), Key::F5 => "f5".into(), Key::F11 => "f11".into(), Key::F12 => "f12".into(), Key::Escape => "escape".into(), Key::ArrowLeft => "arrowleft".into(), Key::ArrowRight => "arrowright".into(), Key::Home => "home".into(), _ => String::new() };
                 let plain = matches!(k.as_str(), "f5" | "f11" | "f12" | "escape");
                 #[cfg(target_os = "linux")]
@@ -2573,44 +2619,69 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
                 #[cfg(not(target_os = "linux"))]
                 let live: Option<u32> = None;
                 let (ctrl, alt, shift) = live.map(|m| (m & 4 != 0, m & 8 != 0, m & 1 != 0)).unwrap_or((mods.control_key(), mods.alt_key(), mods.shift_key()));
-                if !k.is_empty() && (ctrl || alt || plain) { if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { a.handle_key(&k, shift, alt); } } }
+                if !k.is_empty() && (ctrl || alt || plain) { if let Ok(mut g) = apps.try_borrow_mut() { if let Some(i) = at(&g, window_id) { g[i].handle_key(&k, shift, alt); } } }
             }
             Event::UserEvent(()) => {
-                let pending: Vec<Ev> = std::mem::take(&mut *events.borrow_mut());
-                if let Ok(mut g) = app_loop.try_borrow_mut() {
-                    if let Some(a) = g.as_mut() {
-                        while let Ok(msg) = ipc_rx.try_recv() {
-                            a.handle_single_instance(msg);
+                let pending: Vec<(u64, Ev)> = std::mem::take(&mut *events.borrow_mut());
+                if let Ok(mut g) = apps.try_borrow_mut() {
+                    let f = focus.get();
+                    while let Ok(msg) = ipc_rx.try_recv() { match msg.new_window { true => seed.winq.borrow_mut().push(WinReq::Open(msg.url, msg.private)), false => { let i = route(&g, None, f, f); g[i].handle_single_instance(msg); } } }
+                    for (wk, ev) in pending { match ev { Ev::Tick => g.iter_mut().for_each(|a| a.handle(Ev::Tick)), ev => { let i = route(&g, ev.uid(), wk, f); g[i].handle(ev); } } }
+                    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                    for ce in super::cef_tabs::drain() { let i = route(&g, ce.uid(), f, f); g[i].cef_event(ce); }
+                    for req in std::mem::take(&mut *seed.winq.borrow_mut()) {
+                        match req {
+                            WinReq::Open(u, private) => {
+                                let size = g.get(route(&g, None, f, f)).map(|a| { let s = a.scale(); let z = a.window.inner_size(); (z.width as f64 / s, z.height as f64 / s) });
+                                let urls = u.and_then(|u| resolve_input(u.trim(), &seed.state.borrow().config.search_engine)).map(|u| (u, private)).into_iter().collect();
+                                g.push(build_app(target, &seed, next_wk, true, None, urls, size));
+                                focus.set(next_wk);
+                                next_wk += 1;
+                            }
+                            WinReq::Close(wk) => close = g.iter().find(|a| a.wk == wk).map(|a| a.window.id()),
                         }
-                        for ev in pending {
-                            a.handle(ev);
-                        }
-                        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-                        for ce in super::cef_tabs::drain() { a.cef_event(ce); }
                     }
                 }
             }
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } | Event::WindowEvent { event: WindowEvent::ScaleFactorChanged { .. }, .. } => {
-                if let Ok(g) = app_loop.try_borrow() { if let Some(a) = g.as_ref() { a.layout(); } }
+            Event::WindowEvent { window_id, event: WindowEvent::Resized(_), .. } | Event::WindowEvent { window_id, event: WindowEvent::ScaleFactorChanged { .. }, .. } => {
+                if let Ok(g) = apps.try_borrow() { if let Some(i) = at(&g, window_id) { g[i].layout(); } }
             }
-            Event::WindowEvent { event: WindowEvent::Moved(_), .. } => {
-                if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { a.persist(); } }
+            Event::WindowEvent { window_id, event: WindowEvent::Moved(_), .. } => {
+                if let Ok(mut g) = apps.try_borrow_mut() { if let Some(i) = at(&g, window_id) { g[i].persist(); } }
             }
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
-                if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { a.shutdown(); } }
-                #[cfg(all(feature = "cef-engine", target_os = "linux"))]
-                { if let Ok(mut g) = app_loop.try_borrow_mut() { g.take(); } super::cef_tabs::shutdown_all(); }
-                _instance_guard.take();
-                *control_flow = ControlFlow::Exit;
-            }
+            Event::WindowEvent { window_id, event: WindowEvent::CloseRequested, .. } => close = Some(window_id),
             _ => {}
         }
+        let Some(id) = close else { return };
+        let Ok(mut g) = apps.try_borrow_mut() else { return };
+        let Some(i) = at(&g, id) else { return };
+        if g.len() > 1 {
+            let mut a = g.remove(i);
+            if !a.ephemeral { a.ephemeral = true; if let Some(n) = g.first_mut() { n.ephemeral = false; n.persist(); } }
+            a.tabs.clear();
+            drop(a);
+            focus.set(g[0].wk);
+            info!("window closed, {} left", g.len());
+            return;
+        }
+        g[i].shutdown();
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        { g.clear(); super::cef_tabs::shutdown_all(); }
+        _instance_guard.take();
+        *control_flow = ControlFlow::Exit;
     });
 }
 
 #[cfg(test)]
 mod popup_tests {
-    use super::wants_native_popup;
+    use super::{resolve_input, wants_native_popup};
+    #[test]
+    fn local_addresses_use_http() {
+        assert_eq!(resolve_input("127.0.0.1:18732/in", "").as_deref(), Some("http://127.0.0.1:18732/in"));
+        assert_eq!(resolve_input("localhost:3000", "").as_deref(), Some("http://localhost:3000"));
+        assert_eq!(resolve_input("printer.local", "").as_deref(), Some("http://printer.local"));
+        assert_eq!(resolve_input("example.com", "").as_deref(), Some("https://example.com"));
+    }
 
     #[test]
     fn auth_blank_and_provider_windows_stay_native() {

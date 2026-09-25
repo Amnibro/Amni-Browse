@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use x11_dl::xlib;
-pub enum CefEv { Relaunch(Option<String>), PageClick, Focused(u64), Perm(u64, crate::engine::permissions::PermissionType, String, Box<dyn FnOnce(bool)>), DlWanted(u32, String, String), DlProgress(u32, i64, i64), DlDone(u32, bool, String), Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
+pub enum CefEv { Relaunch(Option<String>), PageClick(u64), Focused(u64), Perm(u64, crate::engine::permissions::PermissionType, String, Box<dyn FnOnce(bool)>), DlWanted(u32, String, String), DlProgress(u32, i64, i64), DlDone(u32, bool, String), Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(u64, String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
 thread_local! {
     static QUEUE: RefCell<Vec<CefEv>> = const { RefCell::new(Vec::new()) };
     static WAKE: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
@@ -17,6 +17,7 @@ pub fn cancel_download(id: u32) { DL_WAIT.with(|w| w.borrow_mut().remove(&id)); 
 static ON: OnceLock<bool> = OnceLock::new();
 const IPC_TAG: &str = "\u{1}amni-ipc:";
 fn push(e: CefEv) { QUEUE.with(|q| q.borrow_mut().push(e)); WAKE.with(|w| if let Some(f) = w.borrow().as_ref() { f() }); }
+impl CefEv { pub fn uid(&self) -> Option<u64> { match self { CefEv::PageClick(u) | CefEv::Focused(u) | CefEv::Perm(u, _, _, _) | CefEv::Title(u, _) | CefEv::Address(u, _) | CefEv::Loading(u, _, _, _) | CefEv::Popup(u, _) | CefEv::Ipc(u, _) | CefEv::Fullscreen(u, _) | CefEv::Created(u) => Some(*u), _ => None } } }
 pub fn drain() -> Vec<CefEv> { QUEUE.with(|q| std::mem::take(&mut *q.borrow_mut())) }
 pub fn set_wake(f: impl Fn() + 'static) { WAKE.with(|w| *w.borrow_mut() = Some(Box::new(f))); }
 pub fn set_nav_filter(f: impl Fn(u64, &str) -> bool + 'static) { NAV.with(|n| *n.borrow_mut() = Some(Box::new(f))); }
@@ -190,7 +191,7 @@ wrap_life_span_handler! {
         fn on_after_created(&self, _b: Option<&mut Browser>) { push(CefEv::Created(self.uid)); }
         fn on_before_popup(&self, _b: Option<&mut Browser>, _f: Option<&mut Frame>, _id: ::std::os::raw::c_int, url: Option<&CefString>, _n: Option<&CefString>, _d: WindowOpenDisposition, _g: ::std::os::raw::c_int, _pf: Option<&PopupFeatures>, _wi: Option<&mut WindowInfo>, _c: Option<&mut Option<Client>>, _st: Option<&mut BrowserSettings>, _e: Option<&mut Option<DictionaryValue>>, _nj: Option<&mut ::std::os::raw::c_int>) -> ::std::os::raw::c_int {
             let u = s(url);
-            if !u.is_empty() { push(CefEv::Popup(u)); }
+            if !u.is_empty() { push(CefEv::Popup(self.uid, u)); }
             1
         }
     }
@@ -268,7 +269,7 @@ impl Holder {
     }
 }
 impl Drop for Holder { fn drop(&mut self) { unsafe { (self.xl.XDestroyWindow)(self.d, self.win); (self.xl.XCloseDisplay)(self.d); } } }
-pub struct CefTab { browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)>, _dt: Option<Registration> }
+pub struct CefTab { uid: u64, fx: xlib::Window, browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)>, _dt: Option<Registration> }
 impl CefTab {
     pub fn new(uid: u64, parent: &gtk::Layout, r: (i32, i32, i32, i32), url: &str, private: bool) -> Option<Self> {
         use gtk::prelude::*;
@@ -276,14 +277,14 @@ impl CefTab {
         let gw = parent.bin_window()?;
         gw.ensure_native();
         gw.display().sync();
-        let xid = gw.downcast::<gdkx11::X11Window>().ok()?.xid();
+        let (xid, fx) = (gw.downcast::<gdkx11::X11Window>().ok()?.xid(), fx_of(parent));
         let holder = Holder::new(xid, r)?;
         let info = WindowInfo { runtime_style: RuntimeStyle::ALLOY, ..Default::default() }.set_as_child(holder.win as _, &Rect { x: 0, y: 0, width: r.2.max(1), height: r.3.max(1) });
         let mut client = TabClient::new(uid);
         let mut ctx = if private { Some(private_ctx()?) } else { None };
         let browser = browser_host_create_browser_sync(Some(&info), Some(&mut client), Some(&CefString::from(url)), Some(&BrowserSettings::default()), None, ctx.as_mut())?;
         let _dt = browser.host().and_then(|h| h.add_dev_tools_message_observer(Some(&mut DtObs::new())));
-        Some(Self { browser, holder, rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)), _dt })
+        Some(Self { uid, fx, browser, holder, rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)), _dt })
     }
     fn host(&self) -> Option<BrowserHost> { self.browser.host() }
     pub fn place(&self, r: (i32, i32, i32, i32)) {
@@ -303,8 +304,8 @@ impl CefTab {
         if m0 != mapped { unsafe { if mapped { (h.xl.XMapRaised)(h.d, h.win); } else { (h.xl.XUnmapWindow)(h.d, h.win); } (h.xl.XFlush)(h.d); } }
         if v0 != visible { if let Some(b) = self.host() { b.was_hidden((!visible) as _); } }
         let cef = self.host().map(|b| b.window_handle() as xlib::Window).unwrap_or(0);
-        if mapped { SHOWN.with(|s| s.set(Some((h.win, cef)))); } else if SHOWN.with(|s| s.get().map(|(w, _)| w == h.win).unwrap_or(false)) { SHOWN.with(|s| s.set(None)); }
-        if mapped && !m0 && TOOLBAR_KBD.with(|t| t.get()) { grab_x_focus(); }
+        SHOWN.with(|s| { let mut s = s.borrow_mut(); s.retain(|e| e.1 != h.win); if mapped { s.push((self.uid, h.win, cef, self.fx)); } });
+        if mapped && !m0 && KBD.with(|k| k.borrow().contains(&self.fx)) { focus_later(self.fx); }
     }
     pub fn snapshot(&self) -> Option<(i32, i32, gtk::cairo::ImageSurface)> {
         let (x, y, w, ht) = self.rect.get();
@@ -347,9 +348,9 @@ impl CefTab {
 }
 impl Drop for CefTab { fn drop(&mut self) { if let Some(h) = self.host() { h.close_browser(1); } } }
 thread_local! {
-    static FOCUS_XID: std::cell::Cell<xlib::Window> = const { std::cell::Cell::new(0) };
-    static TOOLBAR_KBD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    static SHOWN: std::cell::Cell<Option<(xlib::Window, xlib::Window)>> = const { std::cell::Cell::new(None) };
+    static FX: RefCell<std::collections::HashMap<usize, xlib::Window>> = RefCell::new(std::collections::HashMap::new());
+    static KBD: RefCell<std::collections::HashSet<xlib::Window>> = RefCell::new(std::collections::HashSet::new());
+    static SHOWN: RefCell<Vec<(u64, xlib::Window, xlib::Window, xlib::Window)>> = const { RefCell::new(Vec::new()) };
     static PRIVATE: RefCell<Option<RequestContext>> = const { RefCell::new(None) };
     static DT: RefCell<std::collections::HashMap<i32, Box<dyn FnOnce(Option<serde_json::Value>)>>> = RefCell::new(std::collections::HashMap::new());
     static DT_NEXT: std::cell::Cell<i32> = const { std::cell::Cell::new(9000) };
@@ -364,7 +365,8 @@ wrap_dev_tools_message_observer! {
 }
 pub fn end_private() { PRIVATE.with(|p| p.borrow_mut().take()); }
 fn private_ctx() -> Option<RequestContext> { PRIVATE.with(|p| { let mut p = p.borrow_mut(); if p.is_none() { *p = request_context_create_context(Some(&RequestContextSettings::default()), None); } p.clone() }) }
-pub fn set_toolbar_focus(on: bool) { TOOLBAR_KBD.with(|t| t.set(on)); if on { grab_x_focus(); } }
+pub fn set_toolbar_focus(w: &impl gtk::prelude::IsA<gtk::Widget>, on: bool) { let fx = fx_of(w); KBD.with(|k| { let mut k = k.borrow_mut(); if on { k.insert(fx); } else { k.remove(&fx); } }); if on { grab_x_focus(w); } }
+fn fx_of(w: &impl gtk::prelude::IsA<gtk::Widget>) -> xlib::Window { use gtk::prelude::*; use gtk::glib::translate::ToGlibPtr; let t: *mut gtk::ffi::GtkWidget = w.as_ref().toplevel().as_ref().map(|t| t.to_glib_none().0).unwrap_or(std::ptr::null_mut()); FX.with(|f| f.borrow().get(&(t as usize)).copied().unwrap_or(0)) }
 pub fn watch_clicks() {
     use x11_dl::xinput2;
     if !enabled() { return; }
@@ -392,17 +394,19 @@ pub fn watch_clicks() {
                 let button = (*(ck.data as *const xinput2::XIRawEvent)).detail;
                 (xl.XFreeEventData)(d, &mut ck);
                 if !(1..=3).contains(&button) { continue; }
-                let Some((holder, cef)) = SHOWN.with(|v| v.get()) else { continue };
                 let (mut rr, mut cc, mut rx, mut ry, mut wx, mut wy, mut mk) = (0, 0, 0, 0, 0, 0, 0);
                 (xl.XQueryPointer)(d, root, &mut rr, &mut cc, &mut rx, &mut ry, &mut wx, &mut wy, &mut mk);
-                let (mut hx, mut hy, mut ch) = (0, 0, 0);
-                (xl.XTranslateCoordinates)(d, holder, root, 0, 0, &mut hx, &mut hy, &mut ch);
-                let mut a: xlib::XWindowAttributes = std::mem::zeroed();
-                (xl.XGetWindowAttributes)(d, holder, &mut a);
-                if a.map_state == xlib::IsViewable && rx >= hx && ry >= hy && rx < hx + a.width && ry < hy + a.height {
-                    TOOLBAR_KBD.with(|t| t.set(false));
+                let hit = SHOWN.with(|v| v.borrow().iter().copied().find(|&(_, holder, _, _)| {
+                    let (mut hx, mut hy, mut ch) = (0, 0, 0);
+                    (xl.XTranslateCoordinates)(d, holder, root, 0, 0, &mut hx, &mut hy, &mut ch);
+                    let mut a: xlib::XWindowAttributes = std::mem::zeroed();
+                    (xl.XGetWindowAttributes)(d, holder, &mut a);
+                    a.map_state == xlib::IsViewable && rx >= hx && ry >= hy && rx < hx + a.width && ry < hy + a.height
+                }));
+                if let Some((uid, _, cef, fx)) = hit {
+                    KBD.with(|k| k.borrow_mut().remove(&fx));
                     set_x_focus(cef);
-                    push(CefEv::PageClick);
+                    push(CefEv::PageClick(uid));
                 }
             }
             gtk::glib::ControlFlow::Continue
@@ -423,12 +427,13 @@ pub fn install_focus_proxy(overlay: &gtk::Overlay) {
     let Some(g) = p.window() else { return };
     g.ensure_native();
     g.display().sync();
-    if let Ok(x) = g.downcast::<gdkx11::X11Window>() { FOCUS_XID.with(|f| f.set(x.xid())); }
+    use gtk::glib::translate::ToGlibPtr;
+    let t: *mut gtk::ffi::GtkWidget = overlay.toplevel().as_ref().map(|t| t.to_glib_none().0).unwrap_or(std::ptr::null_mut());
+    if let Ok(x) = g.downcast::<gdkx11::X11Window>() { FX.with(|f| f.borrow_mut().insert(t as usize, x.xid())); }
     std::mem::forget(p);
 }
-pub fn grab_x_focus() {
-    if !enabled() { return; }
-    let xid = FOCUS_XID.with(|f| f.get());
+pub fn grab_x_focus(w: &impl gtk::prelude::IsA<gtk::Widget>) { if enabled() { focus_later(fx_of(w)); } }
+fn focus_later(xid: xlib::Window) {
     if xid == 0 { return; }
     set_x_focus(xid);
     gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(60), move || set_x_focus(xid));

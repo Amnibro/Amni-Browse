@@ -477,16 +477,20 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   updBtn&&updBtn.addEventListener('click',()=>cmd('menu'));
   document.addEventListener('keydown',e=>{
     if((e.ctrlKey||e.metaKey)&&e.shiftKey&&(e.key==='A'||e.key==='a')){e.preventDefault();tileScrim.classList.contains('on')?hideTileView():showTileView();return}
-    if(e.key==='Escape'){
-      if(bmpop.classList.contains('on')){hideBmPop();e.preventDefault();return}
-      if(tileScrim.classList.contains('on')){hideTileView();e.preventDefault();return}
-      if(tabMenu&&tabMenu.classList.contains('on')){hideTabMenu();e.preventDefault();return}
-      if(colScrim.classList.contains('on')){cmd('ctx_dismiss');hideColor();overlay(0);e.preventDefault();return}
-      if(dlgScrim.classList.contains('on')){dlgAnswer(false);hideDialog();e.preventDefault();return}
-      if(ctxScrim.classList.contains('on')){cmd('ctx_dismiss');hideEmbedder();e.preventDefault();return}
-      hideFly();hideFind()
-    }
+    if(e.key==='Escape'&&onEsc())e.preventDefault();
   });
+  let escAt=0;
+  function onEsc(){
+    const now=Date.now();if(now-escAt<150)return true;escAt=now;
+    if(bmpop.classList.contains('on')){hideBmPop();return true}
+    if(tileScrim.classList.contains('on')){hideTileView();return true}
+    if(tabMenu&&tabMenu.classList.contains('on')){hideTabMenu();return true}
+    if(colScrim.classList.contains('on')){cmd('ctx_dismiss');hideColor();overlay(0);return true}
+    if(dlgScrim.classList.contains('on')){dlgAnswer(false);hideDialog();return true}
+    if(ctxScrim.classList.contains('on')){cmd('ctx_dismiss');hideEmbedder();return true}
+    hideFly();hideFind();return false
+  }
+  window.__amniEsc=onEsc;
   const buttons={'back':'back','forward':'forward','home':'home','bookmark':'bookmark','shield':'shield','menu':'menu','new-tab':'new_tab','zoom-in':'zoom_in','zoom-out':'zoom_out'};
   Object.entries(buttons).forEach(([id,c])=>{const el=$('#'+id);el&&el.addEventListener('click',()=>{cmd(c);el.blur()})});
   reloadBtn.addEventListener('click',()=>{cmd(loadingNow?'stop':'reload');reloadBtn.blur()});
