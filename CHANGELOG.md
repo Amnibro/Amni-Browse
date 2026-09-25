@@ -1,3 +1,8 @@
+## 0.16.1 - 2026-09-25 — Crash fix when closing tabs
+
+- **Closing a tab no longer knocks out Chromium's GPU process.** The tab's window was destroyed while Chromium was still drawing the page into it, so the GPU process lost its context, restarted and could crash on AMD's Vulkan driver (KDE's crash dialog). A closed tab's window now stays hidden until Chromium reports the page closed.
+- **Quitting no longer ends in a fatal error.** Browse waits (up to 4 seconds) for every page to finish closing before it shuts Chromium down, instead of a fixed 0.3 seconds.
+
 ## 0.16.0 - 2026-09-25 — Real new windows
 
 - **New window (Ctrl+N) opens a real second window** in the same browser, instead of a new tab in the first one. Every window shares one profile (logins, cookies, history, bookmarks, downloads, settings), since Chromium allows only one process per profile. Each window has its own tabs, toolbar and size.

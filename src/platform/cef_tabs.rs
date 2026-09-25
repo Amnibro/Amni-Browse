@@ -127,7 +127,14 @@ pub fn clear_data(root: &Path, tabs: &[&CefTab]) {
     tabs.iter().filter_map(|t| t.host()).for_each(|h| { h.execute_dev_tools_method(0, Some(&CefString::from("Network.clearBrowserCache")), None); });
     let _ = std::fs::write(root.join("cef").join(".wipe-site-data"), b"1");
 }
-pub fn shutdown_all() { if enabled() { for _ in 0..30 { do_message_loop_work(); std::thread::sleep(std::time::Duration::from_millis(10)); } shutdown(); } }
+pub fn shutdown_all() {
+    if !enabled() { return; }
+    for i in 0..400 { do_message_loop_work(); std::thread::sleep(std::time::Duration::from_millis(10)); if i >= 30 && CLOSING.with(|c| c.borrow().is_empty()) { break; } }
+    log::info!("chromium closed ({} pages still closing)", CLOSING.with(|c| c.borrow().len()));
+    CLOSING.with(|c| c.borrow_mut().clear());
+    DEAD.with(|d| d.borrow_mut().clear());
+    shutdown();
+}
 wrap_browser_process_handler! {
     struct AmniBph;
     impl BrowserProcessHandler {
@@ -189,6 +196,11 @@ wrap_life_span_handler! {
     struct TabLife { uid: u64 }
     impl LifeSpanHandler {
         fn on_after_created(&self, _b: Option<&mut Browser>) { push(CefEv::Created(self.uid)); }
+        fn on_before_close(&self, _b: Option<&mut Browser>) {
+            let Some(h) = CLOSING.with(|c| c.borrow_mut().remove(&self.uid)) else { return };
+            DEAD.with(|d| d.borrow_mut().push((std::time::Instant::now(), h)));
+            gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(500), || DEAD.with(|d| d.borrow_mut().retain(|(t, _)| t.elapsed() < std::time::Duration::from_millis(400))));
+        }
         fn on_before_popup(&self, _b: Option<&mut Browser>, _f: Option<&mut Frame>, _id: ::std::os::raw::c_int, url: Option<&CefString>, _n: Option<&CefString>, _d: WindowOpenDisposition, _g: ::std::os::raw::c_int, _pf: Option<&PopupFeatures>, _wi: Option<&mut WindowInfo>, _c: Option<&mut Option<Client>>, _st: Option<&mut BrowserSettings>, _e: Option<&mut Option<DictionaryValue>>, _nj: Option<&mut ::std::os::raw::c_int>) -> ::std::os::raw::c_int {
             let u = s(url);
             if !u.is_empty() { push(CefEv::Popup(self.uid, u)); }
@@ -269,7 +281,7 @@ impl Holder {
     }
 }
 impl Drop for Holder { fn drop(&mut self) { unsafe { (self.xl.XDestroyWindow)(self.d, self.win); (self.xl.XCloseDisplay)(self.d); } } }
-pub struct CefTab { uid: u64, fx: xlib::Window, browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)>, _dt: Option<Registration> }
+pub struct CefTab { uid: u64, fx: xlib::Window, browser: Browser, holder: std::mem::ManuallyDrop<Holder>, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)>, _dt: Option<Registration> }
 impl CefTab {
     pub fn new(uid: u64, parent: &gtk::Layout, r: (i32, i32, i32, i32), url: &str, private: bool) -> Option<Self> {
         use gtk::prelude::*;
@@ -284,7 +296,7 @@ impl CefTab {
         let mut ctx = if private { Some(private_ctx()?) } else { None };
         let browser = browser_host_create_browser_sync(Some(&info), Some(&mut client), Some(&CefString::from(url)), Some(&BrowserSettings::default()), None, ctx.as_mut())?;
         let _dt = browser.host().and_then(|h| h.add_dev_tools_message_observer(Some(&mut DtObs::new())));
-        Some(Self { uid, fx, browser, holder, rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)), _dt })
+        Some(Self { uid, fx, browser, holder: std::mem::ManuallyDrop::new(holder), rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)), _dt })
     }
     fn host(&self) -> Option<BrowserHost> { self.browser.host() }
     pub fn place(&self, r: (i32, i32, i32, i32)) {
@@ -346,11 +358,23 @@ impl CefTab {
     pub fn blur(&self) { if let Some(h) = self.host() { h.set_focus(0); } }
     pub fn devtools(&self) { if let Some(h) = self.host() { h.show_dev_tools(Some(&WindowInfo::default()), Option::<&mut Client>::None, Some(&BrowserSettings::default()), None); } }
 }
-impl Drop for CefTab { fn drop(&mut self) { if let Some(h) = self.host() { h.close_browser(1); } } }
+impl Drop for CefTab {
+    fn drop(&mut self) {
+        let h = unsafe { std::mem::ManuallyDrop::take(&mut self.holder) };
+        unsafe { (h.xl.XUnmapWindow)(h.d, h.win); (h.xl.XReparentWindow)(h.d, h.win, (h.xl.XDefaultRootWindow)(h.d), -10000, -10000); (h.xl.XFlush)(h.d); }
+        SHOWN.with(|s| s.borrow_mut().retain(|e| e.1 != h.win));
+        CLOSING.with(|c| c.borrow_mut().insert(self.uid, h));
+        if let Some(b) = self.host() { b.close_browser(1); }
+        let uid = self.uid;
+        gtk::glib::timeout_add_local_once(std::time::Duration::from_secs(10), move || { CLOSING.with(|c| c.borrow_mut().remove(&uid)); });
+    }
+}
 thread_local! {
     static FX: RefCell<std::collections::HashMap<usize, xlib::Window>> = RefCell::new(std::collections::HashMap::new());
     static KBD: RefCell<std::collections::HashSet<xlib::Window>> = RefCell::new(std::collections::HashSet::new());
     static SHOWN: RefCell<Vec<(u64, xlib::Window, xlib::Window, xlib::Window)>> = const { RefCell::new(Vec::new()) };
+    static CLOSING: RefCell<std::collections::HashMap<u64, Holder>> = RefCell::new(std::collections::HashMap::new());
+    static DEAD: RefCell<Vec<(std::time::Instant, Holder)>> = const { RefCell::new(Vec::new()) };
     static PRIVATE: RefCell<Option<RequestContext>> = const { RefCell::new(None) };
     static DT: RefCell<std::collections::HashMap<i32, Box<dyn FnOnce(Option<serde_json::Value>)>>> = RefCell::new(std::collections::HashMap::new());
     static DT_NEXT: std::cell::Cell<i32> = const { std::cell::Cell::new(9000) };
