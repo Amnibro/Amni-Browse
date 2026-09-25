@@ -5,6 +5,7 @@ fn main() {
     println!("cargo:rerun-if-changed=assets/amni-browse.ico");
     println!("cargo:rerun-if-env-changed=CARGO_PKG_VERSION");
     println!("cargo:rerun-if-env-changed=GSTREAMER_1_0_ROOT_MSVC_X86_64");
+    if env::var("CARGO_FEATURE_CEF_ENGINE").is_ok() && env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") { println!("cargo:rustc-link-arg-bins=-Wl,-rpath,$ORIGIN"); }
     #[cfg(target_os = "windows")]
     {
         embed_pe_version();
