@@ -1,3 +1,14 @@
+## 0.15.0 - 2026-09-25 — Chromium engine on Linux
+
+- **Web pages now render with Chromium (CEF 152) on Linux**, under the same Amni toolbar. DRM video (Netflix, Crunchyroll, Widevine) plays, and sites that broke on WebKitGTK work. Amni's own pages still use WebKitGTK. `AMNI_ENGINE=webkit` (or `--engine=webkit`) switches back.
+- Private tabs run on an in-memory Chromium profile; downloads go through Amni's download panel; permission prompts (camera, microphone, location, notifications) use Amni's prompt; save page (MHTML) and screenshot (PNG) work on Chromium tabs.
+- Saved WebKit cookies are imported once, so existing site logins carry over.
+- Clear browsing data covers Chromium tabs: cookies at once, the cache of open tabs, and site storage before the next start.
+- The Chromium sandbox is on (user-namespace sandbox).
+- **Bookmark manager** (`amnibrowse://bookmarks`, Ctrl+Shift+O): folders, rename, move, reorder, delete, and Netscape HTML import/export.
+- Linux links the system SQLite (the bundled copy crashed NSS). A second launch on the same profile opens its URL as a tab in the running window.
+- Widevine is taken from Google Chrome's install when present.
+
 ## 0.14.4 - 2026-09-23 — Browse follows the system light/dark mode
 
 - **Match system (light or dark)** is a new theme choice at the top of Settings → Appearance, and the default. The toolbar switches between Amni Scient and Amni Light within a quarter second of the desktop changing mode (read from KDE's colour scheme, falling back to Amni OS's saved look), including Plasma's automatic day/night switch. Installs whose saved theme is the old default Amni Scient move to Match system; any other theme a user picked stays put.
