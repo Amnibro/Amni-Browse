@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use x11_dl::xlib;
-pub enum CefEv { DlWanted(u32, String, String), DlProgress(u32, i64, i64), DlDone(u32, bool, String), Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
+pub enum CefEv { PageClick, Focused(u64), Perm(u64, crate::engine::permissions::PermissionType, String, Box<dyn FnOnce(bool)>), DlWanted(u32, String, String), DlProgress(u32, i64, i64), DlDone(u32, bool, String), Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
 thread_local! {
     static QUEUE: RefCell<Vec<CefEv>> = const { RefCell::new(Vec::new()) };
     static WAKE: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
@@ -113,6 +113,8 @@ wrap_client! {
         fn life_span_handler(&self) -> Option<LifeSpanHandler> { Some(TabLife::new(self.uid)) }
         fn request_handler(&self) -> Option<RequestHandler> { Some(TabRequest::new(self.uid)) }
         fn download_handler(&self) -> Option<DownloadHandler> { Some(TabDownload::new(self.uid)) }
+        fn permission_handler(&self) -> Option<PermissionHandler> { Some(TabPerm::new(self.uid)) }
+        fn focus_handler(&self) -> Option<FocusHandler> { Some(TabFocus::new(self.uid)) }
     }
 }
 wrap_display_handler! {
@@ -158,6 +160,33 @@ wrap_request_handler! {
         }
     }
 }
+wrap_focus_handler! {
+    struct TabFocus { uid: u64 }
+    impl FocusHandler {
+        fn on_got_focus(&self, b: Option<&mut Browser>) { if let Some(h) = b.and_then(|b| b.host()) { set_x_focus(h.window_handle() as _); } push(CefEv::Focused(self.uid)); }
+    }
+}
+wrap_permission_handler! {
+    struct TabPerm { uid: u64 }
+    impl PermissionHandler {
+        fn on_request_media_access_permission(&self, _b: Option<&mut Browser>, _f: Option<&mut Frame>, origin: Option<&CefString>, req: u32, cb: Option<&mut MediaAccessCallback>) -> ::std::os::raw::c_int {
+            use crate::engine::permissions::PermissionType as P;
+            log::debug!("cef media permission {:#x} from {}", req, s(origin));
+            let Some(cb) = cb.map(|c| c.clone()) else { return 0 };
+            if req & 12 != 0 { cb.cancel(); return 1; }
+            push(CefEv::Perm(self.uid, if req & 2 != 0 { P::Camera } else { P::Microphone }, s(origin), Box::new(move |ok| if ok { cb.cont(req) } else { cb.cancel() })));
+            1
+        }
+        fn on_show_permission_prompt(&self, _b: Option<&mut Browser>, _id: u64, origin: Option<&CefString>, req: u32, cb: Option<&mut PermissionPromptCallback>) -> ::std::os::raw::c_int {
+            use crate::engine::permissions::PermissionType as P;
+            log::debug!("cef permission prompt {:#x} from {}", req, s(origin));
+            let Some(cb) = cb.map(|c| c.clone()) else { return 0 };
+            let kind = match req { r if r & 256 != 0 => P::Location, r if r & 32768 != 0 => P::Notifications, r if r & 4 != 0 => P::Camera, r if r & 4096 != 0 => P::Microphone, r if r & 16 != 0 => P::Clipboard, _ => { cb.cont(PermissionRequestResult::DISMISS); return 1 } };
+            push(CefEv::Perm(self.uid, kind, s(origin), Box::new(move |ok| cb.cont(if ok { PermissionRequestResult::ACCEPT } else { PermissionRequestResult::DENY }))));
+            1
+        }
+    }
+}
 wrap_download_handler! {
     struct TabDownload { uid: u64 }
     impl DownloadHandler {
@@ -195,7 +224,7 @@ impl Holder {
     }
 }
 impl Drop for Holder { fn drop(&mut self) { unsafe { (self.xl.XDestroyWindow)(self.d, self.win); (self.xl.XCloseDisplay)(self.d); } } }
-pub struct CefTab { browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)> }
+pub struct CefTab { browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)> }
 impl CefTab {
     pub fn new(uid: u64, parent: &gtk::Layout, r: (i32, i32, i32, i32), url: &str) -> Option<Self> {
         use gtk::prelude::*;
@@ -208,7 +237,7 @@ impl CefTab {
         let info = WindowInfo { runtime_style: RuntimeStyle::ALLOY, ..Default::default() }.set_as_child(holder.win as _, &Rect { x: 0, y: 0, width: r.2.max(1), height: r.3.max(1) });
         let mut client = TabClient::new(uid);
         let browser = browser_host_create_browser_sync(Some(&info), Some(&mut client), Some(&CefString::from(url)), Some(&BrowserSettings::default()), None, None)?;
-        Some(Self { browser, holder, rect: std::cell::Cell::new(r) })
+        Some(Self { browser, holder, rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)) })
     }
     fn host(&self) -> Option<BrowserHost> { self.browser.host() }
     pub fn place(&self, r: (i32, i32, i32, i32)) {
@@ -221,10 +250,27 @@ impl CefTab {
         }
         if let Some(b) = self.host() { b.was_resized(); }
     }
-    pub fn set_visible(&self, on: bool) {
+    pub fn set_visible(&self, on: bool) { self.show(on, on) }
+    pub fn show(&self, visible: bool, mapped: bool) {
+        let (v0, m0) = self.state.replace((visible, mapped));
         let h = &self.holder;
-        unsafe { if on { (h.xl.XMapRaised)(h.d, h.win); } else { (h.xl.XUnmapWindow)(h.d, h.win); } (h.xl.XFlush)(h.d); }
-        if let Some(b) = self.host() { b.was_hidden((!on) as _); }
+        if m0 != mapped { unsafe { if mapped { (h.xl.XMapRaised)(h.d, h.win); } else { (h.xl.XUnmapWindow)(h.d, h.win); } (h.xl.XFlush)(h.d); } }
+        if v0 != visible { if let Some(b) = self.host() { b.was_hidden((!visible) as _); } }
+        let cef = self.host().map(|b| b.window_handle() as xlib::Window).unwrap_or(0);
+        if mapped { SHOWN.with(|s| s.set(Some((h.win, cef)))); } else if SHOWN.with(|s| s.get().map(|(w, _)| w == h.win).unwrap_or(false)) { SHOWN.with(|s| s.set(None)); }
+        if mapped && !m0 && TOOLBAR_KBD.with(|t| t.get()) { grab_x_focus(); }
+    }
+    pub fn snapshot(&self) -> Option<(i32, i32, gtk::cairo::ImageSurface)> {
+        let (x, y, w, ht) = self.rect.get();
+        let h = &self.holder;
+        unsafe {
+            let img = (h.xl.XGetImage)(h.d, h.win, 0, 0, w.max(1) as u32, ht.max(1) as u32, !0, xlib::ZPixmap);
+            if img.is_null() { return None; }
+            let (bpl, bpp) = ((*img).bytes_per_line, (*img).bits_per_pixel);
+            let data = (bpp == 32).then(|| std::slice::from_raw_parts((*img).data as *const u8, (bpl * ht.max(1)) as usize).to_vec());
+            if let Some(f) = (*img).funcs.destroy_image { f(img); }
+            gtk::cairo::ImageSurface::create_for_data(data?, gtk::cairo::Format::Rgb24, w.max(1), ht.max(1), bpl).ok().map(|s| (x, y, s))
+        }
     }
     pub fn load_url(&self, url: &str) { if let Some(f) = self.browser.main_frame() { f.load_url(Some(&CefString::from(url))); } }
     pub fn eval(&self, js: &str) { if let Some(f) = self.browser.main_frame() { f.execute_java_script(Some(&CefString::from(js)), None, 0); } }
@@ -240,10 +286,77 @@ impl CefTab {
     pub fn devtools(&self) { if let Some(h) = self.host() { h.show_dev_tools(Some(&WindowInfo::default()), Option::<&mut Client>::None, Some(&BrowserSettings::default()), None); } }
 }
 impl Drop for CefTab { fn drop(&mut self) { if let Some(h) = self.host() { h.close_browser(1); } } }
-pub fn grab_x_focus(w: &impl gtk::prelude::IsA<gtk::Widget>) {
-    use gtk::prelude::*;
+thread_local! {
+    static FOCUS_XID: std::cell::Cell<xlib::Window> = const { std::cell::Cell::new(0) };
+    static TOOLBAR_KBD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static SHOWN: std::cell::Cell<Option<(xlib::Window, xlib::Window)>> = const { std::cell::Cell::new(None) };
+}
+pub fn set_toolbar_focus(on: bool) { TOOLBAR_KBD.with(|t| t.set(on)); if on { grab_x_focus(); } }
+pub fn watch_clicks() {
+    use x11_dl::xinput2;
     if !enabled() { return; }
-    let Some(xid) = w.window().and_then(|g| g.downcast::<gdkx11::X11Window>().ok()).map(|x| x.xid()) else { return };
+    let (Ok(xl), Ok(xi)) = (xlib::Xlib::open(), xinput2::XInput2::open()) else { return };
+    unsafe {
+        let d = (xl.XOpenDisplay)(std::ptr::null());
+        if d.is_null() { return; }
+        let (mut op, mut ev, mut er) = (0, 0, 0);
+        let name = std::ffi::CString::new("XInputExtension").unwrap_or_default();
+        if (xl.XQueryExtension)(d, name.as_ptr(), &mut op, &mut ev, &mut er) == 0 { return; }
+        let root = (xl.XDefaultRootWindow)(d);
+        let mut bits = [0u8; 4];
+        bits[(xinput2::XI_RawButtonPress >> 3) as usize] |= 1 << (xinput2::XI_RawButtonPress & 7);
+        let mut m = xinput2::XIEventMask { deviceid: xinput2::XIAllMasterDevices, mask_len: 4, mask: bits.as_mut_ptr() };
+        (xi.XISelectEvents)(d, root, &mut m, 1);
+        (xl.XFlush)(d);
+        let fd = (xl.XConnectionNumber)(d);
+        gtk::glib::unix_fd_add_local(fd, gtk::glib::IOCondition::IN, move |_, _| {
+            while (xl.XPending)(d) > 0 {
+                let mut e: xlib::XEvent = std::mem::zeroed();
+                (xl.XNextEvent)(d, &mut e);
+                if e.get_type() != xlib::GenericEvent || e.generic_event_cookie.extension != op || e.generic_event_cookie.evtype != xinput2::XI_RawButtonPress { continue; }
+                let mut ck = e.generic_event_cookie;
+                if (xl.XGetEventData)(d, &mut ck) == 0 { continue; }
+                let button = (*(ck.data as *const xinput2::XIRawEvent)).detail;
+                (xl.XFreeEventData)(d, &mut ck);
+                if !(1..=3).contains(&button) { continue; }
+                let Some((holder, cef)) = SHOWN.with(|v| v.get()) else { continue };
+                let (mut rr, mut cc, mut rx, mut ry, mut wx, mut wy, mut mk) = (0, 0, 0, 0, 0, 0, 0);
+                (xl.XQueryPointer)(d, root, &mut rr, &mut cc, &mut rx, &mut ry, &mut wx, &mut wy, &mut mk);
+                let (mut hx, mut hy, mut ch) = (0, 0, 0);
+                (xl.XTranslateCoordinates)(d, holder, root, 0, 0, &mut hx, &mut hy, &mut ch);
+                let mut a: xlib::XWindowAttributes = std::mem::zeroed();
+                (xl.XGetWindowAttributes)(d, holder, &mut a);
+                if rx >= hx && ry >= hy && rx < hx + a.width && ry < hy + a.height {
+                    TOOLBAR_KBD.with(|t| t.set(false));
+                    set_x_focus(cef);
+                    push(CefEv::PageClick);
+                }
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+}
+pub fn install_focus_proxy(overlay: &gtk::Overlay) {
+    use gtk::prelude::*;
+    let p = gtk::DrawingArea::new();
+    p.set_size_request(1, 1);
+    p.set_halign(gtk::Align::Start);
+    p.set_valign(gtk::Align::Start);
+    p.set_can_focus(false);
+    p.add_events(gtk::gdk::EventMask::KEY_PRESS_MASK | gtk::gdk::EventMask::KEY_RELEASE_MASK | gtk::gdk::EventMask::FOCUS_CHANGE_MASK);
+    overlay.add_overlay(&p);
+    p.show();
+    p.realize();
+    let Some(g) = p.window() else { return };
+    g.ensure_native();
+    g.display().sync();
+    if let Ok(x) = g.downcast::<gdkx11::X11Window>() { FOCUS_XID.with(|f| f.set(x.xid())); }
+    std::mem::forget(p);
+}
+pub fn grab_x_focus() {
+    if !enabled() { return; }
+    let xid = FOCUS_XID.with(|f| f.get());
+    if xid == 0 { return; }
     set_x_focus(xid);
     gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(60), move || set_x_focus(xid));
 }
