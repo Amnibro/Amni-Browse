@@ -105,6 +105,19 @@ impl BookmarkManager {
         v.dedup();
         v
     }
+    pub fn bar_json(&self, icon: impl Fn(&str) -> Option<String>) -> serde_json::Value {
+        const BAR: [&str; 6] = ["bookmarks bar", "quick links", "favorites bar", "favourites bar", "toolbar", "bookmarks toolbar"];
+        const LAST: [&str; 2] = ["other bookmarks", "mobile bookmarks"];
+        let top = |b: &Bookmark| b.folder.as_deref().map(|f| f.split('/').next().unwrap_or("").trim().to_string()).filter(|f| !f.is_empty());
+        let item = |b: &Bookmark| serde_json::json!({"id": b.id, "title": b.title, "url": b.url, "icon": b.favicon.clone().or_else(|| icon(&b.url)), "folder": b.folder});
+        let on_bar = |b: &Bookmark| top(b).map(|f| BAR.contains(&f.to_lowercase().as_str()) && !b.folder.as_deref().unwrap_or("").contains('/')).unwrap_or(true);
+        let items: Vec<_> = self.bookmarks.iter().filter(|b| on_bar(b)).take(200).map(item).collect();
+        let mut names: Vec<String> = Vec::new();
+        self.folders.iter().map(|f| f.split('/').next().unwrap_or("").trim().to_string()).chain(self.bookmarks.iter().filter(|b| !on_bar(b)).filter_map(top)).for_each(|f| if !f.is_empty() && !BAR.contains(&f.to_lowercase().as_str()) && !names.contains(&f) { names.push(f) });
+        names.sort_by_key(|n| LAST.contains(&n.to_lowercase().as_str()));
+        let folders: Vec<_> = names.iter().map(|n| serde_json::json!({"name": n, "items": self.bookmarks.iter().filter(|b| top(b).as_deref() == Some(n.as_str())).take(300).map(item).collect::<Vec<_>>()})).collect();
+        serde_json::json!({"items": items, "folders": folders})
+    }
     pub fn manager_json(&self) -> String { serde_json::json!({ "bookmarks": self.bookmarks, "folders": self.all_folders() }).to_string() }
     fn clean_folder(f: &str) -> Option<String> { let c = f.split('/').map(str::trim).filter(|p| !p.is_empty()).collect::<Vec<_>>().join("/"); (!c.is_empty()).then_some(c) }
     pub fn update(&mut self, id: &str, title: Option<&str>, url: Option<&str>, folder: Option<&str>) {
@@ -175,6 +188,20 @@ impl BookmarkManager {
 mod tests {
     use super::*;
     fn m() -> BookmarkManager { let mut m = BookmarkManager::default(); m.bookmarks = vec![Bookmark::new("a", "https://a.test/", Some("Work")), Bookmark::new("b", "https://b.test/", Some("Work/Docs")), Bookmark::new("c", "https://c.test/", None)]; m }
+    #[test]
+    fn bar_puts_loose_and_bar_folder_items_on_the_bar_and_other_folders_last() {
+        let mut m = m();
+        m.bookmarks.push(Bookmark::new("d", "https://d.test/", Some("Bookmarks bar")));
+        m.bookmarks.push(Bookmark::new("e", "https://e.test/", Some("Other bookmarks")));
+        m.bookmarks.push(Bookmark::new("f", "https://f.test/", Some("News")));
+        let v = m.bar_json(|u| (u == "https://c.test/").then(|| "https://c.test/favicon.ico".to_string()));
+        let items: Vec<&str> = v["items"].as_array().unwrap().iter().map(|b| b["title"].as_str().unwrap()).collect();
+        assert_eq!(items, vec!["c", "d"]);
+        assert_eq!(v["items"][0]["icon"], "https://c.test/favicon.ico");
+        let names: Vec<&str> = v["folders"].as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["Work", "News", "Other bookmarks"]);
+        assert_eq!(v["folders"][0]["items"].as_array().unwrap().len(), 2);
+    }
     #[test]
     fn folders_include_parents_and_empty() { let mut m = m(); m.folders.push("Fun/Games".into()); assert_eq!(m.all_folders(), vec!["Fun", "Fun/Games", "Work", "Work/Docs"]); }
     #[test]

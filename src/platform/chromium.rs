@@ -26,7 +26,7 @@ type Core = ICoreWebView2;
 type Core = ();
 use crate::{app::BrowserState, engine::{adblocker::AdBlocker, ai_search, permissions::{PermissionState, PermissionType}}, storage::{config::{APP_NAME, APP_VERSION}, downloads::{DownloadItem, DownloadManager, DownloadStatus}, session::{SessionManager, SessionTab}}, ui::internal_pages::{esc_html, newtab_html, theme_root_vars, SETTINGS_TPL, TUTORIAL_TPL}, ui::tokens::SERVO_CHROME_HEIGHT_CSS};
 /// Chrome's bookmarks bar height, added under the nav row when it is shown.
-const BOOKMARKS_BAR_CSS: u32 = 28;
+const BOOKMARKS_BAR_CSS: u32 = 34;
 #[cfg(windows)]
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 // Linux runs WebKitGTK, so say so. Claiming Chrome on a WebKit engine is what
@@ -35,10 +35,11 @@ const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (
 // string WebKitGTK browsers (GNOME Web) send, and they pass.
 #[cfg(not(windows))]
 const UA: &str = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
-#[cfg(windows)]
-const ENGINE: &str = "Chromium (WebView2)";
-#[cfg(not(windows))]
-const ENGINE: &str = "WebKitGTK";
+fn engine() -> &'static str {
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    if super::cef_tabs::enabled() { return "Chromium (CEF)"; }
+    if cfg!(windows) { "Chromium (WebView2)" } else { "WebKitGTK" }
+}
 const FRAME_CSS: f64 = 5.0;
 const DL_INTERRUPTED: i32 = 1;
 const DL_COMPLETED: i32 = 2;
@@ -393,15 +394,15 @@ fn render_settings_html(state: &BrowserState, shield: bool, token: &str) -> Stri
     SETTINGS_TPL.replace("__THEME__", &theme_root_vars(&state.themes.active_theme())).replace("__THEMES__", &themes).replace("__VER__", APP_VERSION).replace("__RADIOS__", &radios).replace("__HOME__", &esc_html(&home)).replace("__ZOOMS__", &zooms)
         .replace("__SHIELD__", chk(shield)).replace("__RESTORE__", chk(c.restore_session)).replace("__UA__", &esc_html(c.custom_user_agent.as_deref().unwrap_or(""))).replace("__TOK__", token)
         .replace("__VAULT__", "Chromium profile store").replace("__PMRADIOS__", &toggles).replace("__PMLABEL__", "").replace("__PMCLI__", "").replace("__PMDB__", "").replace("__AUTOFILL__", "").replace("__CHKUPD__", chk(c.check_updates))
-        .replace("__UPD__", "checked on the site feed").replace("__PROFS__", "<div class='row'><span>Local \u{00b7} active</span></div>").replace("__CRASH__", "").replace("__IMPORTNOTE__", "").replace("__BMS__", &bms).replace("__ENGINE__", ENGINE)
+        .replace("__UPD__", "checked on the site feed").replace("__PROFS__", "<div class='row'><span>Local \u{00b7} active</span></div>").replace("__CRASH__", "").replace("__IMPORTNOTE__", "").replace("__BMS__", &bms).replace("__ENGINE__", engine())
         .replace("__NAVEXTRA__", "<button data-p='ai'>Ask AI</button><button data-p='downloads'>Downloads</button>").replace("__LOOKEXTRA__", &look_extra).replace("__AIPANE__", &ai_pane).replace("__DLPANE__", &dl_pane).replace("__PRIVEXTRA__", &priv_extra)
         .replace("function rmbm(id)", "function cmd(n,a){fetch('amnibrowse://cmd/'+n+'?'+new URLSearchParams(Object.assign({tok:T},a||{})),{mode:'no-cors'}).catch(function(){})}\nfunction rmbm(id)")
 }
 fn render_tutorial_html(state: &BrowserState, token: &str) -> String {
-    let blurb = match cfg!(windows) { true => "Pages render in the Chromium engine (WebView2) under Amni\u{2019}s own chrome: no Google account, no sync, no telemetry.", false => "Pages render in WebKitGTK (the engine behind Safari and GNOME Web) under Amni\u{2019}s own chrome: no telemetry, no sync, your profile stays local." };
+    let blurb = match (cfg!(windows), engine().starts_with("Chromium")) { (true, _) => "Pages render in the Chromium engine (WebView2) under Amni\u{2019}s own chrome: no Google account, no sync, no telemetry.", (false, true) => "Pages render in Chromium (the engine behind Chrome) under Amni\u{2019}s own chrome: no Google account, no sync, no telemetry, and DRM video plays. Amni\u{2019}s own pages use WebKitGTK.", (false, false) => "Pages render in WebKitGTK (the engine behind Safari and GNOME Web) under Amni\u{2019}s own chrome: no telemetry, no sync, your profile stays local." };
     let ai = ai_search::provider_name(&state.config);
     TUTORIAL_TPL.replace("__THEME__", &theme_root_vars(&state.themes.active_theme())).replace("__VER__", APP_VERSION).replace("__TOK__", token).replace("__BROWSERS__", "<p class='dim'>Import from Settings once you are in.</p>")
-        .replace("__ENGINE__", ENGINE).replace("__ENGINEBLURB__", blurb)
+        .replace("__ENGINE__", engine()).replace("__ENGINEBLURB__", blurb)
         .replace("__MEDIANOTE__", "Video, audio, WebRTC and DRM-protected streams play through the engine as they would in any WebKit browser. The shield blocks ad and tracker requests at the request level.")
         .replace("__STEP3__", &format!("The \u{2726} button next to the address bar (or <kbd>Alt+A</kbd>, or typing <kbd>@ai</kbd>) hands your question to {} in its own website, signed in as you. Pick the AI you subscribe to under Settings \u{2192} Ask AI. Type <kbd>@tabs</kbd>, <kbd>@history</kbd> or <kbd>@bookmarks</kbd> to search those from the bar.", esc_html(&ai)))
 }
@@ -590,7 +591,7 @@ function filt(){{const v=document.getElementById('q').value.trim().toLowerCase()
 }
 fn render_page_html(state: &BrowserState, shield: bool, token: &str, host: &str) -> Option<String> {
     match host {
-        "newtab" | "home" => Some(newtab_html(&state.themes.active_theme(), &state.bookmarks.bookmarks, ENGINE)),
+        "newtab" | "home" => Some(newtab_html(&state.themes.active_theme(), &state.bookmarks.bookmarks, engine())),
         "settings" => Some(render_settings_html(state, shield, token)),
         "downloads" => Some(render_downloads_html(state, token)),
         "history" => Some(render_history_html(state, token)),
@@ -1642,7 +1643,7 @@ impl App {
             let bm = !url.is_empty() && st.bookmarks.find_by_url(&url).is_some();
             let se = st.config.search_engine.clone();
             let engine_name = match se.as_str() { s if s.contains("duckduckgo") => "DuckDuckGo", s if s.contains("brave") => "Brave", s if s.contains("startpage") => "Startpage", s if s.contains("google") => "Google", s if s.contains("bing") => "Bing", s if s.contains("kagi") => "Kagi", _ => "the web" };
-            let bms: Vec<serde_json::Value> = match self.bookmarks_bar { true => st.bookmarks.bookmarks.iter().take(40).map(|b| serde_json::json!({"title": b.title, "url": b.url})).collect(), false => Vec::new() };
+            let bms = match self.bookmarks_bar { true => st.bookmarks.bar_json(|u| st.history.entries.iter().find(|e| e.url == u).and_then(|e| e.favicon.clone())), false => serde_json::json!({"items": [], "folders": []}) };
             (th, adl, st.downloads.downloads.len(), bm, ai_search::provider_name(&st.config), engine_name, bms)
         };
         let closed: Vec<serde_json::Value> = self.closed.iter().enumerate().rev().take(10).map(|(i, (u, t, _))| serde_json::json!({"idx": i, "url": u, "title": t})).collect();
@@ -1651,7 +1652,7 @@ impl App {
             "canBack": active.map(|t| t.can_back).unwrap_or(false), "canForward": active.map(|t| t.can_forward).unwrap_or(false), "tabs": tabs, "theme": theme,
             "zoom": active.map(|t| t.zoom).unwrap_or(1.0), "fullscreen": self.fullscreen, "maximized": self.window.is_maximized(), "canReopen": !self.closed.is_empty(),
             "shield": self.shield.get(), "blocked": self.blocker.borrow().blocked_count(), "bookmarked": bookmarked, "vault": false, "downloads": active_dl, "dlcount": dl_count, "profile": "Local",
-            "find": self.find_query, "findn": active.map(|t| t.find.0).unwrap_or(0), "findi": active.map(|t| t.find.1).unwrap_or(0), "winh": (self.window.inner_size().to_logical::<f64>(self.scale()).height).round() as i64, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": ENGINE, "decorated": self.decorated,
+            "find": self.find_query, "findn": active.map(|t| t.find.0).unwrap_or(0), "findi": active.map(|t| t.find.1).unwrap_or(0), "winh": (self.window.inner_size().to_logical::<f64>(self.scale()).height).round() as i64, "pm": "Passwords", "logins": [], "update": serde_json::Value::Null, "engine": engine(), "decorated": self.decorated,
             "ai": ai, "searchName": engine_name, "closed": closed, "bmbar": self.bookmarks_bar, "bookmarks": bookmarks, "chromeh": self.chrome_css(),
         }).to_string()
     }
@@ -1956,7 +1957,12 @@ impl App {
                 let h = self.home_url();
                 self.navigate_active(&h);
             }
-            "overlay" => { self.overlay_css = a.get("h").and_then(|h| h.parse::<u32>().ok()).unwrap_or(0); self.layout(); }
+            "overlay" => {
+                self.overlay_css = a.get("h").and_then(|h| h.parse::<u32>().ok()).unwrap_or(0);
+                #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                if self.overlay_css > self.chrome_css().saturating_add(2) { for t in &self.tabs { if let View::Cef(c) = &t.view { c.blur(); } } if let Some(c) = self.chrome.as_ref() { use gtk::prelude::WidgetExt; use wry::WebViewExtUnix; c.webview().grab_focus(); let _ = c.focus(); } super::cef_tabs::set_toolbar_focus(true); }
+                self.layout();
+            }
             "win_min" => self.window.set_minimized(true),
             "win_max" => { let m = !self.window.is_maximized(); self.window.set_maximized(m); }
             "win_close" => { self.shutdown(); std::process::exit(0); }
@@ -2551,7 +2557,7 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
     a.layout();
     a.sync_title();
     a.focus_content();
-    info!("  Engine: {} \u{2014} {} tab(s), chrome {}px, frameless={}", ENGINE, a.tabs.len(), a.chrome_px(), !decorated);
+    info!("  Engine: {} \u{2014} {} tab(s), chrome {}px, frameless={}", engine(), a.tabs.len(), a.chrome_px(), !decorated);
     *app.borrow_mut() = Some(a);
     let app_loop = app.clone();
     let mut mods = ModifiersState::empty();
@@ -2562,7 +2568,12 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
             Event::WindowEvent { event: WindowEvent::KeyboardInput { event: key, .. }, .. } if key.state == ElementState::Pressed => {
                 let k = match &key.logical_key { Key::Character(c) => c.to_lowercase(), Key::Tab => "tab".into(), Key::F5 => "f5".into(), Key::F11 => "f11".into(), Key::F12 => "f12".into(), Key::Escape => "escape".into(), Key::ArrowLeft => "arrowleft".into(), Key::ArrowRight => "arrowright".into(), Key::Home => "home".into(), _ => String::new() };
                 let plain = matches!(k.as_str(), "f5" | "f11" | "f12" | "escape");
-                if !k.is_empty() && (mods.control_key() || mods.alt_key() || plain) { if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { a.handle_key(&k, mods.shift_key(), mods.alt_key()); } } }
+                #[cfg(target_os = "linux")]
+                let live = gtk::gdk::Display::default().and_then(|d| gtk::gdk::Keymap::for_display(&d)).map(|km| km.modifier_state());
+                #[cfg(not(target_os = "linux"))]
+                let live: Option<u32> = None;
+                let (ctrl, alt, shift) = live.map(|m| (m & 4 != 0, m & 8 != 0, m & 1 != 0)).unwrap_or((mods.control_key(), mods.alt_key(), mods.shift_key()));
+                if !k.is_empty() && (ctrl || alt || plain) { if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { a.handle_key(&k, shift, alt); } } }
             }
             Event::UserEvent(()) => {
                 let pending: Vec<Ev> = std::mem::take(&mut *events.borrow_mut());
