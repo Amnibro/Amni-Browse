@@ -1,3 +1,12 @@
+## 0.15.1 - 2026-09-25 — Quick links bar, Widevine without Chrome
+
+- **The quick links bar is readable.** Items no longer shrink to slivers: each keeps its full name (up to 180px) with the site's icon, and what doesn't fit goes into a » menu. Folders become dropdown chips at the start of the bar (Chrome-style: items in "Bookmarks bar" or no folder sit on the bar; "Other bookmarks" goes last), with subfolders grouped and "Open all in new tabs". Right-click a link for new tab, private tab, Edit (name, address, folder in place) or Remove; drag to reorder or onto a folder to move it; the pencil opens the bookmark manager. The bar is 34px tall.
+- **DRM video works without Google Chrome.** When Chrome's Widevine isn't installed, Browse fetches the Widevine CDM from Google's component updater (the same source Chrome uses), checks its SHA-256, and uses it from the next start.
+- **Escape closes the menu**, and typing works in toolbar popups over a Chromium page: opening any toolbar overlay moves the keyboard to the toolbar, and a click inside a covered page no longer pulls focus back into it.
+- **Select all, then typing, no longer triggers shortcuts** (Ctrl+A then "hello" gave Ctrl+H, Ctrl+E, Ctrl+L): shortcuts read the live modifier state instead of a tracked one that missed Ctrl's release.
+- The welcome and new-tab pages name the real engine (Chromium on Linux).
+- The Servo stylesheet test passes again (a comment contained the text it forbids).
+
 ## 0.15.0 - 2026-09-25 — Chromium engine on Linux
 
 - **Web pages now render with Chromium (CEF 152) on Linux**, under the same Amni toolbar. DRM video (Netflix, Crunchyroll, Widevine) plays, and sites that broke on WebKitGTK work. Amni's own pages still use WebKitGTK. `AMNI_ENGINE=webkit` (or `--engine=webkit`) switches back.

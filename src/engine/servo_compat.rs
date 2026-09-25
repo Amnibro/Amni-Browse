@@ -18,7 +18,7 @@ pub fn stylesheet() -> String {
         "/* amni servo-compat r{rev} */\
 \
 /* Forms / editors: normalize stretch only. Never force padding — that shifts\
-   caret/text inside fields (x.com). Never set html{{font-stretch}} — that\
+   caret/text inside fields (x.com). Never set font-stretch on the html element — that\
    breaks icon fonts and brand webfonts (Cloudflare docs, etc.). */\
 input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):\
 not([type=file]):not([type=image]):not([type=hidden]):not([type=submit]):\

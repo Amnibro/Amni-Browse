@@ -32,13 +32,44 @@ pub fn subprocess() -> Option<i32> {
     sub.then(|| execute_process(Some(args.as_main_args()), Some(&mut AmniApp::new()), std::ptr::null_mut()))
 }
 fn runtime_dir() -> PathBuf { std::env::var_os("AMNI_CEF_DIR").map(PathBuf::from).unwrap_or_else(|| std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)).unwrap_or_default()) }
+const WV_ID: &str = "oimompecagnajdejgnnjijobebaeigek";
+const WV_LIB: &str = "_platform_specific/linux_x64/libwidevinecdm.so";
+fn wv_hint(root: &Path, dir: &Path) { let d = root.join("WidevineCdm"); let _ = std::fs::create_dir_all(&d); let _ = std::fs::write(d.join("latest-component-updated-widevine-cdm"), format!("{{\"Path\":{:?}}}", dir.to_string_lossy())); }
+fn wv_downloaded(root: &Path) -> Option<PathBuf> { std::fs::read_dir(root.join("WidevineCdm")).ok()?.flatten().map(|e| e.path()).filter(|p| p.join("manifest.json").exists() && p.join(WV_LIB).exists()).max() }
 fn seed_widevine(root: &Path) {
-    let src = Path::new("/opt/google/chrome/WidevineCdm");
-    let dst = root.join("WidevineCdm");
-    let hint = dst.join("latest-component-updated-widevine-cdm");
-    if !src.join("manifest.json").exists() || hint.exists() { return; }
-    let _ = std::fs::create_dir_all(&dst);
-    let _ = std::fs::write(&hint, format!("{{\"Path\":{:?}}}", src.to_string_lossy()));
+    let chrome = PathBuf::from(std::env::var_os("AMNI_CHROME_WIDEVINE").unwrap_or_else(|| "/opt/google/chrome/WidevineCdm".into()));
+    match Some(chrome).filter(|c| c.join("manifest.json").exists() && c.join(WV_LIB).exists()).or_else(|| wv_downloaded(root)) {
+        Some(d) => wv_hint(root, &d),
+        None => { let r = root.to_path_buf(); std::thread::spawn(move || match fetch_widevine(&r) { Ok(v) => log::info!("widevine {} downloaded; DRM video works from the next start", v), Err(e) => log::warn!("widevine download failed: {}", e) }); }
+    }
+}
+fn fetch_widevine(root: &Path) -> Result<String, String> {
+    use sha2::Digest;
+    let body = serde_json::json!({"request": {"@os": "linux", "@updater": "chrome", "acceptformat": "crx3", "app": [{"appid": WV_ID, "updatecheck": {}, "version": "0.0.0.0"}], "arch": "x64", "dedup": "cr", "ismachine": false, "os": {"arch": "x86_64", "platform": "Linux", "version": "6.0"}, "prodversion": "152.0.7977.83", "protocol": "3.1", "updaterversion": "152.0.7977.83"}});
+    let c = reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(180)).build().map_err(|e| e.to_string())?;
+    let txt = c.post("https://update.googleapis.com/service/update2/json").json(&body).send().and_then(|r| r.error_for_status()).and_then(|r| r.text()).map_err(|e| e.to_string())?;
+    let v: serde_json::Value = serde_json::from_str(&txt[txt.find('{').ok_or("empty reply")?..]).map_err(|e| e.to_string())?;
+    let u = &v["response"]["app"][0]["updatecheck"];
+    let ver = u["manifest"]["version"].as_str().filter(|x| !x.is_empty() && x.chars().all(|ch| ch.is_ascii_digit() || ch == '.')).ok_or("no version")?.to_string();
+    let pkg = &u["manifest"]["packages"]["package"][0];
+    let (name, sha) = (pkg["name"].as_str().ok_or("no package")?, pkg["hash_sha256"].as_str().ok_or("no checksum")?);
+    let base = u["urls"]["url"].as_array().and_then(|a| a.iter().filter_map(|x| x["codebase"].as_str()).find(|x| x.starts_with("https://"))).ok_or("no https download")?;
+    let crx = c.get(format!("{}{}", base, name)).send().and_then(|r| r.error_for_status()).and_then(|r| r.bytes()).map_err(|e| e.to_string())?;
+    if format!("{:x}", sha2::Sha256::digest(&crx)) != sha { return Err("checksum mismatch".into()); }
+    if crx.len() < 12 || &crx[..4] != b"Cr24" { return Err("not a CRX3 package".into()); }
+    let zip = crx.get(12 + u32::from_le_bytes([crx[8], crx[9], crx[10], crx[11]]) as usize..).ok_or("truncated package")?;
+    let dst = root.join("WidevineCdm").join(&ver);
+    let tmp = root.join("WidevineCdm").join(format!(".{}.part", ver));
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+    std::fs::write(tmp.join("cdm.zip"), zip).map_err(|e| e.to_string())?;
+    let ok = std::process::Command::new("bsdtar").arg("-xf").arg(tmp.join("cdm.zip")).arg("-C").arg(&tmp).status().map(|s| s.success()).unwrap_or(false);
+    let _ = std::fs::remove_file(tmp.join("cdm.zip"));
+    if !ok || !tmp.join(WV_LIB).exists() || !tmp.join("manifest.json").exists() { let _ = std::fs::remove_dir_all(&tmp); return Err("unpacking failed".into()); }
+    let _ = std::fs::remove_dir_all(&dst);
+    std::fs::rename(&tmp, &dst).map_err(|e| e.to_string())?;
+    wv_hint(root, &dst);
+    Ok(ver)
 }
 pub fn init(data_dir: &Path) -> bool {
     if !requested() { let _ = ON.set(false); return false; }
@@ -368,7 +399,7 @@ pub fn watch_clicks() {
                 (xl.XTranslateCoordinates)(d, holder, root, 0, 0, &mut hx, &mut hy, &mut ch);
                 let mut a: xlib::XWindowAttributes = std::mem::zeroed();
                 (xl.XGetWindowAttributes)(d, holder, &mut a);
-                if rx >= hx && ry >= hy && rx < hx + a.width && ry < hy + a.height {
+                if a.map_state == xlib::IsViewable && rx >= hx && ry >= hy && rx < hx + a.width && ry < hy + a.height {
                     TOOLBAR_KBD.with(|t| t.set(false));
                     set_x_focus(cef);
                     push(CefEv::PageClick);
