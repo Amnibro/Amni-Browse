@@ -17,7 +17,7 @@ pub fn drain() -> Vec<CefEv> { QUEUE.with(|q| std::mem::take(&mut *q.borrow_mut(
 pub fn set_wake(f: impl Fn() + 'static) { WAKE.with(|w| *w.borrow_mut() = Some(Box::new(f))); }
 pub fn set_nav_filter(f: impl Fn(u64, &str) -> bool + 'static) { NAV.with(|n| *n.borrow_mut() = Some(Box::new(f))); }
 pub fn set_page_script(js: &str) { SCRIPT.with(|s| *s.borrow_mut() = format!("if(!window.__amniCef){{window.__amniCef=1;window.ipc=window.ipc||{{postMessage:function(m){{console.log({:?}+m)}}}};{}}}", IPC_TAG, js)); }
-pub fn requested() -> bool { std::env::var("AMNI_ENGINE").map(|v| v == "cef").unwrap_or(false) || std::env::args().any(|a| a == "--engine=cef") }
+pub fn requested() -> bool { std::env::var("AMNI_ENGINE").map(|v| v != "webkit").unwrap_or(true) && !std::env::args().any(|a| a == "--engine=webkit") }
 pub fn enabled() -> bool { *ON.get().unwrap_or(&false) }
 pub fn wants(url: &str) -> bool { enabled() && (url.starts_with("http://") || url.starts_with("https://") || url.starts_with("about:")) && !url.starts_with("http://amnibrowse.") }
 fn s(c: Option<&CefString>) -> String { c.map(|x| x.to_string()).unwrap_or_default() }
@@ -44,12 +44,51 @@ pub fn init(data_dir: &Path) -> bool {
     let root = data_dir.join("cef");
     let _ = std::fs::create_dir_all(&root);
     seed_widevine(&root);
+    wipe_pending(&root);
     let args = cef::args::Args::new();
     let settings = Settings { no_sandbox: 1, browser_subprocess_path: CefString::from(exe.to_string_lossy().as_ref()), resources_dir_path: CefString::from(dir.to_string_lossy().as_ref()), locales_dir_path: CefString::from(dir.join("locales").to_string_lossy().as_ref()), root_cache_path: CefString::from(root.to_string_lossy().as_ref()), cache_path: CefString::from(root.join("Default").to_string_lossy().as_ref()), persist_session_cookies: 1, log_severity: LogSeverity::WARNING, ..Default::default() };
     let ok = initialize(Some(args.as_main_args()), Some(&settings), Some(&mut AmniApp::new()), std::ptr::null_mut()) == 1;
     let _ = ON.set(ok);
-    if ok { gtk::glib::timeout_add_local(std::time::Duration::from_millis(4), || { do_message_loop_work(); gtk::glib::ControlFlow::Continue }); }
+    if ok {
+        gtk::glib::timeout_add_local(std::time::Duration::from_millis(4), || { do_message_loop_work(); gtk::glib::ControlFlow::Continue });
+        gtk::glib::timeout_add_local_once(std::time::Duration::from_millis(1500), move || import_webkit_cookies(&root));
+    }
     ok
+}
+fn basetime(unix: i64) -> Basetime { Basetime { val: (unix + 11_644_473_600) * 1_000_000 } }
+fn import_webkit_cookies(root: &Path) {
+    let mark = root.join(".webkit-cookies-imported");
+    if mark.exists() { return; }
+    let src = dirs::data_local_dir().unwrap_or_default().join("amni-browse").join("cookies");
+    let Ok(txt) = std::fs::read_to_string(&src) else { let _ = std::fs::write(&mark, "0"); return };
+    let Some(cm) = cookie_manager_get_global_manager(None) else { return };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let n: i32 = txt.lines().filter_map(|line| {
+        let (http_only, l) = line.strip_prefix("#HttpOnly_").map(|r| (true, r)).unwrap_or((false, line));
+        let f: Vec<&str> = l.split('\t').collect();
+        (!l.starts_with('#') && f.len() >= 7).then_some(())?;
+        let (secure, exp) = (f[3] == "TRUE", f[4].parse::<i64>().unwrap_or(0));
+        (exp == 0 || exp > now).then_some(())?;
+        let url = format!("{}://{}{}", if secure { "https" } else { "http" }, f[0].trim_start_matches('.'), f[2]);
+        let c = Cookie { name: CefString::from(f[5]), value: CefString::from(f[6..].join("\t").as_str()), domain: CefString::from(f[0]), path: CefString::from(f[2]), secure: secure as _, httponly: http_only as _, creation: basetime(now), last_access: basetime(now), has_expires: (exp != 0) as _, expires: basetime(exp), same_site: CookieSameSite::UNSPECIFIED, priority: CookiePriority::MEDIUM, ..Default::default() };
+        Some(cm.set_cookie(Some(&CefString::from(url.as_str())), Some(&c), None))
+    }).sum();
+    cm.flush_store(None);
+    let _ = std::fs::write(&mark, n.to_string());
+    log::info!("imported {} WebKit cookies into Chromium", n);
+}
+const SITE_DATA: [&str; 10] = ["Local Storage", "Session Storage", "IndexedDB", "Service Worker", "Cache", "Code Cache", "GPUCache", "blob_storage", "File System", "WebStorage"];
+fn wipe_pending(root: &Path) {
+    let mark = root.join(".wipe-site-data");
+    if !mark.exists() { return; }
+    SITE_DATA.iter().for_each(|d| { let _ = std::fs::remove_dir_all(root.join("Default").join(d)); });
+    let _ = std::fs::remove_file(mark);
+}
+pub fn clear_data(root: &Path, tabs: &[&CefTab]) {
+    if !enabled() { return; }
+    if let Some(m) = cookie_manager_get_global_manager(None) { m.delete_cookies(None, None, None); m.flush_store(None); }
+    tabs.iter().filter_map(|t| t.host()).for_each(|h| { h.execute_dev_tools_method(0, Some(&CefString::from("Network.clearBrowserCache")), None); });
+    let _ = std::fs::write(root.join("cef").join(".wipe-site-data"), b"1");
 }
 pub fn shutdown_all() { if enabled() { for _ in 0..30 { do_message_loop_work(); std::thread::sleep(std::time::Duration::from_millis(10)); } shutdown(); } }
 wrap_app! {

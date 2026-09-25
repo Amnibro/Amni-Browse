@@ -1660,6 +1660,8 @@ impl App {
                 dm.clear(WebsiteDataTypes::all(), webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
             }
         }
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        super::cef_tabs::clear_data(&crate::storage::config::BrowserConfig::config_dir(), &self.tabs.iter().filter_map(|t| match &t.view { View::Cef(c) => Some(c), _ => None }).collect::<Vec<_>>());
     }
     #[cfg(windows)]
     fn clear_browsing_data(&self, kinds: COREWEBVIEW2_BROWSING_DATA_KINDS) {
