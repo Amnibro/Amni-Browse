@@ -1,5 +1,5 @@
 use std::{borrow::Cow, cell::{Cell, RefCell}, collections::HashMap, path::PathBuf, rc::Rc, time::Instant};
-use log::{info, warn};
+use log::{debug, info, warn};
 use tao::{dpi::{LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize}, event::{ElementState, Event, WindowEvent}, event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy}, keyboard::{Key, ModifiersState}, window::{Fullscreen, Window, WindowBuilder}};
 use wry::{http, PageLoadEvent, Rect, WebContext, WebView, WebViewBuilder};
 #[cfg(windows)]
@@ -86,8 +86,45 @@ enum Ev {
     Upgrade(u64, String),
     Tick,
 }
+enum View { Wry(WebView), #[cfg(all(feature = "cef-engine", target_os = "linux"))] Cef(super::cef_tabs::CefTab) }
+impl View {
+    fn wry(&self) -> Option<&WebView> { match self { View::Wry(v) => Some(v), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(_) => None } }
+    #[cfg(not(windows))]
+    fn webview(&self) -> Option<webkit2gtk::WebView> { use wry::WebViewExtUnix; self.wry().map(|v| v.webview()) }
+    fn evaluate_script(&self, js: &str) -> wry::Result<()> { match self { View::Wry(v) => v.evaluate_script(js), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => { c.eval(js); Ok(()) } } }
+    fn load_url(&self, u: &str) -> wry::Result<()> { match self { View::Wry(v) => v.load_url(u), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => { c.load_url(u); Ok(()) } } }
+    fn load_html(&self, h: &str) -> wry::Result<()> { match self { View::Wry(v) => v.load_html(h), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => { c.load_url(&format!("data:text/html;charset=utf-8,{}", urlencoding::encode(h))); Ok(()) } } }
+    fn zoom(&self, z: f64) -> wry::Result<()> { match self { View::Wry(v) => v.zoom(z), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => { c.zoom(z); Ok(()) } } }
+    fn set_visible(&self, on: bool) -> wry::Result<()> { match self { View::Wry(v) => v.set_visible(on), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => { c.set_visible(on); Ok(()) } } }
+    fn print(&self) -> wry::Result<()> { match self { View::Wry(v) => v.print(), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => { c.print(); Ok(()) } } }
+    fn focus(&self) -> wry::Result<()> { match self { View::Wry(v) => v.focus(), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => { c.focus(); Ok(()) } } }
+    fn open_devtools(&self) { match self { View::Wry(v) => v.open_devtools(), #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => c.devtools() } }
+    #[cfg(not(windows))]
+    fn go_back(&self) { use webkit2gtk::WebViewExt; match self { View::Wry(_) => { if let Some(w) = self.webview() { w.go_back(); } } #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => c.go_back() } }
+    #[cfg(not(windows))]
+    fn go_forward(&self) { use webkit2gtk::WebViewExt; match self { View::Wry(_) => { if let Some(w) = self.webview() { w.go_forward(); } } #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => c.go_forward() } }
+    #[cfg(not(windows))]
+    fn reload(&self, hard: bool) { use webkit2gtk::WebViewExt; match self { View::Wry(_) => { if let Some(w) = self.webview() { if hard { w.reload_bypass_cache() } else { w.reload() } } } #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => c.reload(hard) } }
+    #[cfg(not(windows))]
+    fn stop(&self) { use webkit2gtk::WebViewExt; match self { View::Wry(_) => { if let Some(w) = self.webview() { w.stop_loading(); } } #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => c.stop() } }
+    #[cfg(not(windows))]
+    fn mute(&self, on: bool) { use webkit2gtk::WebViewExt; match self { View::Wry(_) => { if let Some(w) = self.webview() { w.set_is_muted(on); } } #[cfg(all(feature = "cef-engine", target_os = "linux"))] View::Cef(c) => c.mute(on) } }
+    fn is_cef(&self) -> bool { self.wry().is_none() }
+}
+fn ipc_ev(uid: u64, body: &str) -> Option<Ev> {
+    let v = serde_json::from_str::<serde_json::Value>(body).ok()?;
+    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+    match v.get("type").and_then(|t| t.as_str()) {
+        Some("key") => Some(Ev::Key(uid, s("k"), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)),
+        Some("icon") => Some(s("href")).filter(|h| !h.is_empty()).map(|h| Ev::Favicon(uid, h)),
+        Some("open") => Some(s("href")).filter(|h| h.starts_with("http") || h.starts_with("file:")).map(|h| Ev::Open(uid, h, v.get("bg").and_then(|b| b.as_i64()).unwrap_or(1) == 1)),
+        Some("sel") => Some(Ev::Sel(uid, s("purpose"), s("text"))),
+        Some("find") => Some(Ev::Find(uid, v.get("n").and_then(|n| n.as_u64()).unwrap_or(0) as u32, v.get("i").and_then(|n| n.as_u64()).unwrap_or(0) as u32)),
+        _ => None,
+    }
+}
 struct Tab {
-    uid: u64, view: WebView, core: Option<Core>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String>,
+    uid: u64, view: View, core: Option<Core>, url: String, title: String, private: bool, loading: bool, zoom: f64, can_back: bool, can_forward: bool, icon: Option<String>, audio: bool, pinned: bool, group: Option<String>,
     muted: bool,
     /// Memory saver unloaded the page; `url` is reloaded when the tab is shown again.
     discarded: bool,
@@ -101,7 +138,7 @@ struct Tab {
     find: (u32, u32),
 }
 #[cfg(not(windows))]
-struct PendingPerm { id: u64, uid: u64, kind: PermissionType, origin: String, req: webkit2gtk::PermissionRequest }
+struct PendingPerm { id: u64, uid: u64, kind: PermissionType, origin: String, answer: Box<dyn FnOnce(bool)> }
 struct App {
     window: Window,
     #[cfg(not(windows))]
@@ -125,6 +162,8 @@ struct App {
     token: String,
     next_uid: u64,
     overlay_css: u32,
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    backdrop: Rc<RefCell<Option<(f64, f64, gtk::cairo::ImageSurface)>>>,
     /// Last placed chrome and content rectangles. Resize events fire while a page
     /// is scrolled or hovered; re-placing an unchanged webview repaints the omnibar.
     last_chrome: Cell<(i32, i32, u32, u32)>,
@@ -184,12 +223,12 @@ fn is_local_host(url: &str) -> bool {
 }
 /// GTK "Save as" for downloads when Settings → Downloads asks where to save each file.
 #[cfg(not(windows))]
-fn pick_save_path(suggested: &std::path::Path) -> Option<PathBuf> {
+fn pick_path(suggested: &std::path::Path, save: bool) -> Option<PathBuf> {
     use gtk::prelude::{DialogExt, FileChooserExt, GtkWindowExt, WidgetExt};
-    let dlg = gtk::FileChooserDialog::with_buttons::<gtk::Window>(Some("Save file"), None, gtk::FileChooserAction::Save, &[("Cancel", gtk::ResponseType::Cancel), ("Save", gtk::ResponseType::Accept)]);
-    dlg.set_do_overwrite_confirmation(true);
+    let dlg = gtk::FileChooserDialog::with_buttons::<gtk::Window>(Some(if save { "Save file" } else { "Open file" }), None, if save { gtk::FileChooserAction::Save } else { gtk::FileChooserAction::Open }, &[("Cancel", gtk::ResponseType::Cancel), (if save { "Save" } else { "Open" }, gtk::ResponseType::Accept)]);
+    dlg.set_do_overwrite_confirmation(save);
     if let Some(dir) = suggested.parent() { let _ = dlg.set_current_folder(dir); }
-    if let Some(name) = suggested.file_name() { dlg.set_current_name(name.to_string_lossy().as_ref()); }
+    if let Some(name) = suggested.file_name().filter(|_| save) { dlg.set_current_name(name.to_string_lossy().as_ref()); }
     dlg.set_modal(true);
     let r = dlg.run();
     let out = match r == gtk::ResponseType::Accept { true => dlg.filename(), false => None };
@@ -240,7 +279,7 @@ fn focus_on_click(v: &WebView) {
     use wry::WebViewExtUnix;
     let wv = v.webview();
     wv.set_can_focus(true);
-    wv.connect_button_press_event(|w, _| { if !w.has_focus() { w.grab_focus(); } gtk::glib::Propagation::Proceed });
+    wv.connect_button_press_event(|w, _| { #[cfg(all(feature = "cef-engine", target_os = "linux"))] super::cef_tabs::grab_x_focus(); if !w.has_focus() { w.grab_focus(); } gtk::glib::Propagation::Proceed });
 }
 /// gtk::Layout, not gtk::Fixed: a Fixed re-allocates children at their original put() spot with
 /// their original size request on every pass, so views stayed the size the window opened at and
@@ -555,6 +594,7 @@ fn render_page_html(state: &BrowserState, shield: bool, token: &str, host: &str)
         "settings" => Some(render_settings_html(state, shield, token)),
         "downloads" => Some(render_downloads_html(state, token)),
         "history" => Some(render_history_html(state, token)),
+        "bookmarks" => Some(include_str!("../../assets/pages/bookmarks.html").replace("__THEME__", &theme_root_vars(&state.themes.active_theme())).replace("__TOKEN__", &format!("{:?}", token))),
         "tutorial" => Some(render_tutorial_html(state, token)),
         _ => None,
     }
@@ -898,6 +938,13 @@ impl App {
         self.chrome_canvas.queue_resize();
         self.overlay.check_resize();
     }
+    fn place_view(&self, v: &View, r: Rect) {
+        match v {
+            View::Wry(w) => self.place(w, r),
+            #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+            View::Cef(c) => { let s = self.scale(); let p = r.position.to_physical::<i32>(s); let z = r.size.to_physical::<u32>(s); c.place((p.x, p.y, z.width as i32, z.height as i32)); }
+        }
+    }
     fn frame_px(&self) -> u32 { match self.decorated || self.fullscreen || self.page_fullscreen || self.window.is_maximized() { true => 0, false => (FRAME_CSS * self.scale()).round() as u32 } }
     fn chrome_css(&self) -> u32 { SERVO_CHROME_HEIGHT_CSS + match self.bookmarks_bar { true => BOOKMARKS_BAR_CSS, false => 0 } }
     fn chrome_px(&self) -> u32 { match self.fullscreen || self.page_fullscreen { true => 0, false => (self.chrome_css() as f64 * self.scale()).round() as u32 } }
@@ -948,6 +995,15 @@ impl App {
         }
     }
     fn layout(&self) {
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        {
+            use gtk::prelude::WidgetExt;
+            let expanded = self.overlay_css > self.chrome_css().saturating_add(2);
+            let has = self.backdrop.borrow().is_some();
+            if expanded && !has { if let Some(View::Cef(c)) = self.active_tab().map(|t| &t.view) { if let Some((x, y, sf)) = c.snapshot() { let sc = self.scale(); sf.set_device_scale(sc, sc); *self.backdrop.borrow_mut() = Some((x as f64 / sc, y as f64 / sc, sf)); } } }
+            if !expanded && has { *self.backdrop.borrow_mut() = None; }
+            if expanded != has { self.canvas.queue_draw(); }
+        }
         let hide_chrome = self.fullscreen || self.page_fullscreen;
         let scale = self.scale();
         if let Some(c) = self.chrome.as_ref() {
@@ -969,9 +1025,14 @@ impl App {
         let rk = Self::rect_key(&r, scale);
         let moved = self.last_content.get() != rk;
         if moved { self.last_content.set(rk); }
+        let expanded = self.overlay_css > self.chrome_css().saturating_add(2);
         for (i, t) in self.tabs.iter().enumerate() {
-            if moved { self.place(&t.view, r); }
-            let _ = t.view.set_visible(i == self.active);
+            if moved { self.place_view(&t.view, r); }
+            match &t.view {
+                #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                View::Cef(c) => c.show(i == self.active, i == self.active && !expanded),
+                v => { let _ = v.set_visible(i == self.active); let _ = expanded; }
+            }
         }
         if moved { self.raise_chrome(); }
     }
@@ -993,27 +1054,19 @@ impl App {
     fn open_devtools(&self) { self.with_core(|c| unsafe { let _ = c.OpenDevToolsWindow(); }); }
     #[cfg(not(windows))]
     fn go_back(&self) {
-        use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
-        if let Some(t) = self.active_tab() { t.view.webview().go_back(); }
+        if let Some(t) = self.active_tab() { t.view.go_back(); }
     }
     #[cfg(not(windows))]
     fn go_forward(&self) {
-        use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
-        if let Some(t) = self.active_tab() { t.view.webview().go_forward(); }
+        if let Some(t) = self.active_tab() { t.view.go_forward(); }
     }
     #[cfg(not(windows))]
     fn reload_page(&self) {
-        use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
-        if let Some(t) = self.active_tab() { t.view.webview().reload(); }
+        if let Some(t) = self.active_tab() { t.view.reload(false); }
     }
     #[cfg(not(windows))]
     fn stop_page(&self) {
-        use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
-        if let Some(t) = self.active_tab() { t.view.webview().stop_loading(); }
+        if let Some(t) = self.active_tab() { t.view.stop(); }
     }
     #[cfg(not(windows))]
     fn open_devtools(&self) { if let Some(t) = self.active_tab() { t.view.open_devtools(); } }
@@ -1034,9 +1087,61 @@ impl App {
     }
     fn reshield(&mut self) {
         #[cfg(not(windows))]
-        for t in &self.tabs { attach_filter(&t.view, self.filter, self.shield.get()); }
+        for t in &self.tabs { if let Some(v) = t.view.wry() { attach_filter(v, self.filter, self.shield.get()); } }
+    }
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    fn spawn_cef_tab(&mut self, url: &str, private: bool, at: Option<usize>) -> Option<usize> {
+        let uid = self.next_uid;
+        let (s, r) = (self.scale(), self.content_rect());
+        let (p, z) = (r.position.to_physical::<i32>(s), r.size.to_physical::<u32>(s));
+        let c = super::cef_tabs::CefTab::new(uid, &self.canvas, (p.x, p.y, z.width as i32, z.height as i32), url, private)?;
+        self.next_uid += 1;
+        let zoom = self.site_zoom_for(url).unwrap_or(self.state().config.default_zoom);
+        c.zoom(zoom);
+        let tab = Tab { uid, view: View::Cef(c), core: None, url: url.to_string(), title: String::new(), private, loading: true, zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None, muted: false, discarded: false, last_active: Instant::now(), inject: None, upgraded_from: None, tls: None, find: (0, 0) };
+        let idx = at.unwrap_or(self.tabs.len()).min(self.tabs.len());
+        self.tabs.insert(idx, tab);
+        Some(idx)
+    }
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    fn cef_event(&mut self, e: super::cef_tabs::CefEv) {
+        use super::cef_tabs::CefEv as C;
+        match e {
+            C::DlWanted(id, url, name) => {
+                let dir = self.downloads_dir();
+                std::fs::create_dir_all(&dir).ok();
+                let fallback = unique_path(&dir, &sanitize_filename(if name.trim().is_empty() { "download" } else { &name }));
+                match if self.ask_dl_location.get() { pick_path(&fallback, true) } else { Some(fallback) } {
+                    Some(p) => { super::cef_tabs::download_to(id, &p); self.handle(Ev::DlStart(format!("cef{}", id), url, p.to_string_lossy().to_string(), None)); }
+                    None => super::cef_tabs::cancel_download(id),
+                }
+            }
+            C::DlProgress(id, got, total) => {
+                let mut st = self.state_mut();
+                if let Some(d) = st.downloads.downloads.iter_mut().find(|d| d.id == format!("cef{}", id)) { d.downloaded_bytes = got.max(0) as u64; if total > 0 { d.total_bytes = Some(total as u64); } }
+            }
+            C::DlDone(id, ok, path) => self.handle(Ev::DlState(format!("cef{}", id), if ok { DL_COMPLETED } else { DL_INTERRUPTED }, path)),
+            C::Perm(u, kind, origin, answer) => {
+                let host = origin_of(&origin);
+                debug!("permission {:?} for {} (tab {})", kind, host, u);
+                let stored = self.state().permissions.get_permission(&format!("https://{}/", host), &kind);
+                match stored { PermissionState::Allow => answer(true), PermissionState::Deny => answer(false), PermissionState::Ask => self.prompt_permission(u, kind, host, answer) }
+            }
+            C::Relaunch(url) => self.handle_single_instance(crate::net::single_instance::SingleInstanceMessage { url, private: false }),
+            C::PageClick => self.chrome_js("try{document.activeElement&&document.activeElement.blur()}catch(e){}"),
+            C::Focused(u) => { if self.tab_index(u) == Some(self.active) { self.chrome_js("try{document.activeElement&&document.activeElement.blur()}catch(e){}"); } }
+            C::Title(u, t) => self.handle(Ev::Title(u, t)),
+            C::Address(u, url) => { let l = self.tab_index(u).map(|i| self.tabs[i].loading).unwrap_or(true); self.handle(Ev::Load(u, l, url)) }
+            C::Loading(u, l, b, f) => { self.handle(Ev::History(u, b, f)); let url = self.tab_index(u).map(|i| self.tabs[i].url.clone()).unwrap_or_default(); self.handle(Ev::Load(u, l, url)) }
+            C::Popup(url) => self.handle(Ev::Popup(url)),
+            C::Ipc(u, body) => { if let Some(ev) = ipc_ev(u, &body) { self.handle(ev) } }
+            C::Fullscreen(u, on) => self.handle(Ev::PageFullscreen(u, on)),
+            C::Created(u) => { debug!("cef created {} active={:?}", u, self.active_tab().map(|t| t.uid)); self.last_content.set((0, 0, 0, 0)); self.layout(); }
+        }
     }
     fn spawn_tab(&mut self, url: &str, private: bool, at: Option<usize>) -> usize {
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if super::cef_tabs::wants(url) { if let Some(i) = self.spawn_cef_tab(url, private, at) { debug!("tab {} cef {}", self.tabs[i].uid, url); return i; } }
         let uid = self.next_uid;
         self.next_uid += 1;
         let push = self.pusher();
@@ -1107,19 +1212,7 @@ impl App {
             .with_new_window_req_handler(move |u| { match wants_native_popup(&u) { true => true, false => { p1(Ev::Popup(u)); false } } })
             .with_document_title_changed_handler(move |t| p2(Ev::Title(uid, t)))
             .with_on_page_load_handler(move |e, u| p3(Ev::Load(uid, matches!(e, PageLoadEvent::Started), u)))
-            .with_ipc_handler(move |req| {
-                if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) {
-                    let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-                    match v.get("type").and_then(|t| t.as_str()) {
-                        Some("key") => p4(Ev::Key(uid, s("k"), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)),
-                        Some("icon") => { let h = s("href"); if !h.is_empty() { p4(Ev::Favicon(uid, h)); } }
-                        Some("open") => { let h = s("href"); if h.starts_with("http") || h.starts_with("file:") { p4(Ev::Open(uid, h, v.get("bg").and_then(|b| b.as_i64()).unwrap_or(1) == 1)); } }
-                        Some("sel") => p4(Ev::Sel(uid, s("purpose"), s("text"))),
-                        Some("find") => p4(Ev::Find(uid, v.get("n").and_then(|n| n.as_u64()).unwrap_or(0) as u32, v.get("i").and_then(|n| n.as_u64()).unwrap_or(0) as u32)),
-                        _ => {}
-                    }
-                }
-            });
+            .with_ipc_handler(move |req| { if let Some(e) = ipc_ev(uid, req.body()) { p4(e); } });
 
         if attach_downloads {
             let dl_dir_c = dl_dir.clone();
@@ -1130,7 +1223,7 @@ impl App {
                 *path = unique_path(&dl_dir_c, &name);
                 #[cfg(not(windows))]
                 if ask_where.get() {
-                    match pick_save_path(path) { Some(p) => *path = p, None => { info!("download: cancelled by user {}", u); return false; } }
+                    match pick_path(path, true) { Some(p) => *path = p, None => { info!("download: cancelled by user {}", u); return false; } }
                 }
                 #[cfg(windows)]
                 let _ = &ask_where;
@@ -1159,7 +1252,7 @@ impl App {
         let core = wire_engine(&view, uid, push, self.blocker.clone(), self.shield.clone(), dnt, autofill, self.state.clone());
         let zoom = self.site_zoom_for(url).unwrap_or(default_zoom);
         let _ = view.zoom(zoom.max(0.25));
-        let tab = Tab { uid, view, core, url: url.to_string(), title: String::new(), private, loading: true, zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None, muted: false, discarded: false, last_active: Instant::now(), inject: None, upgraded_from: None, #[cfg(not(windows))] tls: None, find: (0, 0) };
+        let tab = Tab { uid, view: View::Wry(view), core, url: url.to_string(), title: String::new(), private, loading: true, zoom, can_back: false, can_forward: false, icon: None, audio: false, pinned: false, group: None, muted: false, discarded: false, last_active: Instant::now(), inject: None, upgraded_from: None, #[cfg(not(windows))] tls: None, find: (0, 0) };
         let idx = at.unwrap_or(self.tabs.len()).min(self.tabs.len());
         self.tabs.insert(idx, tab);
         self.raise_chrome();
@@ -1202,9 +1295,7 @@ impl App {
     }
     #[cfg(not(windows))]
     fn mute_tab(&mut self, idx: usize) {
-        use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
-        if let Some(t) = self.tabs.get_mut(idx) { t.muted = !t.muted; t.view.webview().set_is_muted(t.muted); }
+        if let Some(t) = self.tabs.get_mut(idx) { t.muted = !t.muted; t.view.mute(t.muted); }
     }
     #[cfg(windows)]
     fn mute_tab(&mut self, idx: usize) {
@@ -1224,9 +1315,7 @@ impl App {
     fn hard_reload(&self) {
         #[cfg(not(windows))]
         {
-            use webkit2gtk::WebViewExt;
-            use wry::WebViewExtUnix;
-            if let Some(t) = self.active_tab() { t.view.webview().reload_bypass_cache(); }
+            if let Some(t) = self.active_tab() { t.view.reload(true); }
         }
         #[cfg(windows)]
         self.reload_page();
@@ -1241,7 +1330,6 @@ impl App {
     #[cfg(not(windows))]
     fn save_page(&mut self) {
         use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
         let Some(t) = self.active_tab() else { return };
         if is_internal(&t.url) { return; }
         let dir = self.downloads_dir();
@@ -1250,7 +1338,10 @@ impl App {
         let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
         let id = format!("save{}", self.next_uid);
         push(Ev::DlStart(id.clone(), u, p.clone(), None));
-        t.view.webview().save_to_file(&webkit2gtk::gio::File::for_path(&path), webkit2gtk::SaveMode::Mhtml, None::<&webkit2gtk::gio::Cancellable>, move |r| {
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if let View::Cef(c) = &t.view { c.capture(true, path, move |ok| push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p))); return; }
+        let Some(wv) = t.view.webview() else { return };
+        wv.save_to_file(&webkit2gtk::gio::File::for_path(&path), webkit2gtk::SaveMode::Mhtml, None::<&webkit2gtk::gio::Cancellable>, move |r| {
             let ok = r.is_ok();
             if let Err(e) = r { warn!("save page: {}", e); }
             push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p));
@@ -1262,7 +1353,6 @@ impl App {
     #[cfg(not(windows))]
     fn screenshot(&mut self) {
         use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
         let Some(t) = self.active_tab() else { return };
         let dir = self.downloads_dir();
         std::fs::create_dir_all(&dir).ok();
@@ -1270,7 +1360,10 @@ impl App {
         let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
         let id = format!("shot{}", self.next_uid);
         push(Ev::DlStart(id.clone(), u, p.clone(), None));
-        t.view.webview().snapshot(webkit2gtk::SnapshotRegion::Visible, webkit2gtk::SnapshotOptions::NONE, None::<&webkit2gtk::gio::Cancellable>, move |r| {
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if let View::Cef(c) = &t.view { c.capture(false, path, move |ok| push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p))); return; }
+        let Some(wv) = t.view.webview() else { return };
+        wv.snapshot(webkit2gtk::SnapshotRegion::Visible, webkit2gtk::SnapshotOptions::NONE, None::<&webkit2gtk::gio::Cancellable>, move |r| {
             let ok = r.ok().and_then(|s| gtk::cairo::ImageSurface::try_from(s).ok()).and_then(|img| std::fs::File::create(&path).ok().map(|mut f| img.write_to_png(&mut f).is_ok())).unwrap_or(false);
             push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p));
         });
@@ -1284,14 +1377,13 @@ impl App {
     #[cfg(not(windows))]
     fn show_alternate(&self, idx: usize, html: &str, url: &str) {
         use webkit2gtk::WebViewExt;
-        use wry::WebViewExtUnix;
-        if let Some(t) = self.tabs.get(idx) { t.view.webview().load_alternate_html(html, url, Some(url)); }
+        if let Some(w) = self.tabs.get(idx).and_then(|t| t.view.webview()) { w.load_alternate_html(html, url, Some(url)); }
     }
     #[cfg(not(windows))]
-    fn prompt_permission(&mut self, uid: u64, kind: PermissionType, origin: String, req: webkit2gtk::PermissionRequest) {
+    fn prompt_permission(&mut self, uid: u64, kind: PermissionType, origin: String, answer: Box<dyn FnOnce(bool)>) {
         let id = self.next_perm;
         self.next_perm += 1;
-        self.perms.push(PendingPerm { id, uid, kind: kind.clone(), origin: origin.clone(), req });
+        self.perms.push(PendingPerm { id, uid, kind: kind.clone(), origin: origin.clone(), answer });
         if self.tab_index(uid) == Some(self.active) { self.show_permission_prompt(); }
     }
     #[cfg(not(windows))]
@@ -1305,10 +1397,9 @@ impl App {
     }
     #[cfg(not(windows))]
     fn answer_permission(&mut self, id: u64, allow: bool) {
-        use webkit2gtk::PermissionRequestExt;
         let Some(pos) = self.perms.iter().position(|p| p.id == id) else { return };
         let p = self.perms.remove(pos);
-        match allow { true => p.req.allow(), false => p.req.deny() }
+        (p.answer)(allow);
         {
             let mut st = self.state_mut();
             st.permissions.set_permission(&format!("https://{}/", p.origin), p.kind, match allow { true => PermissionState::Allow, false => PermissionState::Deny });
@@ -1338,10 +1429,9 @@ impl App {
     #[cfg(not(windows))]
     fn tls_proceed(&mut self) {
         use webkit2gtk::{WebContextExt, WebViewExt};
-        use wry::WebViewExtUnix;
         let Some(t) = self.tabs.get(self.active) else { return };
         let Some((host, cert)) = t.tls.clone() else { return };
-        if let Some(ctx) = t.view.webview().context() { ctx.allow_tls_certificate_for_host(&cert, &host); }
+        if let Some(ctx) = t.view.webview().and_then(|w| w.context()) { ctx.allow_tls_certificate_for_host(&cert, &host); }
         let u = t.url.clone();
         self.navigate_active(&u);
     }
@@ -1382,6 +1472,8 @@ impl App {
         let _ = t.view.set_visible(false);
         if !t.private && !is_internal(&t.url) { self.closed.push((t.url.clone(), t.title.clone(), t.private)); if self.closed.len() > 25 { self.closed.remove(0); } }
         drop(t);
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if !self.tabs.iter().any(|t| t.private && t.view.is_cef()) { super::cef_tabs::end_private(); }
         if self.tabs.is_empty() { let h = self.home_url(); self.spawn_tab(&h, false, None); self.active = 0; } else if self.active >= self.tabs.len() { self.active = self.tabs.len() - 1; } else if idx < self.active { self.active -= 1; }
         self.layout();
         self.sync_title();
@@ -1408,14 +1500,35 @@ impl App {
             #[cfg(not(windows))]
             {
                 use gtk::prelude::WidgetExt;
-                use wry::WebViewExtUnix;
-                t.view.webview().grab_focus();
+                #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                if !t.view.is_cef() { super::cef_tabs::grab_x_focus(); }
+                if let Some(w) = t.view.webview() { w.grab_focus(); }
             }
             let _ = t.view.focus();
         }
     }
+    fn open_internal(&mut self, host: &str) {
+        let u = internal_url(host);
+        match self.tabs.iter().position(|t| t.url.trim_end_matches('/') == u.trim_end_matches('/')) { Some(i) => self.switch_tab(i), None => self.open_tab(Some(u), false) }
+    }
     fn navigate_active(&mut self, url: &str) {
         self.overlay_css = 0;
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if let Some(t) = self.tabs.get(self.active).filter(|t| t.view.is_cef() != super::cef_tabs::wants(url)) {
+            debug!("engine switch tab {} ({}) -> {}", t.uid, if t.view.is_cef() { "cef" } else { "webkit" }, url);
+            let (pinned, group, at, private) = (t.pinned, t.group.clone(), self.active, t.private);
+            let old = self.tabs.remove(at);
+            let _ = old.view.set_visible(false);
+            drop(old);
+            let i = self.spawn_tab(url, private, Some(at));
+            if let Some(n) = self.tabs.get_mut(i) { n.pinned = pinned; n.group = group; }
+            self.active = i;
+            self.last_content.set((0, 0, 0, 0));
+            self.layout();
+            self.sync_title();
+            self.focus_content();
+            return;
+        }
         if let Some(t) = self.tabs.get_mut(self.active) {
             t.url = url.to_string();
             t.loading = true;
@@ -1427,6 +1540,8 @@ impl App {
         self.focus_content();
     }
     fn focus_omnibox(&self, clear: bool) {
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        { use wry::WebViewExtUnix; for t in &self.tabs { if let View::Cef(c) = &t.view { c.blur(); } } super::cef_tabs::grab_x_focus(); }
         if let Some(c) = self.chrome.as_ref() {
             #[cfg(not(windows))]
             {
@@ -1452,6 +1567,7 @@ impl App {
             {"id":"tile_view","label":"Tab tile view","enabled":true},
             {"sep":true},
             {"id":"am_history","label":"History","enabled":true},
+            {"id":"am_bookmarks","label":"Bookmark manager","enabled":true},
             {"id":"am_downloads","label":"Downloads","enabled":true},
             {"id":"bookmark","label":match bookmarked { true => "Remove bookmark", false => "Bookmark this page" },"enabled":!internal},
             {"id":"toggle_bookmarks_bar","label":match self.bookmarks_bar { true => "Hide bookmarks bar", false => "Show bookmarks bar" },"enabled":true},
@@ -1589,14 +1705,13 @@ impl App {
     #[cfg(not(windows))]
     fn clear_browsing_data(&self, _kinds: u32) {
         use webkit2gtk::{WebContextExt, WebsiteDataManagerExtManual, WebsiteDataTypes, WebViewExt};
-        use wry::WebViewExtUnix;
-        if let Some(t) = self.tabs.first() {
-            if let Some(ctx) = t.view.webview().context() {
-                if let Some(dm) = ctx.website_data_manager() {
-                    dm.clear(WebsiteDataTypes::all(), webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
-                }
+        if let Some(ctx) = self.tabs.iter().find_map(|t| t.view.webview()).and_then(|w| w.context()) {
+            if let Some(dm) = ctx.website_data_manager() {
+                dm.clear(WebsiteDataTypes::all(), webkit2gtk::glib::TimeSpan::from_seconds(0), None::<&webkit2gtk::gio::Cancellable>, |_| {});
             }
         }
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        super::cef_tabs::clear_data(&crate::storage::config::BrowserConfig::config_dir(), &self.tabs.iter().filter_map(|t| match &t.view { View::Cef(c) => Some(c), _ => None }).collect::<Vec<_>>());
     }
     #[cfg(windows)]
     fn clear_browsing_data(&self, kinds: COREWEBVIEW2_BROWSING_DATA_KINDS) {
@@ -1623,7 +1738,7 @@ impl App {
             ("pageup", true, false) | ("pagedown", true, false) => { let n = self.tabs.len(); if n > 1 { let a = self.active; let to = match k { "pageup" => (a + n - 1) % n, _ => (a + 1) % n }; let mut args = HashMap::new(); args.insert("from".into(), format!("t{}", a)); args.insert("to".into(), to.to_string()); self.command("move_tab", &args); } }
             ("delete", true, false) => self.open_tab(Some(format!("{}#privacy", internal_url("settings"))), false),
             ("b", true, false) => self.command("toggle_bookmarks_bar", &HashMap::new()),
-            ("o", true, false) => self.open_tab(Some(format!("{}#import", internal_url("settings"))), false),
+            ("o", true, false) => self.open_internal("bookmarks"),
             ("w", true, false) => self.command("win_close", &HashMap::new()),
             ("j", true, false) => self.open_devtools(),
             ("f11", _, _) => self.command("fullscreen", &HashMap::new()),
@@ -1670,6 +1785,32 @@ impl App {
             "stop" => { self.overlay_css = 0; self.stop_page(); self.layout(); self.focus_content(); }
             "home" => { self.overlay_css = 0; let h = self.home_url(); self.navigate_active(&h); }
             "new_tab" => self.open_tab(a.get("url").cloned(), false),
+            "bookmarks" | "am_bookmarks" => self.open_internal("bookmarks"),
+            "bm_update" => { let g = |k: &str| a.get(k).map(|s| s.as_str()); self.state_mut().bookmarks.update(g("id").unwrap_or(""), g("title"), g("url"), g("folder")); }
+            "bm_move" => { let ids = a.get("ids").cloned().unwrap_or_default(); self.state_mut().bookmarks.move_to(&ids.split(',').collect::<Vec<_>>(), a.get("folder").map(|s| s.as_str()).unwrap_or("")); }
+            "bm_delete" => { let ids = a.get("ids").cloned().unwrap_or_default(); self.state_mut().bookmarks.remove_many(&ids.split(',').collect::<Vec<_>>()); }
+            "bm_restore" => {
+                let mut v: Vec<serde_json::Value> = serde_json::from_str(a.get("json").map(|s| s.as_str()).unwrap_or("[]")).unwrap_or_default();
+                v.sort_by_key(|x| x["_at"].as_u64().unwrap_or(u64::MAX));
+                let mut st = self.state_mut();
+                for x in v { let at = x["_at"].as_u64().unwrap_or(u64::MAX) as usize; if let Ok(b) = serde_json::from_value::<crate::storage::bookmarks::Bookmark>(x) { if !st.bookmarks.bookmarks.iter().any(|y| y.id == b.id) { let i = at.min(st.bookmarks.bookmarks.len()); st.bookmarks.bookmarks.insert(i, b); } } }
+                st.bookmarks.save();
+            }
+            "bm_reorder" => { let id = a.get("id").cloned().unwrap_or_default(); self.state_mut().bookmarks.reorder(&id, a.get("before").map(|s| s.as_str()).filter(|s| !s.is_empty())); }
+            "bm_folder_new" => self.state_mut().bookmarks.create_folder(a.get("path").map(|s| s.as_str()).unwrap_or("")),
+            "bm_folder_rename" => { let (f, t) = (a.get("from").cloned().unwrap_or_default(), a.get("to").cloned().unwrap_or_default()); self.state_mut().bookmarks.rename_folder(&f, &t); }
+            "bm_folder_delete" => { let p = a.get("path").cloned().unwrap_or_default(); if !p.is_empty() { self.state_mut().bookmarks.delete_folder(&p, a.get("contents").map(|v| v == "1").unwrap_or(false)); } }
+            "bm_open" => { if let Some(u) = a.get("url").filter(|u| u.starts_with("http") || u.starts_with("file:")) { let bg = a.get("bg").map(|v| v == "1").unwrap_or(false); let i = self.spawn_tab(u, false, Some(self.active + 1)); if !bg { self.active = i; self.sync_title(); } self.layout(); if !bg { self.focus_content(); } } }
+            "bm_export" => {
+                let dir = self.downloads_dir();
+                std::fs::create_dir_all(&dir).ok();
+                let path = unique_path(&dir, &format!("Amni bookmarks {}.html", chrono::Local::now().format("%Y-%m-%d")));
+                let ok = std::fs::write(&path, self.state().bookmarks.export_html()).is_ok();
+                let (id, p) = (format!("bmx{}", self.next_uid), path.to_string_lossy().to_string());
+                self.handle(Ev::DlStart(id.clone(), "amnibrowse://bookmarks/".into(), p.clone(), None));
+                self.handle(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p));
+            }
+            "bm_import" => { if let Some(p) = pick_path(&self.downloads_dir().join("bookmarks.html"), false) { if let Ok(html) = std::fs::read_to_string(&p) { let n = self.state_mut().bookmarks.import_html(&html); info!("imported {} bookmarks from {:?}", n, p); } } }
             "private_tab" => self.open_tab(a.get("url").cloned(), true),
             "tile_view" => {
                 if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
@@ -1842,6 +1983,8 @@ impl App {
                 if let Some(id) = a.get("id") {
                     #[cfg(not(windows))]
                     { use webkit2gtk::DownloadExt; if let Some(d) = self.live_downloads.borrow().get(id) { d.cancel(); } }
+                    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                    if let Some(n) = id.strip_prefix("cef").and_then(|n| n.parse::<u32>().ok()) { super::cef_tabs::cancel_download(n); }
                     let mut st = self.state_mut();
                     if let Some(d) = st.downloads.downloads.iter_mut().find(|d| &d.id == id) { d.status = DownloadStatus::Failed; }
                     st.downloads.save();
@@ -1878,7 +2021,7 @@ impl App {
             "reload_tab" => {
                 if let Some(i) = a.get("id").and_then(|s| idx_of(s)).filter(|i| *i < self.tabs.len()) {
                     #[cfg(not(windows))]
-                    { use webkit2gtk::WebViewExt; use wry::WebViewExtUnix; let t = &mut self.tabs[i]; if t.discarded { t.discarded = false; let _ = t.view.load_url(&t.url); } else { t.view.webview().reload(); } }
+                    { let t = &mut self.tabs[i]; if t.discarded { t.discarded = false; let _ = t.view.load_url(&t.url); } else { t.view.reload(false); } }
                     #[cfg(windows)]
                     { let u = self.tabs[i].url.clone(); let _ = self.tabs[i].view.load_url(&u); }
                 }
@@ -1939,6 +2082,7 @@ impl App {
                 self.overlay_css = 0;
                 let Some(id) = a.get("id").cloned() else { self.layout(); self.focus_content(); return };
                 match id.as_str() {
+                    "am_bookmarks" => self.open_internal("bookmarks"),
                     "am_history" => {
                         let h_url = internal_url("history");
                         if let Some(pos) = self.tabs.iter().position(|t| t.url.contains("history")) {
@@ -1973,7 +2117,8 @@ impl App {
                 self.focus_content();
             }
             "chrome_err" => warn!("chrome js error: {} (line {})", a.get("m").map(|s| s.as_str()).unwrap_or(""), a.get("l").map(|s| s.as_str()).unwrap_or("?")),
-            "kbd" | "overlay_rect" | "favicon_cache" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
+            "kbd" => { #[cfg(all(feature = "cef-engine", target_os = "linux"))] super::cef_tabs::set_toolbar_focus(a.get("on").map(|v| v == "1").unwrap_or(false)); }
+            "overlay_rect" | "favicon_cache" | "dialog_ok" | "dialog_cancel" | "select_pick" | "color_pick" | "update_check" | "update_now" | "fill_login" | "vault_pw" | "import_browser" | "profile_new" | "profile_switch" => {}
             other => info!("cmd: unhandled {}", other),
         }
     }
@@ -2007,7 +2152,7 @@ impl App {
     }
     fn handle(&mut self, ev: Ev) {
         match ev {
-            Ev::Cmd(name, args) => self.command(&name, &args),
+            Ev::Cmd(name, args) => { debug!("cmd {} {:?}", name, args.iter().filter(|(k, _)| *k != "tok").collect::<Vec<_>>()); self.command(&name, &args) }
             Ev::Title(uid, t) => { if let Some(i) = self.tab_index(uid) { self.tabs[i].title = t; if i == self.active { self.sync_title(); } } }
             Ev::Load(uid, started, u) => {
                 if let Some(i) = self.tab_index(uid) {
@@ -2075,7 +2220,7 @@ impl App {
                 state.downloads.save();
             }
             Ev::Popup(u) => { let i = self.spawn_tab(&u, self.active_tab().map(|t| t.private).unwrap_or(false), Some(self.active + 1)); self.active = i; self.layout(); }
-            Ev::Key(_, k, shift, alt) => self.handle_key(&k, shift, alt),
+            Ev::Key(u, k, shift, alt) => { debug!("key {} from {}", k, u); self.handle_key(&k, shift, alt) }
             Ev::Open(uid, u, bg) => {
                 let (private, at) = self.tab_index(uid).map(|i| (self.tabs[i].private, i + 1)).unwrap_or((false, self.tabs.len()));
                 let i = self.spawn_tab(&u, private, Some(at));
@@ -2095,7 +2240,7 @@ impl App {
             }
             Ev::Find(uid, n, i) => { if let Some(t) = self.tab_index(uid) { self.tabs[t].find = (n, i); } }
             #[cfg(not(windows))]
-            Ev::Perm(uid, kind, origin, req) => self.prompt_permission(uid, kind, origin, req),
+            Ev::Perm(uid, kind, origin, req) => self.prompt_permission(uid, kind, origin, Box::new(move |a| { use webkit2gtk::PermissionRequestExt; if a { req.allow() } else { req.deny() } })),
             #[cfg(not(windows))]
             Ev::LoadFailed(uid, u, msg) => {
                 let Some(i) = self.tab_index(uid) else { return };
@@ -2172,6 +2317,8 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
     // amni-browse.desktop and gets the browser's icon in the taskbar.
     #[cfg(target_os = "linux")]
     gtk::glib::set_prgname(Some("amni-browse"));
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    let _ = super::cef_tabs::init(&crate::storage::config::BrowserConfig::config_dir());
     let event_loop = EventLoopBuilder::<()>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let (ipc_tx, ipc_rx) = std::sync::mpsc::channel::<crate::net::single_instance::SingleInstanceMessage>();
@@ -2203,8 +2350,10 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
         match host.as_str() {
             "chrome" => respond("text/html; charset=utf-8", format!("<script>{}window.__amniToken={:?};</script>{}{}", fetch_shim(), ptok, load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
             "cmd" if from_chrome || tok_ok => { pe.borrow_mut().push(Ev::Cmd(parsed.path().trim_start_matches('/').to_string(), args)); let _ = ppx.send_event(()); empty(204) }
+            "bmdata" if tok_ok => respond("application/json; charset=utf-8", pstate.try_borrow().map(|s| s.bookmarks.manager_json()).unwrap_or_else(|_| "{\"bookmarks\":[],\"folders\":[]}".into())),
             "state" if from_chrome || tok_ok => {
-                let body = match pa.try_borrow() { Ok(g) => g.as_ref().map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => pl.borrow().clone() };
+                let body = match pa.try_borrow() { Ok(g) => g.as_ref().map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => { debug!("state poll while app busy"); pl.borrow().clone() } };
+                if *pl.borrow() != body { debug!("state changed: {}", body.chars().take(900).collect::<String>()); }
                 *pl.borrow_mut() = body.clone();
                 respond("application/json; charset=utf-8", body)
             }
@@ -2302,6 +2451,8 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
         token,
         next_uid: 1,
         overlay_css: 0,
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        backdrop: Rc::new(RefCell::new(None)),
         last_chrome: Cell::new((0, 0, 0, 0)),
         last_content: Cell::new((0, 0, 0, 0)),
         fullscreen: false,
@@ -2333,6 +2484,27 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
     {
         let push = a.pusher();
         gtk::glib::timeout_add_local(std::time::Duration::from_secs(60), move || { push(Ev::Tick); gtk::glib::ControlFlow::Continue });
+    }
+    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+    if super::cef_tabs::enabled() {
+        use gtk::prelude::*;
+        let px = proxy.clone();
+        super::cef_tabs::set_wake(move || { let _ = px.send_event(()); });
+        let (blocker, shield, https_only, http_allow, push) = (a.blocker.clone(), a.shield.clone(), a.https_only.clone(), a.http_allow.clone(), a.pusher());
+        super::cef_tabs::set_nav_filter(move |uid, u| {
+            if shield.get() && !is_internal(u) && blocker.try_borrow_mut().map(|mut b| b.should_block(u)).unwrap_or(false) { info!("adblock: blocked navigation {}", u); return false; }
+            if https_only.get() && u.starts_with("http://") && !is_local_host(u) {
+                let mut allow = http_allow.borrow_mut();
+                match allow.iter().position(|x| x == u) { Some(i) => { allow.remove(i); } None => { push(Ev::Upgrade(uid, u.to_string())); return false; } }
+            }
+            true
+        });
+        super::cef_tabs::set_page_script(&format!("{};{};{};{}", KEY_SCRIPT, FIND_SCRIPT, ICON_SCRIPT, LINK_SCRIPT));
+        super::cef_tabs::install_focus_proxy(&a.overlay);
+        super::cef_tabs::watch_clicks();
+        let bd = a.backdrop.clone();
+        a.canvas.connect_draw(move |_, cr| { if let Some((x, y, sf)) = bd.borrow().as_ref() { let _ = cr.set_source_surface(sf, *x, *y); let _ = cr.paint(); } gtk::glib::Propagation::Proceed });
+        info!("  Tabs: Chromium (CEF) for web pages, WebKitGTK for Amni pages and private tabs");
     }
     let chrome_proto = protocol.clone();
     let kpush = a.pusher();
@@ -2402,6 +2574,8 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
                         for ev in pending {
                             a.handle(ev);
                         }
+                        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                        for ce in super::cef_tabs::drain() { a.cef_event(ce); }
                     }
                 }
             }
@@ -2413,6 +2587,8 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
             }
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
                 if let Ok(mut g) = app_loop.try_borrow_mut() { if let Some(a) = g.as_mut() { a.shutdown(); } }
+                #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                { if let Ok(mut g) = app_loop.try_borrow_mut() { g.take(); } super::cef_tabs::shutdown_all(); }
                 _instance_guard.take();
                 *control_flow = ControlFlow::Exit;
             }
