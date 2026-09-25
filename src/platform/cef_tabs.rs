@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use x11_dl::xlib;
-pub enum CefEv { PageClick, Focused(u64), Perm(u64, crate::engine::permissions::PermissionType, String, Box<dyn FnOnce(bool)>), DlWanted(u32, String, String), DlProgress(u32, i64, i64), DlDone(u32, bool, String), Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
+pub enum CefEv { Relaunch(Option<String>), PageClick, Focused(u64), Perm(u64, crate::engine::permissions::PermissionType, String, Box<dyn FnOnce(bool)>), DlWanted(u32, String, String), DlProgress(u32, i64, i64), DlDone(u32, bool, String), Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
 thread_local! {
     static QUEUE: RefCell<Vec<CefEv>> = const { RefCell::new(Vec::new()) };
     static WAKE: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
@@ -52,6 +52,7 @@ pub fn init(data_dir: &Path) -> bool {
     let args = cef::args::Args::new();
     let settings = Settings { no_sandbox: 0, browser_subprocess_path: CefString::from(exe.to_string_lossy().as_ref()), resources_dir_path: CefString::from(dir.to_string_lossy().as_ref()), locales_dir_path: CefString::from(dir.join("locales").to_string_lossy().as_ref()), root_cache_path: CefString::from(root.to_string_lossy().as_ref()), cache_path: CefString::from(root.join("Default").to_string_lossy().as_ref()), persist_session_cookies: 1, log_severity: LogSeverity::WARNING, ..Default::default() };
     let ok = initialize(Some(args.as_main_args()), Some(&settings), Some(&mut AmniApp::new()), std::ptr::null_mut()) == 1;
+    if !ok && std::fs::symlink_metadata(root.join("SingletonLock")).is_ok() { log::info!("Chromium profile in use by a running Amni Browse; handed off"); std::process::exit(0); }
     let _ = ON.set(ok);
     if ok {
         gtk::glib::timeout_add_local(std::time::Duration::from_millis(4), || { do_message_loop_work(); gtk::glib::ControlFlow::Continue });
@@ -95,9 +96,21 @@ pub fn clear_data(root: &Path, tabs: &[&CefTab]) {
     let _ = std::fs::write(root.join("cef").join(".wipe-site-data"), b"1");
 }
 pub fn shutdown_all() { if enabled() { for _ in 0..30 { do_message_loop_work(); std::thread::sleep(std::time::Duration::from_millis(10)); } shutdown(); } }
+wrap_browser_process_handler! {
+    struct AmniBph;
+    impl BrowserProcessHandler {
+        fn on_already_running_app_relaunch(&self, c: Option<&mut CommandLine>, _d: Option<&CefString>) -> ::std::os::raw::c_int {
+            let line = c.map(|c| CefString::from(&c.command_line_string()).to_string()).unwrap_or_default();
+            log::info!("second launch handed to this instance: {}", line);
+            push(CefEv::Relaunch(line.split_whitespace().skip(1).find(|a| !a.starts_with('-')).map(|a| a.trim_matches('"').to_string())));
+            1
+        }
+    }
+}
 wrap_app! {
     struct AmniApp;
     impl App {
+        fn browser_process_handler(&self) -> Option<BrowserProcessHandler> { Some(AmniBph::new()) }
         fn on_before_command_line_processing(&self, process_type: Option<&CefString>, command_line: Option<&mut CommandLine>) {
             let (Some(c), true) = (command_line, s(process_type).is_empty()) else { return };
             for sw in ["no-first-run", "no-default-browser-check", "disable-background-networking"] { c.append_switch(Some(&CefString::from(sw))); }

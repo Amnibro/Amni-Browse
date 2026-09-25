@@ -223,12 +223,12 @@ fn is_local_host(url: &str) -> bool {
 }
 /// GTK "Save as" for downloads when Settings → Downloads asks where to save each file.
 #[cfg(not(windows))]
-fn pick_save_path(suggested: &std::path::Path) -> Option<PathBuf> {
+fn pick_path(suggested: &std::path::Path, save: bool) -> Option<PathBuf> {
     use gtk::prelude::{DialogExt, FileChooserExt, GtkWindowExt, WidgetExt};
-    let dlg = gtk::FileChooserDialog::with_buttons::<gtk::Window>(Some("Save file"), None, gtk::FileChooserAction::Save, &[("Cancel", gtk::ResponseType::Cancel), ("Save", gtk::ResponseType::Accept)]);
-    dlg.set_do_overwrite_confirmation(true);
+    let dlg = gtk::FileChooserDialog::with_buttons::<gtk::Window>(Some(if save { "Save file" } else { "Open file" }), None, if save { gtk::FileChooserAction::Save } else { gtk::FileChooserAction::Open }, &[("Cancel", gtk::ResponseType::Cancel), (if save { "Save" } else { "Open" }, gtk::ResponseType::Accept)]);
+    dlg.set_do_overwrite_confirmation(save);
     if let Some(dir) = suggested.parent() { let _ = dlg.set_current_folder(dir); }
-    if let Some(name) = suggested.file_name() { dlg.set_current_name(name.to_string_lossy().as_ref()); }
+    if let Some(name) = suggested.file_name().filter(|_| save) { dlg.set_current_name(name.to_string_lossy().as_ref()); }
     dlg.set_modal(true);
     let r = dlg.run();
     let out = match r == gtk::ResponseType::Accept { true => dlg.filename(), false => None };
@@ -594,6 +594,7 @@ fn render_page_html(state: &BrowserState, shield: bool, token: &str, host: &str)
         "settings" => Some(render_settings_html(state, shield, token)),
         "downloads" => Some(render_downloads_html(state, token)),
         "history" => Some(render_history_html(state, token)),
+        "bookmarks" => Some(include_str!("../../assets/pages/bookmarks.html").replace("__THEME__", &theme_root_vars(&state.themes.active_theme())).replace("__TOKEN__", &format!("{:?}", token))),
         "tutorial" => Some(render_tutorial_html(state, token)),
         _ => None,
     }
@@ -1110,7 +1111,7 @@ impl App {
                 let dir = self.downloads_dir();
                 std::fs::create_dir_all(&dir).ok();
                 let fallback = unique_path(&dir, &sanitize_filename(if name.trim().is_empty() { "download" } else { &name }));
-                match if self.ask_dl_location.get() { pick_save_path(&fallback) } else { Some(fallback) } {
+                match if self.ask_dl_location.get() { pick_path(&fallback, true) } else { Some(fallback) } {
                     Some(p) => { super::cef_tabs::download_to(id, &p); self.handle(Ev::DlStart(format!("cef{}", id), url, p.to_string_lossy().to_string(), None)); }
                     None => super::cef_tabs::cancel_download(id),
                 }
@@ -1126,6 +1127,7 @@ impl App {
                 let stored = self.state().permissions.get_permission(&format!("https://{}/", host), &kind);
                 match stored { PermissionState::Allow => answer(true), PermissionState::Deny => answer(false), PermissionState::Ask => self.prompt_permission(u, kind, host, answer) }
             }
+            C::Relaunch(url) => self.handle_single_instance(crate::net::single_instance::SingleInstanceMessage { url, private: false }),
             C::PageClick => self.chrome_js("try{document.activeElement&&document.activeElement.blur()}catch(e){}"),
             C::Focused(u) => { if self.tab_index(u) == Some(self.active) { self.chrome_js("try{document.activeElement&&document.activeElement.blur()}catch(e){}"); } }
             C::Title(u, t) => self.handle(Ev::Title(u, t)),
@@ -1221,7 +1223,7 @@ impl App {
                 *path = unique_path(&dl_dir_c, &name);
                 #[cfg(not(windows))]
                 if ask_where.get() {
-                    match pick_save_path(path) { Some(p) => *path = p, None => { info!("download: cancelled by user {}", u); return false; } }
+                    match pick_path(path, true) { Some(p) => *path = p, None => { info!("download: cancelled by user {}", u); return false; } }
                 }
                 #[cfg(windows)]
                 let _ = &ask_where;
@@ -1505,6 +1507,10 @@ impl App {
             let _ = t.view.focus();
         }
     }
+    fn open_internal(&mut self, host: &str) {
+        let u = internal_url(host);
+        match self.tabs.iter().position(|t| t.url.trim_end_matches('/') == u.trim_end_matches('/')) { Some(i) => self.switch_tab(i), None => self.open_tab(Some(u), false) }
+    }
     fn navigate_active(&mut self, url: &str) {
         self.overlay_css = 0;
         #[cfg(all(feature = "cef-engine", target_os = "linux"))]
@@ -1561,6 +1567,7 @@ impl App {
             {"id":"tile_view","label":"Tab tile view","enabled":true},
             {"sep":true},
             {"id":"am_history","label":"History","enabled":true},
+            {"id":"am_bookmarks","label":"Bookmark manager","enabled":true},
             {"id":"am_downloads","label":"Downloads","enabled":true},
             {"id":"bookmark","label":match bookmarked { true => "Remove bookmark", false => "Bookmark this page" },"enabled":!internal},
             {"id":"toggle_bookmarks_bar","label":match self.bookmarks_bar { true => "Hide bookmarks bar", false => "Show bookmarks bar" },"enabled":true},
@@ -1731,7 +1738,7 @@ impl App {
             ("pageup", true, false) | ("pagedown", true, false) => { let n = self.tabs.len(); if n > 1 { let a = self.active; let to = match k { "pageup" => (a + n - 1) % n, _ => (a + 1) % n }; let mut args = HashMap::new(); args.insert("from".into(), format!("t{}", a)); args.insert("to".into(), to.to_string()); self.command("move_tab", &args); } }
             ("delete", true, false) => self.open_tab(Some(format!("{}#privacy", internal_url("settings"))), false),
             ("b", true, false) => self.command("toggle_bookmarks_bar", &HashMap::new()),
-            ("o", true, false) => self.open_tab(Some(format!("{}#import", internal_url("settings"))), false),
+            ("o", true, false) => self.open_internal("bookmarks"),
             ("w", true, false) => self.command("win_close", &HashMap::new()),
             ("j", true, false) => self.open_devtools(),
             ("f11", _, _) => self.command("fullscreen", &HashMap::new()),
@@ -1778,6 +1785,32 @@ impl App {
             "stop" => { self.overlay_css = 0; self.stop_page(); self.layout(); self.focus_content(); }
             "home" => { self.overlay_css = 0; let h = self.home_url(); self.navigate_active(&h); }
             "new_tab" => self.open_tab(a.get("url").cloned(), false),
+            "bookmarks" | "am_bookmarks" => self.open_internal("bookmarks"),
+            "bm_update" => { let g = |k: &str| a.get(k).map(|s| s.as_str()); self.state_mut().bookmarks.update(g("id").unwrap_or(""), g("title"), g("url"), g("folder")); }
+            "bm_move" => { let ids = a.get("ids").cloned().unwrap_or_default(); self.state_mut().bookmarks.move_to(&ids.split(',').collect::<Vec<_>>(), a.get("folder").map(|s| s.as_str()).unwrap_or("")); }
+            "bm_delete" => { let ids = a.get("ids").cloned().unwrap_or_default(); self.state_mut().bookmarks.remove_many(&ids.split(',').collect::<Vec<_>>()); }
+            "bm_restore" => {
+                let mut v: Vec<serde_json::Value> = serde_json::from_str(a.get("json").map(|s| s.as_str()).unwrap_or("[]")).unwrap_or_default();
+                v.sort_by_key(|x| x["_at"].as_u64().unwrap_or(u64::MAX));
+                let mut st = self.state_mut();
+                for x in v { let at = x["_at"].as_u64().unwrap_or(u64::MAX) as usize; if let Ok(b) = serde_json::from_value::<crate::storage::bookmarks::Bookmark>(x) { if !st.bookmarks.bookmarks.iter().any(|y| y.id == b.id) { let i = at.min(st.bookmarks.bookmarks.len()); st.bookmarks.bookmarks.insert(i, b); } } }
+                st.bookmarks.save();
+            }
+            "bm_reorder" => { let id = a.get("id").cloned().unwrap_or_default(); self.state_mut().bookmarks.reorder(&id, a.get("before").map(|s| s.as_str()).filter(|s| !s.is_empty())); }
+            "bm_folder_new" => self.state_mut().bookmarks.create_folder(a.get("path").map(|s| s.as_str()).unwrap_or("")),
+            "bm_folder_rename" => { let (f, t) = (a.get("from").cloned().unwrap_or_default(), a.get("to").cloned().unwrap_or_default()); self.state_mut().bookmarks.rename_folder(&f, &t); }
+            "bm_folder_delete" => { let p = a.get("path").cloned().unwrap_or_default(); if !p.is_empty() { self.state_mut().bookmarks.delete_folder(&p, a.get("contents").map(|v| v == "1").unwrap_or(false)); } }
+            "bm_open" => { if let Some(u) = a.get("url").filter(|u| u.starts_with("http") || u.starts_with("file:")) { let bg = a.get("bg").map(|v| v == "1").unwrap_or(false); let i = self.spawn_tab(u, false, Some(self.active + 1)); if !bg { self.active = i; self.sync_title(); } self.layout(); if !bg { self.focus_content(); } } }
+            "bm_export" => {
+                let dir = self.downloads_dir();
+                std::fs::create_dir_all(&dir).ok();
+                let path = unique_path(&dir, &format!("Amni bookmarks {}.html", chrono::Local::now().format("%Y-%m-%d")));
+                let ok = std::fs::write(&path, self.state().bookmarks.export_html()).is_ok();
+                let (id, p) = (format!("bmx{}", self.next_uid), path.to_string_lossy().to_string());
+                self.handle(Ev::DlStart(id.clone(), "amnibrowse://bookmarks/".into(), p.clone(), None));
+                self.handle(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p));
+            }
+            "bm_import" => { if let Some(p) = pick_path(&self.downloads_dir().join("bookmarks.html"), false) { if let Ok(html) = std::fs::read_to_string(&p) { let n = self.state_mut().bookmarks.import_html(&html); info!("imported {} bookmarks from {:?}", n, p); } } }
             "private_tab" => self.open_tab(a.get("url").cloned(), true),
             "tile_view" => {
                 if let Some(c) = self.chrome.as_ref() { let _ = c.focus(); }
@@ -2049,6 +2082,7 @@ impl App {
                 self.overlay_css = 0;
                 let Some(id) = a.get("id").cloned() else { self.layout(); self.focus_content(); return };
                 match id.as_str() {
+                    "am_bookmarks" => self.open_internal("bookmarks"),
                     "am_history" => {
                         let h_url = internal_url("history");
                         if let Some(pos) = self.tabs.iter().position(|t| t.url.contains("history")) {
@@ -2316,6 +2350,7 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
         match host.as_str() {
             "chrome" => respond("text/html; charset=utf-8", format!("<script>{}window.__amniToken={:?};</script>{}{}", fetch_shim(), ptok, load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
             "cmd" if from_chrome || tok_ok => { pe.borrow_mut().push(Ev::Cmd(parsed.path().trim_start_matches('/').to_string(), args)); let _ = ppx.send_event(()); empty(204) }
+            "bmdata" if tok_ok => respond("application/json; charset=utf-8", pstate.try_borrow().map(|s| s.bookmarks.manager_json()).unwrap_or_else(|_| "{\"bookmarks\":[],\"folders\":[]}".into())),
             "state" if from_chrome || tok_ok => {
                 let body = match pa.try_borrow() { Ok(g) => g.as_ref().map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => { debug!("state poll while app busy"); pl.borrow().clone() } };
                 if *pl.borrow() != body { debug!("state changed: {}", body.chars().take(900).collect::<String>()); }

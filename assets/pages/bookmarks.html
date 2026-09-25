@@ -1,0 +1,120 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bookmarks &#8212; Amni Browse</title><style>
+:root{__THEME__}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{font:14px/1.45 'Segoe UI Variable Text','Segoe UI',system-ui,sans-serif;margin:0;color:var(--text);background:var(--bg);overflow:hidden}
+.wrap{display:flex;height:100vh}
+nav{width:250px;flex:0 0 250px;border-right:1px solid var(--stroke);padding:24px 12px;background:var(--bg-secondary,#0D0F12);overflow-y:auto;display:flex;flex-direction:column}
+nav h1{font-size:13px;letter-spacing:.16em;text-transform:uppercase;margin:0 6px 18px;font-weight:700}
+nav h1 i{width:7px;height:7px;background:var(--accent);display:inline-block;margin-right:8px}
+.f{display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid transparent;border-radius:3px;cursor:pointer;color:var(--dim);user-select:none;position:relative}
+.f:hover,.f.on{color:var(--text);background:var(--elev);border-color:var(--stroke)}
+.f.on{border-left:2px solid var(--accent)}
+.f.drop{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.f .n{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.f .c{font-size:11px;opacity:.7}
+.f .car{width:14px;text-align:center;font-size:10px;opacity:.7}
+.f .acts{display:none;gap:2px}
+.f:hover .acts{display:flex}
+.f:hover .c{display:none}
+.ib{background:none;border:0;color:var(--dim);cursor:pointer;padding:0 4px;font-size:13px;border-radius:3px}
+.ib:hover{color:var(--accent)}
+.sep{height:1px;background:var(--stroke);margin:10px 6px}
+.newf{margin-top:auto;padding-top:12px}
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+.bar{display:flex;gap:8px;align-items:center;padding:22px 28px 12px;flex-wrap:wrap}
+#q{flex:1;min-width:220px;max-width:520px;padding:9px 12px;background:var(--elev);border:1px solid var(--stroke);border-radius:3px;color:var(--text);font:inherit;outline:none}
+#q:focus,select:focus,.ed input:focus{border-color:var(--accent)}
+select,.btn{background:var(--elev);border:1px solid var(--stroke);border-radius:3px;color:var(--text);padding:8px 12px;cursor:pointer;font:600 12px inherit;outline:none}
+select{-webkit-appearance:none;appearance:none;padding-right:28px;background-image:linear-gradient(45deg,transparent 50%,var(--dim) 50%),linear-gradient(135deg,var(--dim) 50%,transparent 50%);background-position:calc(100% - 15px) 55%,calc(100% - 10px) 55%;background-size:5px 5px;background-repeat:no-repeat}
+option{background:var(--elev);color:var(--text)}
+.btn{letter-spacing:.08em;text-transform:uppercase;font-size:11px}
+.btn:hover{border-color:var(--accent)}
+.btn.warn:hover{border-color:#e5484d;color:#e5484d}
+.sel{display:none;gap:8px;align-items:center;padding:8px 28px;background:color-mix(in srgb,var(--accent) 10%,var(--bg));border-top:1px solid var(--stroke);border-bottom:1px solid var(--stroke)}
+.sel.show{display:flex}
+.sel b{font-weight:650;margin-right:6px}
+h2{color:var(--accent);font-size:11px;text-transform:uppercase;letter-spacing:.16em;margin:6px 28px 8px;display:flex;gap:10px;align-items:baseline}
+h2 span{color:var(--dim);letter-spacing:0;text-transform:none;font-weight:400}
+.list{flex:1;overflow-y:auto;padding:0 28px 80px}
+.r{display:flex;align-items:center;gap:12px;padding:8px 8px;border-bottom:1px solid var(--stroke);border-radius:3px;cursor:default}
+.r:hover{background:var(--elev)}
+.r.picked{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+.r.dragging{opacity:.4}
+.r.before{box-shadow:inset 0 2px 0 var(--accent)}
+.r input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;cursor:pointer}
+.ic{width:20px;height:20px;border-radius:4px;flex:0 0 20px;display:grid;place-items:center;font:700 11px sans-serif;color:#111;overflow:hidden}
+.ic img{width:16px;height:16px}
+.m{flex:1;min-width:0}
+.t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.t:hover{color:var(--accent)}
+.u{color:var(--dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip{font-size:11px;color:var(--dim);border:1px solid var(--stroke);border-radius:10px;padding:1px 8px;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.d{font-size:12px;color:var(--dim);white-space:nowrap;width:86px;text-align:right}
+.ra{display:flex;gap:2px;opacity:0}
+.r:hover .ra{opacity:1}
+.ed{display:flex;gap:8px;flex:1;flex-wrap:wrap}
+.ed input,.ed select{padding:6px 9px;background:var(--bg);border:1px solid var(--stroke);border-radius:3px;color:var(--text);font:inherit;outline:none}
+.ed input.ti{flex:1 1 200px}
+.ed input.ur{flex:2 1 280px}
+.empty{padding:60px 0;text-align:center;color:var(--dim)}
+.empty b{display:block;color:var(--text);font-size:16px;margin-bottom:6px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--elev);border:1px solid var(--stroke);border-left:3px solid var(--accent);padding:10px 14px;border-radius:3px;display:none;gap:14px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+.toast.show{display:flex}
+.toast button{background:none;border:0;color:var(--accent);font:700 12px inherit;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+#dlg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9}
+#dlg.show{display:flex}
+#dlg .box{background:var(--bg);border:1px solid var(--stroke);border-top:2px solid var(--accent);border-radius:4px;padding:18px 20px;width:min(440px,92vw);box-shadow:0 18px 50px rgba(0,0,0,.5)}
+#dlg h3{margin:0 0 6px;font-size:15px}
+#dlg p{margin:0 0 12px;color:var(--dim);white-space:pre-line}
+#dlg input{width:100%;padding:9px 11px;background:var(--elev);border:1px solid var(--stroke);border-radius:3px;color:var(--text);font:inherit;outline:none;margin-bottom:14px}
+#dlg input:focus{border-color:var(--accent)}
+#dlg .row{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+mark{background:color-mix(in srgb,var(--accent) 40%,transparent);color:inherit;border-radius:2px}
+</style><script>
+window.__amniToken=__TOKEN__;
+function cmd(n,a){const o=Object.assign({},a||{});o.tok=window.__amniToken;return fetch('amnibrowse://cmd/'+n+'?'+new URLSearchParams(o),{mode:'no-cors'}).catch(()=>{})}
+</script></head><body><div class="wrap">
+<nav><h1><i></i>Bookmarks</h1><div id="fixed"></div><div class="sep"></div><div id="tree"></div><div class="newf"><button class="btn" style="width:100%" onclick="newFolder()">+ New folder</button></div></nav>
+<main>
+<div class="bar"><input id="q" placeholder="Search bookmarks   ( / )" autocomplete="off"><select id="sort" title="Sort"><option value="manual">Manual order</option><option value="name">Name A&#8211;Z</option><option value="new">Newest first</option><option value="old">Oldest first</option><option value="site">By site</option></select><button class="btn" onclick="cmd('bm_import').then(()=>later(900))">Import HTML</button><button class="btn" onclick="cmd('new_tab',{url:'amnibrowse://settings/#import'})" title="Import from Chrome, Firefox, Edge">From browsers</button><button class="btn" onclick="cmd('bm_export')">Export</button></div>
+<div class="sel" id="selbar"><b id="selc"></b><select id="moveto"></select><button class="btn" onclick="moveSel()">Move</button><button class="btn" onclick="openSel()">Open all</button><button class="btn warn" onclick="delIds([...picked])">Delete</button><button class="btn" onclick="clearSel()">Clear</button></div>
+<h2 id="head"></h2>
+<div class="list" id="list"></div>
+</main></div>
+<div id="dlg"><div class="box"><h3 id="dt"></h3><p id="dp"></p><input id="di" autocomplete="off"><div class="row" id="db"></div></div></div>
+<div class="toast" id="toast"><span id="tmsg"></span><button id="tundo">Undo</button></div>
+<script>
+let D={bookmarks:[],folders:[]},cur='*',picked=new Set(),last=null,editing=null,collapsed=new Set(JSON.parse(localStorage.getItem('bmCollapsed')||'[]')),undo=null,dragIds=[];
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const host=u=>{try{return new URL(u).hostname.replace(/^www\./,'')}catch(e){return u}};
+const hue=s=>[...s].reduce((h,c)=>(h*31+c.charCodeAt(0))>>>0,7)%360;
+async function load(){try{const r=await fetch('amnibrowse://bmdata?tok='+encodeURIComponent(window.__amniToken),{cache:'no-store'});D=await r.json()}catch(e){}picked=new Set([...picked].filter(id=>D.bookmarks.some(b=>b.id===id)));render()}
+function later(ms){setTimeout(load,ms||120);setTimeout(load,(ms||120)+350)}
+function count(f){return D.bookmarks.filter(b=>f==='*'||(f===''?!b.folder:(b.folder===f||(b.folder||'').startsWith(f+'/')))).length}
+function fRow(path,label,depth,kids){const on=cur===path?' on':'';const fixed=path==='*'||path==='';const car=kids?`<span class="car" onclick="event.stopPropagation();tog('${esc(path)}')">${collapsed.has(path)?'&#9656;':'&#9662;'}</span>`:'<span class="car"></span>';const acts=fixed?'':`<span class="acts"><button class="ib" title="New subfolder" onclick="event.stopPropagation();newFolder('${esc(path)}')">+</button><button class="ib" title="Rename" onclick="event.stopPropagation();renFolder('${esc(path)}')">&#9998;</button><button class="ib" title="Delete folder" onclick="event.stopPropagation();delFolder('${esc(path)}')">&#10005;</button></span>`;return `<div class="f${on}" style="padding-left:${8+depth*14}px" data-f="${esc(path)}" onclick="go('${esc(path)}')">${fixed?'':car}<span class="n">${esc(label)}</span><span class="c">${count(path)}</span>${acts}</div>`}
+function renderNav(){$('#fixed').innerHTML=fRow('*','All bookmarks',0)+fRow('','Unsorted',0);let h='';for(const f of D.folders){const parts=f.split('/');if(parts.slice(0,-1).some((_,i)=>collapsed.has(parts.slice(0,i+1).join('/'))))continue;h+=fRow(f,parts[parts.length-1],parts.length-1,D.folders.some(x=>x.startsWith(f+'/')))}$('#tree').innerHTML=h||'<div class="f" style="cursor:default">No folders yet</div>';document.querySelectorAll('.f[data-f]').forEach(el=>{el.ondragover=e=>{if(dragIds.length){e.preventDefault();el.classList.add('drop')}};el.ondragleave=()=>el.classList.remove('drop');el.ondrop=e=>{e.preventDefault();el.classList.remove('drop');const f=el.dataset.f;if(f==='*')return;cmd('bm_move',{ids:dragIds.join(','),folder:f}).then(()=>later());toast(`Moved ${dragIds.length} to ${f||'Unsorted'}`)}});$('#moveto').innerHTML='<option value="">Unsorted</option>'+D.folders.map(f=>`<option value="${esc(f)}">${esc(f.replaceAll('/',' / '))}</option>`).join('')}
+function visible(){const q=$('#q').value.trim().toLowerCase();let v=D.bookmarks.filter(b=>q?(b.title+' '+b.url+' '+(b.folder||'')).toLowerCase().includes(q):(cur==='*'||(cur===''?!b.folder:b.folder===cur)));const s=$('#sort').value;const k={name:b=>(b.title||b.url).toLowerCase(),site:b=>host(b.url)+' '+(b.title||'').toLowerCase()};if(s==='name'||s==='site')v=[...v].sort((a,b)=>k[s](a).localeCompare(k[s](b)));if(s==='new')v=[...v].sort((a,b)=>b.created_at.localeCompare(a.created_at));if(s==='old')v=[...v].sort((a,b)=>a.created_at.localeCompare(b.created_at));return v}
+function hl(t,q){if(!q)return esc(t);const i=t.toLowerCase().indexOf(q);return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+q.length))+'</mark>'+esc(t.slice(i+q.length))}
+function icon(b){const h=host(b.url);return b.favicon?`<span class="ic"><img src="${esc(b.favicon)}" onerror="this.parentNode.textContent='${esc((h[0]||'?').toUpperCase())}'"></span>`:`<span class="ic" style="background:hsl(${hue(h)} 55% 62%)">${esc((h[0]||'?').toUpperCase())}</span>`}
+function row(b,q,showF){if(editing===b.id)return `<div class="r" data-id="${b.id}"><div class="ed"><input class="ti" value="${esc(b.title)}" placeholder="Title"><input class="ur" value="${esc(b.url)}" placeholder="URL"><select class="fo"><option value="">Unsorted</option>${D.folders.map(f=>`<option value="${esc(f)}"${f===b.folder?' selected':''}>${esc(f.replaceAll('/',' / '))}</option>`).join('')}</select><button class="btn" onclick="saveEdit('${b.id}')">Save</button><button class="btn" onclick="editing=null;render()">Cancel</button></div></div>`;const d=new Date(b.created_at);return `<div class="r${picked.has(b.id)?' picked':''}" data-id="${b.id}" draggable="true"><input type="checkbox"${picked.has(b.id)?' checked':''} onclick="pick(event,'${b.id}')">${icon(b)}<div class="m"><div class="t" title="${esc(b.url)}" onclick="openIds(['${b.id}'],event)">${hl(b.title||b.url,q)}</div><div class="u">${hl(b.url,q)}</div></div>${showF&&b.folder?`<span class="chip" title="${esc(b.folder)}">${esc(b.folder.split('/').pop())}</span>`:''}<span class="d">${isNaN(d)?'':d.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'})}</span><span class="ra"><button class="ib" title="Edit" onclick="editing='${b.id}';render();setTimeout(()=>{const i=document.querySelector('.ed .ti');i&&i.select()},0)">&#9998;</button><button class="ib" title="Delete" onclick="delIds(['${b.id}'])">&#10005;</button></span></div>`}
+function render(){renderNav();const q=$('#q').value.trim().toLowerCase(),v=visible(),name=q?`Search results`:(cur==='*'?'All bookmarks':cur===''?'Unsorted':cur.replaceAll('/',' / '));$('#head').innerHTML=`${esc(name)}<span>${v.length} bookmark${v.length===1?'':'s'}</span>`;$('#list').innerHTML=v.length?v.map(b=>row(b,q,q||cur==='*')).join(''):(D.bookmarks.length?`<div class="empty"><b>Nothing here</b>${q?'No bookmarks match your search.':'Drag bookmarks onto this folder, or use Move.'}</div>`:`<div class="empty"><b>No bookmarks yet</b>Press Ctrl+D on any page, or import from another browser.</div>`);$('#selbar').classList.toggle('show',picked.size>0);$('#selc').textContent=`${picked.size} selected`;wireRows(v)}
+function wireRows(v){const manual=$('#sort').value==='manual'&&!$('#q').value.trim();document.querySelectorAll('.r[draggable]').forEach(el=>{const id=el.dataset.id;el.ondragstart=e=>{dragIds=picked.has(id)?[...picked]:[id];el.classList.add('dragging');e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',D.bookmarks.find(b=>b.id===id)?.url||'')};el.ondragend=()=>{el.classList.remove('dragging');dragIds=[];document.querySelectorAll('.before').forEach(x=>x.classList.remove('before'))};el.ondragover=e=>{if(manual&&dragIds.length===1&&dragIds[0]!==id){e.preventDefault();el.classList.add('before')}};el.ondragleave=()=>el.classList.remove('before');el.ondrop=e=>{e.preventDefault();el.classList.remove('before');if(!manual||dragIds.length!==1)return;const moving=D.bookmarks.find(b=>b.id===dragIds[0]),target=D.bookmarks.find(b=>b.id===id);cmd('bm_reorder',{id:dragIds[0],before:id}).then(()=>{if(moving&&target&&moving.folder!==target.folder)cmd('bm_move',{ids:moving.id,folder:target.folder||''});later()})};el.ondblclick=e=>{if(!e.target.closest('button,input'))openIds([id],e)}})}
+function pick(e,id){e.stopPropagation();const v=visible().map(b=>b.id);if(e.shiftKey&&last&&v.includes(last)){const [a,b]=[v.indexOf(last),v.indexOf(id)].sort((x,y)=>x-y);v.slice(a,b+1).forEach(x=>picked.add(x))}else picked.has(id)?picked.delete(id):picked.add(id);last=id;render()}
+function clearSel(){picked.clear();render()}
+function go(f){cur=f;$('#q').value='';picked.clear();editing=null;render()}
+function tog(f){collapsed.has(f)?collapsed.delete(f):collapsed.add(f);localStorage.setItem('bmCollapsed',JSON.stringify([...collapsed]));render()}
+function openIds(ids,e){const bg=!!(e&&(e.ctrlKey||e.metaKey||e.button===1));ids.forEach((id,i)=>{const b=D.bookmarks.find(x=>x.id===id);if(b)cmd('bm_open',{url:b.url,bg:(bg||i>0)?1:0})})}
+async function openSel(){if(picked.size>12&&!(await ask(`Open ${picked.size} tabs?`,'',null,[['Cancel',null],['Open',1]])))return;openIds([...picked])}
+function moveSel(){const f=$('#moveto').value;cmd('bm_move',{ids:[...picked].join(','),folder:f}).then(()=>later());toast(`Moved ${picked.size} to ${f||'Unsorted'}`);picked.clear()}
+function delIds(ids){const gone=D.bookmarks.map((b,i)=>Object.assign({},b,{_at:i})).filter(b=>ids.includes(b.id));if(!gone.length)return;cmd('bm_delete',{ids:ids.join(',')}).then(()=>later());ids.forEach(i=>picked.delete(i));D.bookmarks=D.bookmarks.filter(b=>!ids.includes(b.id));render();toast(`Deleted ${gone.length} bookmark${gone.length===1?'':'s'}`,()=>cmd('bm_restore',{json:JSON.stringify(gone)}).then(()=>later()))}
+function saveEdit(id){const r=document.querySelector(`.r[data-id="${id}"]`);cmd('bm_update',{id,title:r.querySelector('.ti').value,url:r.querySelector('.ur').value,folder:r.querySelector('.fo').value}).then(()=>later());editing=null}
+function ask(title,msg,value,buttons){return new Promise(res=>{const d=$('#dlg'),i=$('#di');$('#dt').textContent=title;$('#dp').textContent=msg||'';$('#dp').style.display=msg?'':'none';i.style.display=value==null?'none':'';i.value=value||'';$('#db').innerHTML='';const done=v=>{d.classList.remove('show');document.removeEventListener('keydown',kd,true);res(v)};const kd=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(null)}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();done(value==null?buttons[buttons.length-1][1]:i.value)}};buttons.forEach(([label,val,cls])=>{const b=document.createElement('button');b.className='btn'+(cls?' '+cls:'');b.textContent=label;b.onclick=()=>done(val===undefined?i.value:val);$('#db').appendChild(b)});document.addEventListener('keydown',kd,true);d.classList.add('show');setTimeout(()=>value==null?$('#db').lastChild.focus():(i.focus(),i.select()),0)})}
+async function newFolder(parent){const n=await ask(parent?'New subfolder':'New folder',parent?`Inside "${parent}"`:'',"",[['Cancel',null],['Create',undefined]]);if(!n||!n.trim())return;const p=(parent?parent+'/':'')+n.trim().replaceAll('/','-');cmd('bm_folder_new',{path:p}).then(()=>{cur=p;later()})}
+async function renFolder(f){const n=await ask('Rename folder','',f.split('/').pop(),[['Cancel',null],['Rename',undefined]]);if(!n||!n.trim())return;const to=f.split('/').slice(0,-1).concat(n.trim().replaceAll('/','-')).join('/');cmd('bm_folder_rename',{from:f,to}).then(()=>{if(cur===f||cur.startsWith(f+'/'))cur=to+cur.slice(f.length);later()})}
+async function delFolder(f){const c=count(f);if(!c){cmd('bm_folder_delete',{path:f,contents:0}).then(()=>{if(cur===f)cur='*';later()});return}const pickd=await ask(`Delete "${f.split('/').pop()}"?`,`This folder holds ${c} bookmark${c===1?'':'s'}.`,null,[['Cancel',null],['Keep bookmarks','keep'],['Delete everything','all','warn']]);if(!pickd)return;const all=pickd==='all';const gone=all?D.bookmarks.map((b,i)=>Object.assign({},b,{_at:i})).filter(b=>b.folder===f||(b.folder||'').startsWith(f+'/')):[];cmd('bm_folder_delete',{path:f,contents:all?1:0}).then(()=>{if(cur===f||cur.startsWith(f+'/'))cur='*';later()});if(all)toast(`Deleted "${f}" and ${gone.length} bookmark${gone.length===1?'':'s'}`,()=>{cmd('bm_folder_new',{path:f});cmd('bm_restore',{json:JSON.stringify(gone)}).then(()=>later())})}
+let tt;function toast(msg,fn){$('#tmsg').textContent=msg;$('#tundo').style.display=fn?'':'none';$('#tundo').onclick=()=>{fn&&fn();$('#toast').classList.remove('show')};$('#toast').classList.add('show');clearTimeout(tt);tt=setTimeout(()=>$('#toast').classList.remove('show'),6000)}
+$('#q').oninput=()=>{picked.clear();render()};$('#sort').onchange=()=>{localStorage.setItem('bmSort',$('#sort').value);render()};$('#sort').value=localStorage.getItem('bmSort')||'manual';
+document.addEventListener('keydown',e=>{if($('#dlg').classList.contains('show'))return;const typing=/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);if(e.key==='/'&&!typing){e.preventDefault();$('#q').focus();return}if(editing&&e.key==='Enter'){saveEdit(editing);return}if(e.key==='Escape'){if(editing){editing=null;render()}else if(typing)document.activeElement.blur();else clearSel();return}if(typing)return;if(e.key==='Delete'&&picked.size){delIds([...picked])}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='a'){e.preventDefault();visible().forEach(b=>picked.add(b.id));render()}});
+window.addEventListener('focus',()=>load());load();
+</script></body></html>
