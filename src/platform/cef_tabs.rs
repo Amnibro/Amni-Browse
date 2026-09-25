@@ -224,7 +224,7 @@ impl Holder {
     }
 }
 impl Drop for Holder { fn drop(&mut self) { unsafe { (self.xl.XDestroyWindow)(self.d, self.win); (self.xl.XCloseDisplay)(self.d); } } }
-pub struct CefTab { browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)> }
+pub struct CefTab { browser: Browser, holder: Holder, rect: std::cell::Cell<(i32, i32, i32, i32)>, state: std::cell::Cell<(bool, bool)>, _dt: Option<Registration> }
 impl CefTab {
     pub fn new(uid: u64, parent: &gtk::Layout, r: (i32, i32, i32, i32), url: &str, private: bool) -> Option<Self> {
         use gtk::prelude::*;
@@ -238,7 +238,8 @@ impl CefTab {
         let mut client = TabClient::new(uid);
         let mut ctx = if private { Some(private_ctx()?) } else { None };
         let browser = browser_host_create_browser_sync(Some(&info), Some(&mut client), Some(&CefString::from(url)), Some(&BrowserSettings::default()), None, ctx.as_mut())?;
-        Some(Self { browser, holder, rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)) })
+        let _dt = browser.host().and_then(|h| h.add_dev_tools_message_observer(Some(&mut DtObs::new())));
+        Some(Self { browser, holder, rect: std::cell::Cell::new(r), state: std::cell::Cell::new((true, true)), _dt })
     }
     fn host(&self) -> Option<BrowserHost> { self.browser.host() }
     pub fn place(&self, r: (i32, i32, i32, i32)) {
@@ -273,6 +274,20 @@ impl CefTab {
             gtk::cairo::ImageSurface::create_for_data(data?, gtk::cairo::Format::Rgb24, w.max(1), ht.max(1), bpl).ok().map(|s| (x, y, s))
         }
     }
+    pub fn devtools_call(&self, method: &str, params: serde_json::Value, cb: impl FnOnce(Option<serde_json::Value>) + 'static) {
+        let id = DT_NEXT.with(|n| { let v = n.get(); n.set(v + 1); v });
+        DT.with(|d| d.borrow_mut().insert(id, Box::new(cb)));
+        let msg = serde_json::json!({ "id": id, "method": method, "params": params }).to_string();
+        if self.host().map(|h| h.send_dev_tools_message(Some(msg.as_bytes()))).unwrap_or(0) == 0 { if let Some(cb) = DT.with(|d| d.borrow_mut().remove(&id)) { cb(None); } }
+    }
+    pub fn capture(&self, mhtml: bool, path: PathBuf, done: impl FnOnce(bool) + 'static) {
+        use base64::Engine;
+        let (method, params) = if mhtml { ("Page.captureSnapshot", serde_json::json!({ "format": "mhtml" })) } else { ("Page.captureScreenshot", serde_json::json!({ "format": "png" })) };
+        self.devtools_call(method, params, move |r| {
+            let data = r.as_ref().and_then(|v| v["data"].as_str()).and_then(|d| if mhtml { Some(d.as_bytes().to_vec()) } else { base64::engine::general_purpose::STANDARD.decode(d).ok() });
+            done(data.map(|b| std::fs::write(&path, b).is_ok()).unwrap_or(false));
+        });
+    }
     pub fn load_url(&self, url: &str) { if let Some(f) = self.browser.main_frame() { f.load_url(Some(&CefString::from(url))); } }
     pub fn eval(&self, js: &str) { if let Some(f) = self.browser.main_frame() { f.execute_java_script(Some(&CefString::from(js)), None, 0); } }
     pub fn go_back(&self) { self.browser.go_back(); }
@@ -292,6 +307,16 @@ thread_local! {
     static TOOLBAR_KBD: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static SHOWN: std::cell::Cell<Option<(xlib::Window, xlib::Window)>> = const { std::cell::Cell::new(None) };
     static PRIVATE: RefCell<Option<RequestContext>> = const { RefCell::new(None) };
+    static DT: RefCell<std::collections::HashMap<i32, Box<dyn FnOnce(Option<serde_json::Value>)>>> = RefCell::new(std::collections::HashMap::new());
+    static DT_NEXT: std::cell::Cell<i32> = const { std::cell::Cell::new(9000) };
+}
+wrap_dev_tools_message_observer! {
+    struct DtObs;
+    impl DevToolsMessageObserver {
+        fn on_dev_tools_method_result(&self, _b: Option<&mut Browser>, id: ::std::os::raw::c_int, ok: ::std::os::raw::c_int, result: Option<&[u8]>) {
+            if let Some(cb) = DT.with(|d| d.borrow_mut().remove(&id)) { cb((ok == 1).then(|| result.and_then(|r| serde_json::from_slice(r).ok())).flatten()); }
+        }
+    }
 }
 pub fn end_private() { PRIVATE.with(|p| p.borrow_mut().take()); }
 fn private_ctx() -> Option<RequestContext> { PRIVATE.with(|p| { let mut p = p.borrow_mut(); if p.is_none() { *p = request_context_create_context(Some(&RequestContextSettings::default()), None); } p.clone() }) }

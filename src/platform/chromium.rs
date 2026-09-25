@@ -1336,6 +1336,8 @@ impl App {
         let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
         let id = format!("save{}", self.next_uid);
         push(Ev::DlStart(id.clone(), u, p.clone(), None));
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if let View::Cef(c) = &t.view { c.capture(true, path, move |ok| push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p))); return; }
         let Some(wv) = t.view.webview() else { return };
         wv.save_to_file(&webkit2gtk::gio::File::for_path(&path), webkit2gtk::SaveMode::Mhtml, None::<&webkit2gtk::gio::Cancellable>, move |r| {
             let ok = r.is_ok();
@@ -1356,6 +1358,8 @@ impl App {
         let (u, p, push) = (t.url.clone(), path.to_string_lossy().to_string(), self.pusher());
         let id = format!("shot{}", self.next_uid);
         push(Ev::DlStart(id.clone(), u, p.clone(), None));
+        #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+        if let View::Cef(c) = &t.view { c.capture(false, path, move |ok| push(Ev::DlState(id, if ok { DL_COMPLETED } else { DL_INTERRUPTED }, p))); return; }
         let Some(wv) = t.view.webview() else { return };
         wv.snapshot(webkit2gtk::SnapshotRegion::Visible, webkit2gtk::SnapshotOptions::NONE, None::<&webkit2gtk::gio::Cancellable>, move |r| {
             let ok = r.ok().and_then(|s| gtk::cairo::ImageSurface::try_from(s).ok()).and_then(|img| std::fs::File::create(&path).ok().map(|mut f| img.write_to_png(&mut f).is_ok())).unwrap_or(false);
