@@ -1090,6 +1090,20 @@ impl App {
     fn cef_event(&mut self, e: super::cef_tabs::CefEv) {
         use super::cef_tabs::CefEv as C;
         match e {
+            C::DlWanted(id, url, name) => {
+                let dir = self.downloads_dir();
+                std::fs::create_dir_all(&dir).ok();
+                let fallback = unique_path(&dir, &sanitize_filename(if name.trim().is_empty() { "download" } else { &name }));
+                match if self.ask_dl_location.get() { pick_save_path(&fallback) } else { Some(fallback) } {
+                    Some(p) => { super::cef_tabs::download_to(id, &p); self.handle(Ev::DlStart(format!("cef{}", id), url, p.to_string_lossy().to_string(), None)); }
+                    None => super::cef_tabs::cancel_download(id),
+                }
+            }
+            C::DlProgress(id, got, total) => {
+                let mut st = self.state_mut();
+                if let Some(d) = st.downloads.downloads.iter_mut().find(|d| d.id == format!("cef{}", id)) { d.downloaded_bytes = got.max(0) as u64; if total > 0 { d.total_bytes = Some(total as u64); } }
+            }
+            C::DlDone(id, ok, path) => self.handle(Ev::DlState(format!("cef{}", id), if ok { DL_COMPLETED } else { DL_INTERRUPTED }, path)),
             C::Title(u, t) => self.handle(Ev::Title(u, t)),
             C::Address(u, url) => { let l = self.tab_index(u).map(|i| self.tabs[i].loading).unwrap_or(true); self.handle(Ev::Load(u, l, url)) }
             C::Loading(u, l, b, f) => { self.handle(Ev::History(u, b, f)); let url = self.tab_index(u).map(|i| self.tabs[i].url.clone()).unwrap_or_default(); self.handle(Ev::Load(u, l, url)) }
@@ -1907,6 +1921,8 @@ impl App {
                 if let Some(id) = a.get("id") {
                     #[cfg(not(windows))]
                     { use webkit2gtk::DownloadExt; if let Some(d) = self.live_downloads.borrow().get(id) { d.cancel(); } }
+                    #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+                    if let Some(n) = id.strip_prefix("cef").and_then(|n| n.parse::<u32>().ok()) { super::cef_tabs::cancel_download(n); }
                     let mut st = self.state_mut();
                     if let Some(d) = st.downloads.downloads.iter_mut().find(|d| &d.id == id) { d.status = DownloadStatus::Failed; }
                     st.downloads.save();

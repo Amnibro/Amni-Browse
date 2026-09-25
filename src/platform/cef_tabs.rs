@@ -3,13 +3,17 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use x11_dl::xlib;
-pub enum CefEv { Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
+pub enum CefEv { DlWanted(u32, String, String), DlProgress(u32, i64, i64), DlDone(u32, bool, String), Title(u64, String), Address(u64, String), Loading(u64, bool, bool, bool), Popup(String), Ipc(u64, String), Fullscreen(u64, bool), Created(u64) }
 thread_local! {
     static QUEUE: RefCell<Vec<CefEv>> = const { RefCell::new(Vec::new()) };
     static WAKE: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
     static NAV: RefCell<Option<Box<dyn Fn(u64, &str) -> bool>>> = const { RefCell::new(None) };
     static SCRIPT: RefCell<String> = const { RefCell::new(String::new()) };
+    static DL_WAIT: RefCell<std::collections::HashMap<u32, BeforeDownloadCallback>> = RefCell::new(std::collections::HashMap::new());
+    static DL_LIVE: RefCell<std::collections::HashMap<u32, DownloadItemCallback>> = RefCell::new(std::collections::HashMap::new());
 }
+pub fn download_to(id: u32, path: &Path) { if let Some(cb) = DL_WAIT.with(|w| w.borrow_mut().remove(&id)) { cb.cont(Some(&CefString::from(path.to_string_lossy().as_ref())), 0); } }
+pub fn cancel_download(id: u32) { DL_WAIT.with(|w| w.borrow_mut().remove(&id)); if let Some(cb) = DL_LIVE.with(|l| l.borrow_mut().remove(&id)) { cb.cancel(); } }
 static ON: OnceLock<bool> = OnceLock::new();
 const IPC_TAG: &str = "\u{1}amni-ipc:";
 fn push(e: CefEv) { QUEUE.with(|q| q.borrow_mut().push(e)); WAKE.with(|w| if let Some(f) = w.borrow().as_ref() { f() }); }
@@ -108,6 +112,7 @@ wrap_client! {
         fn load_handler(&self) -> Option<LoadHandler> { Some(TabLoad::new(self.uid)) }
         fn life_span_handler(&self) -> Option<LifeSpanHandler> { Some(TabLife::new(self.uid)) }
         fn request_handler(&self) -> Option<RequestHandler> { Some(TabRequest::new(self.uid)) }
+        fn download_handler(&self) -> Option<DownloadHandler> { Some(TabDownload::new(self.uid)) }
     }
 }
 wrap_display_handler! {
@@ -150,6 +155,25 @@ wrap_request_handler! {
         fn on_before_browse(&self, _b: Option<&mut Browser>, _f: Option<&mut Frame>, r: Option<&mut Request>, _g: ::std::os::raw::c_int, _redir: ::std::os::raw::c_int) -> ::std::os::raw::c_int {
             let u = r.map(|r| CefString::from(&r.url()).to_string()).unwrap_or_default();
             NAV.with(|n| n.borrow().as_ref().map(|f| !f(self.uid, &u)).unwrap_or(false)) as _
+        }
+    }
+}
+wrap_download_handler! {
+    struct TabDownload { uid: u64 }
+    impl DownloadHandler {
+        fn can_download(&self, _b: Option<&mut Browser>, _u: Option<&CefString>, _m: Option<&CefString>) -> ::std::os::raw::c_int { 1 }
+        fn on_before_download(&self, _b: Option<&mut Browser>, item: Option<&mut DownloadItem>, name: Option<&CefString>, cb: Option<&mut BeforeDownloadCallback>) -> ::std::os::raw::c_int {
+            let (Some(i), Some(cb)) = (item, cb) else { return 0 };
+            DL_WAIT.with(|w| w.borrow_mut().insert(i.id(), cb.clone()));
+            push(CefEv::DlWanted(i.id(), CefString::from(&i.url()).to_string(), s(name)));
+            1
+        }
+        fn on_download_updated(&self, _b: Option<&mut Browser>, item: Option<&mut DownloadItem>, cb: Option<&mut DownloadItemCallback>) {
+            let Some(i) = item else { return };
+            let id = i.id();
+            if let Some(cb) = cb { DL_LIVE.with(|l| l.borrow_mut().insert(id, cb.clone())); }
+            let (done, failed) = (i.is_complete() == 1, i.is_canceled() == 1 || i.is_interrupted() == 1);
+            if done || failed { DL_LIVE.with(|l| l.borrow_mut().remove(&id)); push(CefEv::DlDone(id, done, CefString::from(&i.full_path()).to_string())); } else { push(CefEv::DlProgress(id, i.received_bytes(), i.total_bytes())); }
         }
     }
 }
