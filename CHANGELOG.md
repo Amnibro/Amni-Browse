@@ -1,3 +1,12 @@
+## 0.16.0 - 2026-09-25 — Real new windows
+
+- **New window (Ctrl+N) opens a real second window** in the same browser, instead of a new tab in the first one. Every window shares one profile (logins, cookies, history, bookmarks, downloads, settings), since Chromium allows only one process per profile. Each window has its own tabs, toolbar and size.
+- **Closing a window closes only that window** (the window button or Ctrl+Shift+W). The browser exits with the last window, and the saved session is the last window left open.
+- **Move to new window** on a tab opens that page in a new window and closes the tab.
+- `amni-browse --new-window [url]` from a launcher or terminal opens a new window in the running browser. A plain second launch still opens its URL as a tab in the window you last used.
+- **Escape closes the app menu for real.** Over a page, the in-page key handler took Escape as "stop loading" and only clipped the toolbar, so the menu reappeared under the next dropdown. Escape now closes the top toolbar popup when one is open.
+- Typing a local address without `http://` (`127.0.0.1:8080`, `printer.local`) opens it over http instead of failing on https.
+
 ## 0.15.1 - 2026-09-25 — Quick links bar, Widevine without Chrome
 
 - **The quick links bar is readable.** Items no longer shrink to slivers: each keeps its full name (up to 180px) with the site's icon, and what doesn't fit goes into a » menu. Folders become dropdown chips at the start of the bar (Chrome-style: items in "Bookmarks bar" or no folder sit on the bar; "Other bookmarks" goes last), with subfolders grouped and "Open all in new tabs". Right-click a link for new tab, private tab, Edit (name, address, folder in place) or Remove; drag to reorder or onto a folder to move it; the pencil opens the bookmark manager. The bar is 34px tall.

@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct SingleInstanceMessage {
     pub url: Option<String>,
     pub private: bool,
+    #[serde(default)]
+    pub new_window: bool,
 }
 
 pub enum SingleInstance {
@@ -67,7 +69,7 @@ pub fn init() -> SingleInstance {
         let sock_path = socket_path();
         let private = args.iter().any(|a| a == "-p" || a == "--private" || a == "--incognito");
         let url = args.iter().skip(1).find(|a| !a.starts_with('-')).cloned();
-        let outgoing = SingleInstanceMessage { url, private };
+        let outgoing = SingleInstanceMessage { url, private, new_window: args.iter().any(|a| a == "--new-window") };
 
         // Attempt to connect to a running instance
         match std::os::unix::net::UnixStream::connect(&sock_path) {
@@ -140,6 +142,7 @@ impl SingleInstanceListener {
                             SingleInstanceMessage {
                                 url: if trimmed.is_empty() { None } else { Some(trimmed.to_string()) },
                                 private: false,
+                                new_window: false,
                             }
                         };
 
