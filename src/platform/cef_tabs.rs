@@ -50,7 +50,7 @@ pub fn init(data_dir: &Path) -> bool {
     seed_widevine(&root);
     wipe_pending(&root);
     let args = cef::args::Args::new();
-    let settings = Settings { no_sandbox: 1, browser_subprocess_path: CefString::from(exe.to_string_lossy().as_ref()), resources_dir_path: CefString::from(dir.to_string_lossy().as_ref()), locales_dir_path: CefString::from(dir.join("locales").to_string_lossy().as_ref()), root_cache_path: CefString::from(root.to_string_lossy().as_ref()), cache_path: CefString::from(root.join("Default").to_string_lossy().as_ref()), persist_session_cookies: 1, log_severity: LogSeverity::WARNING, ..Default::default() };
+    let settings = Settings { no_sandbox: 0, browser_subprocess_path: CefString::from(exe.to_string_lossy().as_ref()), resources_dir_path: CefString::from(dir.to_string_lossy().as_ref()), locales_dir_path: CefString::from(dir.join("locales").to_string_lossy().as_ref()), root_cache_path: CefString::from(root.to_string_lossy().as_ref()), cache_path: CefString::from(root.join("Default").to_string_lossy().as_ref()), persist_session_cookies: 1, log_severity: LogSeverity::WARNING, ..Default::default() };
     let ok = initialize(Some(args.as_main_args()), Some(&settings), Some(&mut AmniApp::new()), std::ptr::null_mut()) == 1;
     let _ = ON.set(ok);
     if ok {
