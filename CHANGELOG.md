@@ -1,3 +1,7 @@
+## 0.16.2 - 2026-11-17 — Distrust the compromised eMudhra root
+
+- **Browse no longer trusts "emSign ECC Root CA - G3".** eMudhra's key for that root was compromised. The bundled root list (webpki-roots and webpki-root-certs 1.0.10, with rustls-webpki 0.103.16) no longer includes it, so connections made through Browse's Rust networking reject certificates that chain to it.
+
 ## 0.16.1 - 2026-09-25 — Crash fix when closing tabs
 
 - **Closing a tab no longer knocks out Chromium's GPU process.** The tab's window was destroyed while Chromium was still drawing the page into it, so the GPU process lost its context, restarted and could crash on AMD's Vulkan driver (KDE's crash dialog). A closed tab's window now stays hidden until Chromium reports the page closed.
