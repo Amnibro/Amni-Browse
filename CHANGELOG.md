@@ -1,6 +1,6 @@
 ## 0.16.2 - 2026-11-17 — Distrust the compromised eMudhra root
 
-- **Browse no longer trusts "emSign ECC Root CA - G3".** eMudhra's key for that root was compromised, so the bundled root list (webpki-roots and webpki-root-certs 1.0.10, with rustls-webpki 0.103.16) no longer includes it, so connections made through Browse's Rust networking reject certificates that chain to it.
+- **Browse no longer trusts "emSign ECC Root CA - G3".** eMudhra's key for that root was compromised. The bundled root list (webpki-roots and webpki-root-certs 1.0.10, with rustls-webpki 0.103.16) no longer includes it, so connections made through Browse's Rust networking reject certificates that chain to it.
 
 ## 0.16.1 - 2026-09-25 — Crash fix when closing tabs
 
