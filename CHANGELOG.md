@@ -1,3 +1,7 @@
+## 0.16.4 - 2026-11-24 — Pages stay visible behind menus
+
+- **Menus no longer hide the page.** When the browser menu or the address suggestions are open on a regular website, the page stays visible around them. The toolbar now draws a still image of the page behind the menu itself instead of relying on a see-through toolbar.
+
 ## 0.16.3 - 2026-11-24 — Toolbar paints in full again
 
 - **Fixed a dark band across the top of the window.** With WebKitGTK 2.54 the toolbar only redrew the part that had just changed, such as the address bar. Tabs, the back and forward row and the quick links bar went blank and stayed blank, which looked like a dark strip over the page. The toolbar is now created with a solid background, so it always redraws in full. Menus and address suggestions still show the page behind them.

@@ -402,6 +402,7 @@ html,body{height:100%;overflow:hidden;font:13px/1.3 var(--font);color:var(--text
   wrap.addEventListener('mousedown',claimOmni,true);
   const suggest=$('#suggest'),panel=$('#panel'),flyScrim=$('#fly-scrim'),findBar=$('#find'),findQ=$('#find-q');
   function overlay(h){cmd('overlay',{h:String(Math.max(0,Math.round(h||0)))})}
+  window.__amniBackdrop=function(l,t,w,h,n){let b=document.getElementById('amni-backdrop');if(!b){b=document.createElement('img');b.id='amni-backdrop';b.alt='';b.style.cssText='position:fixed;z-index:-1;pointer-events:none;display:none';document.body.appendChild(b)}if(n==null){b.style.display='none';b.removeAttribute('src');return}Object.assign(b.style,{left:l+'px',top:t+'px',width:w+'px',height:h+'px',display:'block'});b.src='amnibrowse://backdrop?n='+n+(window.__amniToken?'&tok='+encodeURIComponent(window.__amniToken):'')};
   function shellPx(){const n=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--shell-h'));return n>40?n:119}
   function coverEl(el){const paint=()=>{if(!el||!el.classList||!el.classList.contains('on'))return;const b=el.getBoundingClientRect();const cap=window.__amniWinH>0?winH():Infinity;overlay(Math.min(cap,Math.max(shellPx()+64,Math.ceil(Math.max(b.bottom,shellPx()))+14)))};paint();requestAnimationFrame(paint)}
   const ctxScrim=$('#ctx-scrim'),ctxMenu=$('#ctxmenu');

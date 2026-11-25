@@ -280,6 +280,14 @@ fn json_headers(ct: &'static str) -> http::response::Builder {
 }
 fn respond(ct: &'static str, body: String) -> http::Response<Cow<'static, [u8]>> { json_headers(ct).body(Cow::Owned(body.into_bytes())).unwrap() }
 fn empty(status: u16) -> http::Response<Cow<'static, [u8]>> { json_headers("text/plain").status(status).body(Cow::Borrowed(&[][..])).unwrap() }
+#[cfg(all(feature = "cef-engine", target_os = "linux"))]
+fn bmp(sf: &gtk::cairo::ImageSurface) -> Option<Vec<u8>> {
+    let (w, h, st) = (sf.width().max(0) as usize, sf.height().max(0) as usize, sf.stride().max(0) as usize);
+    let n = w * h * 4;
+    let mut o: Vec<u8> = [&b"BM"[..], &((54 + n) as u32).to_le_bytes(), &0u32.to_le_bytes(), &54u32.to_le_bytes(), &40u32.to_le_bytes(), &(w as i32).to_le_bytes(), &(-(h as i32)).to_le_bytes(), &1u16.to_le_bytes(), &32u16.to_le_bytes(), &0u32.to_le_bytes(), &(n as u32).to_le_bytes(), &[0u8; 16][..]].concat();
+    sf.with_data(|d| for r in 0..h { o.extend(d[r * st..r * st + w * 4].chunks_exact(4).flat_map(|p| [p[0], p[1], p[2], 255])) }).ok()?;
+    Some(o)
+}
 #[cfg(windows)]
 fn take_pwstr(p: PWSTR) -> String {
     if p.is_null() { return String::new(); }
@@ -1027,8 +1035,8 @@ impl App {
             use gtk::prelude::WidgetExt;
             let expanded = self.overlay_css > self.chrome_css().saturating_add(2);
             let has = self.backdrop.borrow().is_some();
-            if expanded && !has { if let Some(View::Cef(c)) = self.active_tab().map(|t| &t.view) { if let Some((x, y, sf)) = c.snapshot() { let sc = self.scale(); sf.set_device_scale(sc, sc); *self.backdrop.borrow_mut() = Some((x as f64 / sc, y as f64 / sc, sf)); } } }
-            if !expanded && has { *self.backdrop.borrow_mut() = None; }
+            if expanded && !has { if let Some(View::Cef(c)) = self.active_tab().map(|t| &t.view) { if let Some((x, y, sf)) = c.snapshot() { let (sc, n) = (self.scale(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(1)); let f = self.frame_px() as f64 / sc; sf.set_device_scale(sc, sc); let js = format!("window.__amniBackdrop&&__amniBackdrop({},{},{},{},{})", x as f64 / sc - f, y as f64 / sc - f, sf.width() as f64 / sc, sf.height() as f64 / sc, n); *self.backdrop.borrow_mut() = Some((x as f64 / sc, y as f64 / sc, sf)); self.chrome_js(&js); } } }
+            if !expanded && has { *self.backdrop.borrow_mut() = None; self.chrome_js("window.__amniBackdrop&&__amniBackdrop()"); }
             if expanded != has { self.canvas.queue_draw(); }
         }
         let hide_chrome = self.fullscreen || self.page_fullscreen;
@@ -2493,6 +2501,8 @@ pub fn run(state: BrowserState, single_instance: Option<crate::net::single_insta
             "chrome" => respond("text/html; charset=utf-8", format!("<script>{}window.__amniToken={:?};</script>{}{}", fetch_shim(), ptok, load_toolbar_html().replace("__CHROMEREV__", APP_VERSION), match decorated { true => "<style>.win-btn{display:none!important}</style>", false => "" })),
             "cmd" if from_chrome || tok_ok => { pe.borrow_mut().push((wk, Ev::Cmd(parsed.path().trim_start_matches('/').to_string(), args))); let _ = ppx.send_event(()); empty(204) }
             "bmdata" if tok_ok => respond("application/json; charset=utf-8", pstate.try_borrow().map(|s| s.bookmarks.manager_json()).unwrap_or_else(|_| "{\"bookmarks\":[],\"folders\":[]}".into())),
+            #[cfg(all(feature = "cef-engine", target_os = "linux"))]
+            "backdrop" if tok_ok => pa.try_borrow().ok().and_then(|g| g.iter().find(|a| a.wk == wk).or(g.first()).and_then(|a| a.backdrop.borrow().as_ref().and_then(|(_, _, sf)| bmp(sf)))).map(|b| json_headers("image/bmp").body(Cow::Owned(b)).unwrap()).unwrap_or_else(|| empty(404)),
             "state" if from_chrome || tok_ok => {
                 let body = match pa.try_borrow() { Ok(g) => g.iter().find(|a| a.wk == wk).or(g.first()).map(|a| a.state_json()).unwrap_or_else(|| "{}".into()), Err(_) => { debug!("state poll while app busy"); pl.borrow().get(&wk).cloned().unwrap_or_else(|| "{}".into()) } };
                 if pl.borrow().get(&wk) != Some(&body) { debug!("state changed: {}", body.chars().take(900).collect::<String>()); }
