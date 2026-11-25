@@ -1,0 +1,503 @@
+=== 439610953c805263
+use ffi
+use os
+use math
+tab_of(browser uint) int:
+	id := c_call<i32>(vt(browser, BR_ID), browser)
+	for t, i TAB_IDS:
+		if t == id:
+			return i
+	-1
+is_active(browser uint) bool:
+	tab_of(browser) == ACTIVE
+=== -7b2960ac522d1f2a
+ref_add(obj uint):
+	return
+ref_release(obj uint) i32:
+	0
+ref_one(obj uint) i32:
+	1
+none(obj uint) uint:
+	0
+=== -689e716f3a768d55
+base(b byte[>..]&, size int):
+	b.clear()
+	b.resize(size, 0)
+	put8(b, 0, size as uint)
+	put8(b, 8, c_callback(ref_add))
+	put8(b, 16, c_callback(ref_release))
+	put8(b, 24, c_callback(ref_one))
+	put8(b, 32, c_callback(ref_one))
+	stub := c_callback(none)
+	o ~= 40
+	while o + 8 <= size:
+		put8(b, o, stub)
+		o += 8
+=== -5b2dbbda673fdf4
+get_render(obj uint) uint:
+	ffi::ptr(RENDER[..])
+get_life(obj uint) uint:
+	ffi::ptr(LIFE[..])
+get_display(obj uint) uint:
+	ffi::ptr(DISPLAY[..])
+get_load(obj uint) uint:
+	ffi::ptr(LOAD[..])
+=== -4a83ca298c45ae0f
+view_rect(obj uint, browser uint, rect uint):
+	poke4(rect, 0)
+	poke4(rect + 4, 0)
+	poke4(rect + 8, VIEW_W)
+	poke4(rect + 12, VIEW_H)
+	rel(browser);
+=== 324a4b68d7fc028a
+screen_info(obj uint, browser uint, info uint) i32:
+	poke4(info + 8, f32_bits(SCALE) as int)
+	poke4(info + 12, 24)
+	poke4(info + 16, 8)
+	poke4(info + 20, 0)
+	poke4(info + 24, 0)
+	poke4(info + 28, 0)
+	poke4(info + 32, VIEW_W)
+	poke4(info + 36, VIEW_H)
+	poke4(info + 40, 0)
+	poke4(info + 44, 0)
+	poke4(info + 48, VIEW_W)
+	poke4(info + 52, VIEW_H)
+	rel(browser)
+	1
+=== -402e9fd5ef141547
+popup_show(obj uint, browser uint, show i32):
+	POP_SHOWN = show != 0
+	if !POP_SHOWN:
+		DIRTY = true
+	rel(browser);
+=== 34e966712f9a54ee
+popup_size(obj uint, browser uint, rect uint):
+	s real := SCALE
+	x real := peek4(rect)
+	y real := peek4(rect + 4)
+	w real := peek4(rect + 8)
+	h real := peek4(rect + 12)
+	POP_X = round(x * s) as int
+	POP_Y = round(y * s) as int
+	POP_W = round(w * s) as int
+	POP_H = round(h * s) as int
+	rel(browser);
+=== -7b0bab23344af717
+draw_popup():
+	if !POP_SHOWN || POPUP.len == 0 || POPUP.len != POP_W * POP_H * 4:
+		return
+	x0 := max(0, 0 - POP_X)
+	x1 := min(POP_W, PAGE_W - POP_X)
+	if x1 <= x0:
+		return
+	for row POP_H:
+		y := POP_Y + row
+		if y >= 0 && y < PAGE_H:
+			d := (y * PAGE_W + POP_X + x0) * 4
+			s := (row * POP_W + x0) * 4
+			for k (x1 - x0) * 4:
+				PAGE[d + k] = POPUP[s + k]
+paint(obj uint, browser uint, kind i32, nrects uint, rects uint, buffer uint, width i32, height i32):
+	if !is_active(browser):
+		rel(browser)
+		return
+	PAINTS += 1
+	w int := width
+	h int := height
+	n := w * h * 4
+	if kind == 0:
+		if PAGE.len != n:
+			PAGE.resize(n, 0)
+		PAGE_W = w
+		PAGE_H = h
+		ffi::read(buffer, PAGE[..])
+		draw_popup()
+		DIRTY = true
+	else if kind == 1:
+		POPUP.resize(n, 0)
+		POP_W = w
+		POP_H = h
+		ffi::read(buffer, POPUP[..])
+		draw_popup()
+		DIRTY = true
+	rel(browser);
+=== 100cd64c564057d6
+set_title(i int, s const byte[:]):
+	old byte[>..][>..] ~= []
+	for t TITLES:
+		old.push(t)
+	TITLES.clear()
+	for t, k old:
+		if k == i:
+			TITLES.push(s)
+		else:
+			TITLES.push(t)
+after_created(obj uint, browser uint):
+	TABS.push(browser)
+	TAB_IDS.push(c_call<i32>(vt(browser, BR_ID), browser))
+	empty byte[>..] ~= []
+	TITLES.push(empty)
+	select(TABS.len - 1);
+=== -758143027fc66384
+host_flag(off int, v i32):
+	h := host()
+	if h != 0:
+		c_call<i32>(vt(h, off), h, v)
+		rel(h)
+select(i int):
+	if i < 0 || i >= TABS.len:
+		return
+	if BROWSER != 0 && ACTIVE != i:
+		host_flag(H_HIDDEN, 1 as i32)
+	ACTIVE = i
+	BROWSER = TABS[i]
+	POP_SHOWN = false
+	host_flag(H_HIDDEN, 0 as i32)
+	call_host(H_RESIZED)
+	host_flag(H_INVALIDATE, 0 as i32)
+	focus(true)
+	TITLE.clear()
+	for t, k TITLES:
+		if k == i:
+			TITLE.append(t)
+	TITLE_NEW = true;
+cycle(step int):
+	n := TABS.len
+	if n >= 2:
+		select((ACTIVE + step + n) % n)
+=== 05533ae0f9596b78
+before_close(obj uint, browser uint):
+	CLOSED_N += 1
+	if CLOSED_N >= TABS.len:
+		CLOSED = true
+	rel(browser);
+=== 03039def3b63f5d4
+before_popup(obj uint, browser uint, frame uint, popup_id i32, target_url uint) i32:
+	s := read_str(target_url)
+	PENDING.clear()
+	PENDING.append(s)
+	rel(browser)
+	rel(frame)
+	1
+=== 32b564146c53f8b5
+address_change(obj uint, browser uint, frame uint, url uint):
+	if is_active(browser):
+		s := read_str(url)
+		URL.clear()
+		URL.append(s)
+	rel(browser)
+	rel(frame);
+=== -4dee2851776b5622
+title_change(obj uint, browser uint, title uint):
+	s := read_str(title)
+	i := tab_of(browser)
+	if i >= 0:
+		set_title(i, s[..])
+		if i == ACTIVE:
+			TITLE.clear()
+			TITLE.append(s)
+			TITLE_NEW = true
+	rel(browser);
+=== -78c1756c2d420b79
+loading_change(obj uint, browser uint, loading i32, back i32, forward i32):
+	if is_active(browser):
+		LOADING = loading != 0
+		CAN_BACK = back != 0
+		CAN_FORWARD = forward != 0
+	rel(browser);
+=== -3811e7a5a31a7d03
+read_str(p uint) byte[>..]:
+	out byte[>..] ~= []
+	if p != 0:
+		data := peek8(p)
+		n := peek8(p + 8)
+		TMP.clear()
+		TMP.resize(24, 0)
+		slot := ffi::ptr(TMP[..])
+		cef_utf16_to_8(data, n, slot)
+		text := ffi::bytes(peek8(slot), peek8(slot + 8) as int)
+		out.append(text)
+		cef_utf8_clear(slot)
+	out
+=== -73e54414d83ab432
+exe_path() const byte[:]:
+	if EXE.len == 0:
+		buf byte[>..] ~= []
+		buf.resize(4096, 0)
+		n := c_readlink(cz("/proc/self/exe"), ffi::ptr(buf[..]), 4096)
+		if n > 0:
+			EXE.append(buf[..n])
+		else:
+			arg(0, EXE)
+	EXE[..]
+=== -179bcbf71b3901b5
+push_arg_ptr(v uint):
+	o := ARGV.len
+	ARGV.resize(o + 8, 0)
+	put8(ARGV, o, v)
+seal_args():
+	put4(ARGS, 0, ARGV.len / 8 - 1)
+	put8(ARGS, 8, ffi::ptr(ARGV[..]))
+fill_args():
+	ARGS.clear()
+	ARGS.resize(16, 0)
+	ARGV.clear()
+	ARGV.reserve(65536)
+	for i arg_count():
+		a byte[>..] ~= []
+		arg(i, a)
+		push_arg_ptr(cz(a[..]))
+	push_arg_ptr(0)
+	seal_args()
+add_arg(s const byte[:]):
+	put8(ARGV, ARGV.len - 8, cz(s))
+	push_arg_ptr(0)
+	seal_args()
+=== -3dd22994f8175edf
+boot():
+	cef_api_hash(API as i32, 0)
+	fill_args()
+	code := cef_execute_process(ffi::ptr(ARGS[..]), 0, 0)
+	if code >= 0:
+		c_exit(code as i32);
+=== -2f8641317e07c510
+cef_dir() byte[>..]:
+	out byte[>..] ~= []
+	if !env("HELIUM_CEF_DIR", out) || out.len == 0:
+		out.clear()
+		env("HOME", out)
+		out.append("/.cache/hc/cef-152-linux64")
+	out
+profile_dir() byte[>..]:
+	out byte[>..] ~= []
+	if !env("XDG_CACHE_HOME", out) || out.len == 0:
+		out.clear()
+		env("HOME", out)
+		out.append("/.cache")
+	make_dir(out[..])
+	out.append("/amni-browse-helium")
+	make_dir(out[..])
+	out
+=== 7165253dab26d8db
+view_size(width int, height int, scale f32):
+	s real := scale
+	w real := width
+	h real := height
+	VIEW_W = max(round(w / s) as int, 1)
+	VIEW_H = max(round(h / s) as int, 1)
+start(url const byte[:], width int, height int, scale f32) bool:
+	if STARTED:
+		return true
+	SCALE = scale
+	view_size(width, height, scale)
+	add_arg("--no-first-run")
+	add_arg("--no-default-browser-check")
+	add_arg("--disable-extensions")
+	add_arg("--no-zygote")
+	add_arg("--ozone-platform=x11")
+	add_arg("--disable-accelerated-video-decode")
+	add_arg("--disable-features=VaapiVideoDecoder,VaapiVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks")
+	SETTINGS.clear()
+	SETTINGS.resize(SET_SIZE, 0)
+	put8(SETTINGS, 0, SET_SIZE as uint)
+	put4(SETTINGS, SET_NO_SANDBOX, 1)
+	put4(SETTINGS, SET_WINDOWLESS, 1)
+	put4(SETTINGS, SET_LOG, 3)
+	put4(SETTINGS, SET_BG, 4294967295)
+	at := ffi::ptr(SETTINGS[..])
+	set_str(at + SET_SUBPROC as uint, exe_path())
+	profile := profile_dir()
+	set_str(at + SET_ROOT_CACHE as uint, profile[..])
+	res := cef_dir()
+	set_str(at + SET_RES as uint, res[..])
+	loc := cef_dir()
+	loc.append("/locales")
+	set_str(at + SET_LOC as uint, loc[..])
+	if cef_initialize(ffi::ptr(ARGS[..]), at, 0, 0) == 0:
+		return false
+	base(RENDER, RH_SIZE)
+	put8(RENDER, RH_VIEW_RECT, c_callback(view_rect))
+	put8(RENDER, RH_SCREEN_INFO, c_callback(screen_info))
+	put8(RENDER, RH_POPUP_SHOW, c_callback(popup_show))
+	put8(RENDER, RH_POPUP_SIZE, c_callback(popup_size))
+	put8(RENDER, RH_PAINT, c_callback(paint))
+	base(LIFE, LS_SIZE)
+	put8(LIFE, LS_BEFORE_POPUP, c_callback(before_popup))
+	put8(LIFE, LS_AFTER_CREATED, c_callback(after_created))
+	put8(LIFE, LS_BEFORE_CLOSE, c_callback(before_close))
+	base(DISPLAY, DH_SIZE)
+	put8(DISPLAY, DH_ADDRESS, c_callback(address_change))
+	put8(DISPLAY, DH_TITLE, c_callback(title_change))
+	base(LOAD, LH_SIZE)
+	put8(LOAD, LH_LOADING, c_callback(loading_change))
+	base(CLIENT, CLIENT_SIZE)
+	put8(CLIENT, CL_DISPLAY, c_callback(get_display))
+	put8(CLIENT, CL_LIFE, c_callback(get_life))
+	put8(CLIENT, CL_LOAD, c_callback(get_load))
+	put8(CLIENT, CL_RENDER, c_callback(get_render))
+	WININFO.clear()
+	WININFO.resize(WIN_SIZE, 0)
+	put8(WININFO, 0, WIN_SIZE as uint)
+	put4(WININFO, WIN_WINDOWLESS, 1)
+	put4(WININFO, WIN_STYLE, STYLE_ALLOY)
+	BRSET.clear()
+	BRSET.resize(BRS_SIZE, 0)
+	put8(BRSET, 0, BRS_SIZE as uint)
+	put4(BRSET, BRS_RATE, 60)
+	put4(BRSET, BRS_BG, 4294967295)
+	STARTED = true
+	open(url)
+=== -65ea011ec26f911a
+open(url const byte[:]) bool:
+	if URLSTR.len == 0:
+		URLSTR.resize(24, 0)
+	slot := ffi::ptr(URLSTR[..])
+	set_str(slot, url)
+	cef_create(ffi::ptr(WININFO[..]), ffi::ptr(CLIENT[..]), slot, ffi::ptr(BRSET[..]), 0, 0) != 0
+=== -75ccf7a4e5a73c10
+pump():
+	if STARTED:
+		cef_do_message_loop_work()
+	if PENDING.len > 0 && BROWSER != 0:
+		load(PENDING[..])
+		PENDING.clear()
+=== -1599deade8f0f25c
+host() uint:
+	if BROWSER == 0:
+		return 0
+	c_call<uint>(vt(BROWSER, BR_HOST), BROWSER)
+=== 1f923e368e2f84da
+call_host(off int):
+	h := host()
+	if h != 0:
+		c_call<i32>(vt(h, off), h)
+		rel(h)
+=== -5621c2443759a1e1
+mods(shift bool, ctrl bool, alt bool, gui bool, buttons int) int:
+	f ~= 0
+	if shift:
+		f |= 2
+	if ctrl:
+		f |= 4
+	if alt:
+		f |= 8
+	if gui:
+		f |= 128
+	if (buttons & 1) != 0:
+		f |= 16
+	if (buttons & 2) != 0:
+		f |= 32
+	if (buttons & 4) != 0:
+		f |= 64
+	f
+=== 6d860dd7facfa6cb
+mouse_event(x int, y int, flags int) uint:
+	s real := SCALE
+	px real := x
+	py real := y
+	EV.clear()
+	EV.resize(12, 0)
+	put4(EV, 0, floor(px / s) as int)
+	put4(EV, 4, floor(py / s) as int)
+	put4(EV, 8, flags)
+	ffi::ptr(EV[..])
+=== -605377624999f502
+mouse_move(x int, y int, flags int):
+	h := host()
+	if h != 0:
+		ev := mouse_event(x, y, flags)
+		c_call<i32>(vt(h, H_MOVE), h, ev, 0 as i32)
+		rel(h)
+=== -6a35eacab7106fa3
+mouse_button(x int, y int, button int, down bool, clicks int, flags int):
+	if button < 1 || button > 3:
+		return
+	h := host()
+	if h != 0:
+		ev := mouse_event(x, y, flags)
+		up i32 := if down { 0 } else { 1 }
+		c_call<i32>(vt(h, H_CLICK), h, ev, (button - 1) as i32, up, clicks as i32)
+		rel(h)
+=== -7612efaf53d2f54d
+wheel(x int, y int, dx real, dy real, flags int):
+	h := host()
+	if h != 0:
+		ev := mouse_event(x, y, flags)
+		c_call<i32>(vt(h, H_WHEEL), h, ev, round(dx * 120.0) as i32, round(dy * 120.0) as i32)
+		rel(h)
+=== -1797b825a7825677
+key(kind int, vk int, native int, flags int, ch int):
+	h := host()
+	if h != 0:
+		k byte[>..] ~= []
+		k.resize(KEY_SIZE, 0)
+		put8(k, 0, KEY_SIZE as uint)
+		put4(k, 8, kind)
+		put4(k, 12, flags)
+		put4(k, 16, vk)
+		put4(k, 20, native)
+		put4(k, 24, 0)
+		lo := (ch & 255) as! byte
+		hi := ((ch >> 8) & 255) as! byte
+		k[28] = lo
+		k[29] = hi
+		k[30] = lo
+		k[31] = hi
+		put4(k, 32, 0)
+		c_call<i32>(vt(h, H_KEY), h, ffi::ptr(k[..]))
+		rel(h)
+=== 709f965baeb2f4aa
+focus(on bool):
+	h := host()
+	if h != 0:
+		v i32 := if on { 1 } else { 0 }
+		c_call<i32>(vt(h, H_FOCUS), h, v)
+		rel(h)
+=== 078e3895d94852ee
+resize(width int, height int, scale f32):
+	view_size(width, height, scale)
+	if scale != SCALE:
+		SCALE = scale
+		call_host(H_SCREEN_CHANGED)
+	call_host(H_RESIZED)
+=== -40e4339501aaef3
+load(url const byte[:]):
+	if BROWSER == 0:
+		return
+	f := c_call<uint>(vt(BROWSER, BR_MAIN_FRAME), BROWSER)
+	if f != 0:
+		slot := ffi::ptr(URLSTR[..])
+		set_str(slot, url)
+		c_call<i32>(vt(f, FR_LOAD_URL), f, slot)
+		rel(f)
+call_browser(off int):
+	if BROWSER != 0:
+		c_call<i32>(vt(BROWSER, off), BROWSER)
+back():
+	call_browser(BR_BACK)
+forward():
+	call_browser(BR_FORWARD)
+reload():
+	call_browser(BR_RELOAD)
+=== -755f448b1e46bf8d
+stop():
+	if !STARTED:
+		return
+	for b TABS:
+		h := c_call<uint>(vt(b, BR_HOST), b)
+		if h != 0:
+			c_call<i32>(vt(h, H_CLOSE), h, 1 as i32)
+			rel(h)
+	begun := clock()
+	while !CLOSED && clock() - begun < 2.0:
+		pump()
+		sleep_ms(7)
+	for b TABS:
+		rel(b)
+	TABS.clear()
+	TAB_IDS.clear()
+	TITLES.clear()
+	BROWSER = 0
+	cef_shutdown()
+	STARTED = false

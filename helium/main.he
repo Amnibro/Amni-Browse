@@ -1,0 +1,101 @@
+use cef
+use gfx
+use os
+HOME := "https://duckduckgo.com/"
+VK_A := [0x30, 0x0D, 0x1B, 0x08, 0x09, 0x20, 0xBD, 0xBB, 0xDB, 0xDD, 0xDC, 0, 0xBA, 0xDE, 0xC0, 0xBC, 0xBE, 0xBF, 0x14]
+VK_B := [0x2C, 0x91, 0x13, 0x2D, 0x24, 0x21, 0x2E, 0x23, 0x22, 0x27, 0x25, 0x28, 0x26]
+VK_C := [0x11, 0x10, 0x12, 0x5B, 0x11, 0x10, 0x12, 0x5C]
+vk(sc i32) int:
+	s := sc as int
+	if s >= 4 && s <= 29 { 0x41 + s - 4 } else if s >= 30 && s <= 38 { 0x31 + s - 30 } else if s >= 39 && s <= 57 { VK_A[s - 39] } else if s >= 58 && s <= 69 { 0x70 + s - 58 } else if s >= 70 && s <= 82 { VK_B[s - 70] } else if s >= 224 && s <= 231 { VK_C[s - 224] } else { 0 }
+flags(m i32, btn int) int: cef::mods(m & 1 != 0, m & 2 != 0, m & 4 != 0, m & 8 != 0, btn)
+send_char(cp int, f int):
+	if cp > 0xFFFF { c := cp - 0x10000; cef::key(3, 0xD800 + (c >> 10), 0, f, 0xD800 + (c >> 10)); cef::key(3, 0xDC00 + (c & 0x3FF), 0, f, 0xDC00 + (c & 0x3FF)) } else { cef::key(3, cp, 0, f, cp) }
+shortcut(v int, m i32) bool:
+	alt := m & 4 != 0; ctrl := m & 2 != 0; shift := m & 1 != 0
+	if alt && v == 0x25 { cef::back(); true } else if alt && v == 0x27 { cef::forward(); true } else if v == 0x74 || ctrl && v == 0x52 { cef::reload(); true } else if ctrl && v == 0x54 { cef::open(HOME); true } else if ctrl && v == 0x09 { cef::cycle(if shift { -1 } else { 1 }); true } else { false }
+main():
+	cef::boot()
+	a := args()
+	url := if a.len > 1 { a[1] } else { HOME }
+	sv byte[>..] ~= []
+	stats := env("AB_STATS", sv) && sv.len > 0
+	if !gfx::open("Amni Browse", 1280, 800, (gfx::WINDOW_RESIZABLE | gfx::NO_VSYNC | gfx::PRESENT_ON_WORK) as int) { write_stderr("gfx: open failed\n"); return }
+	gfx::text_input(true)
+	sz ~= gfx::screen_size()
+	sc ~= gfx::display_scale()
+	if !cef::start(url, sz.x as int, sz.y as int, sc) { write_stderr("cef: start failed\n"); return }
+	for i 2..a.len { cef::open(a[i]) }
+	vs := embed_shader("vert", """
+        layout(location = 0) out vec2 v_uv;
+        void main() {
+            vec2 p = vec2(float((gl_VertexIndex << 1) & 2), float(gl_VertexIndex & 2));
+            v_uv = p;
+            gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+        }
+        """)
+	fs := embed_shader("frag", """
+        layout(set = 2, binding = 0) uniform sampler2D tex;
+        layout(location = 0) in vec2 v_uv;
+        layout(location = 0) out vec4 result;
+        void main() {
+            ivec2 s = textureSize(tex, 0);
+            ivec2 q = ivec2(gl_FragCoord.xy);
+            result = (q.x < s.x && q.y < s.y) ? vec4(texelFetch(tex, q, 0).bgr, 1.0) : vec4(1.0);
+        }
+        """)
+	pipe := gfx::pipeline(vs, fs)
+	smp := gfx::sampler(gfx::NEAREST, gfx::CLAMP)
+	tex ~= gfx::Texture{0}
+	tw ~= 0; th ~= 0; btn ~= 0; mx ~= 0.0 as f32; my ~= 0.0 as f32; redraw ~= true
+	t0 ~= clock_ns(); nf ~= 0; np ~= cef::PAINTS; kt ~= 0; ks ~= 0; km ~= 0; kn ~= 0; drew ~= false; pt ~= 0; pn ~= 0
+	while true:
+		t1 := clock_ns()
+		if !gfx::frame() { break }
+		if drew { pt += (clock_ns() - t1) / 1000; pn += 1; drew = false }
+		for e gfx::events():
+			f := flags(e.mods, btn)
+			if e.kind == 1:
+				v := vk(e.scancode)
+				if v != 0 && !(e.down && shortcut(v, e.mods)):
+					if e.down && kt == 0 { kt = clock_ns() }
+					cef::key(if e.down { 0 } else { 2 }, v, 0, f, 0)
+					if e.down && (v == 0x0D || v == 0x09 || v == 0x08 || v == 0x1B) { send_char(if v == 0x0D { 13 } else { v }, f) }
+			else if e.kind == 2: send_char(e.codepoint as int, f)
+			else if e.kind == 3: mx = e.x; my = e.y; cef::mouse_move(mx as int, my as int, f)
+			else if e.kind == 4:
+				if e.button == 4 || e.button == 5:
+					if e.down { if e.button == 4 { cef::back() } else { cef::forward() } }
+				else:
+					bit := if e.button == 1 { 1 } else if e.button == 2 { 2 } else { 4 }
+					btn = if e.down { btn | bit } else { btn & ~bit }
+					cef::mouse_button(e.x as int, e.y as int, e.button as int, e.down, e.clicks as int, flags(e.mods, btn))
+			else if e.kind == 5: cef::wheel(mx as int, my as int, -e.x as real, e.y as real, f)
+			else if e.kind == 6: cef::focus(true)
+			else if e.kind == 7: cef::focus(false)
+		ns := gfx::screen_size(); nk := gfx::display_scale()
+		if ns.x != sz.x || ns.y != sz.y || nk != sc { sz = ns; sc = nk; cef::resize(sz.x as int, sz.y as int, sc); redraw = true }
+		cef::pump()
+		fresh := cef::DIRTY && cef::PAGE_W > 0
+		if fresh:
+			if cef::PAGE_W != tw || cef::PAGE_H != th:
+				if tex.id != 0 { gfx::release(tex) }
+				tex = gfx::texture2d(cef::PAGE_W, cef::PAGE_H); tw = cef::PAGE_W; th = cef::PAGE_H
+			gfx::update_texture(tex, cef::PAGE[..])
+			cef::DIRTY = false
+		if cef::TITLE_NEW { gfx::set_title(concat(cef::TITLE[..], " - Amni Browse")); cef::TITLE_NEW = false }
+		if fresh || redraw:
+			redraw = false
+			if gfx::begin_screen(float4{1.0, 1.0, 1.0, 1.0}):
+				if tw > 0 { gfx::bind(pipe); gfx::bind_texture(1, 0, tex, smp); gfx::draw(3) }
+				gfx::end_pass()
+				nf += 1; drew = true
+		else:
+			sleep_ms(1)
+		if stats:
+			if fresh && kt != 0 { d := (clock_ns() - kt) / 1000; ks += d; km = if d > km { d } else { km }; kn += 1; kt = 0 }
+			if clock_ns() - t0 >= 1000000000:
+				print("stats fps ", nf, " paints ", cef::PAINTS - np, " tabs ", cef::TABS.len, " keys ", kn, " key_us_avg ", if kn > 0 { ks / kn } else { 0 }, " key_us_max ", km, " present_us_avg ", if pn > 0 { pt / pn } else { 0 })
+				flush_stdout()
+				t0 = clock_ns(); nf = 0; np = cef::PAINTS; ks = 0; km = 0; kn = 0; pt = 0; pn = 0
+	cef::stop()

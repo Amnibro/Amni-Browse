@@ -1,0 +1,209 @@
+into cef.he
+lang he
+namespace cef
+use std, ffi, os
+
+```he
+extern "libcef.so" {
+	cef_execute_process(args uint, app uint, si uint) i32 = "cef_execute_process";
+	cef_initialize(args uint, settings uint, app uint, si uint) i32 = "cef_initialize";
+	cef_shutdown() i32 = "cef_shutdown";
+	cef_do_message_loop_work() i32 = "cef_do_message_loop_work";
+	cef_create(wi uint, client uint, url uint, st uint, extra uint, ctx uint) i32 = "cef_browser_host_create_browser";
+	cef_utf8_to_16(src uint, n uint, out uint) i32 = "cef_string_utf8_to_utf16";
+	cef_utf16_to_8(src uint, n uint, out uint) i32 = "cef_string_utf16_to_utf8";
+	cef_utf8_clear(s uint) i32 = "cef_string_utf8_clear";
+	cef_api_hash(version i32, entry i32) uint = "cef_api_hash";
+}
+extern "libc.so.6" {
+	c_exit(code i32) i32 = "exit";
+	c_readlink(p uint, buf uint, n uint) int = "readlink";
+}
+extern f32_bits(x f32) u32 = "hr_f32_bits"
+API := 15200
+SET_SIZE := 448
+SET_NO_SANDBOX := 8
+SET_SUBPROC := 16
+SET_WINDOWLESS := 96
+SET_ROOT_CACHE := 128
+SET_LOG := 256
+SET_RES := 288
+SET_LOC := 312
+SET_BG := 344
+WIN_SIZE := 88
+WIN_WINDOWLESS := 56
+WIN_STYLE := 80
+STYLE_ALLOY := 2
+BRS_SIZE := 264
+BRS_RATE := 8
+BRS_BG := 248
+CLIENT_SIZE := 192
+CL_DISPLAY := 72
+CL_LIFE := 144
+CL_LOAD := 152
+CL_RENDER := 168
+RH_SIZE := 176
+RH_VIEW_RECT := 56
+RH_SCREEN_INFO := 72
+RH_POPUP_SHOW := 80
+RH_POPUP_SIZE := 88
+RH_PAINT := 96
+LS_SIZE := 88
+LS_BEFORE_POPUP := 40
+LS_AFTER_CREATED := 64
+LS_BEFORE_CLOSE := 80
+DH_SIZE := 144
+DH_ADDRESS := 40
+DH_TITLE := 48
+LH_SIZE := 72
+LH_LOADING := 40
+B_RELEASE := 16
+BR_HOST := 48
+BR_BACK := 64
+BR_FORWARD := 80
+BR_RELOAD := 96
+BR_ID := 120
+BR_MAIN_FRAME := 152
+H_CLOSE := 48
+H_FOCUS := 72
+H_RESIZED := 304
+H_HIDDEN := 312
+H_SCREEN_CHANGED := 320
+H_INVALIDATE := 328
+H_KEY := 344
+H_CLICK := 352
+H_MOVE := 360
+H_WHEEL := 368
+FR_LOAD_URL := 144
+KEY_SIZE := 40
+var HOLD byte[>..] = []
+var ARGS byte[>..] = []
+var ARGV byte[>..] = []
+var SETTINGS byte[>..] = []
+var WININFO byte[>..] = []
+var BRSET byte[>..] = []
+var URLSTR byte[>..] = []
+var TMP byte[>..] = []
+var CLIENT byte[>..] = []
+var RENDER byte[>..] = []
+var LIFE byte[>..] = []
+var DISPLAY byte[>..] = []
+var LOAD byte[>..] = []
+var EV byte[>..] = []
+var EXE byte[>..] = []
+var BROWSER uint = 0
+var TABS uint[>..] = []
+var TAB_IDS int[>..] = []
+var TITLES byte[>..][>..] = []
+var ACTIVE int = -1
+var CLOSED_N int = 0
+var CLOSED bool = false
+var STARTED bool = false
+var VIEW_W int = 800
+var VIEW_H int = 600
+var SCALE f32 = 1.0
+var PAGE byte[>..] = []
+var PAGE_W int = 0
+var PAGE_H int = 0
+var DIRTY bool = false
+var PAINTS int = 0
+var POPUP byte[>..] = []
+var POP_X int = 0
+var POP_Y int = 0
+var POP_W int = 0
+var POP_H int = 0
+var POP_SHOWN bool = false
+var TITLE byte[>..] = []
+var TITLE_NEW bool = false
+var URL byte[>..] = []
+var PENDING byte[>..] = []
+var LOADING bool = false
+var CAN_BACK bool = false
+var CAN_FORWARD bool = false
+cz(s const byte[:]) uint:
+	if HOLD.len == 0 { HOLD.reserve(1048576) }
+	o := HOLD.len
+	HOLD.append(s)
+	HOLD.push(0)
+	ffi::ptr(HOLD[o..])
+put8(b byte[>..]&, off int, v uint): for i 8 { b[off + i] = ((v >> (8 * i) as uint) & 255) as! byte }
+put4(b byte[>..]&, off int, v int): for i 4 { b[off + i] = ((v >> (8 * i)) & 255) as! byte }
+poke4(p uint, v int): b byte[>..] ~= [0, 0, 0, 0]; put4(b, 0, v); ffi::write(p, b[..])
+peek4(p uint) int: b := ffi::bytes(p, 4); v ~= 0; for i 4 { v |= (b[i] as int) << (8 * i) } if v >= 2147483648 { v - 4294967296 } else { v }
+peek8(p uint) uint: b := ffi::bytes(p, 8); v ~= 0 as uint; for i 8 { v |= (b[i] as uint) << (8 * i) as uint } v
+vt(obj uint, off int) uint: peek8(obj + off as uint)
+rel(obj uint): if obj != 0 { c_call<i32>(vt(obj, B_RELEASE), obj) }
+set_str(slot uint, s const byte[:]): cef_utf8_to_16(cz(s), s.len as uint, slot)
+```
+
+The callbacks below are handed to CEF with `c_callback` and called by CEF on its UI thread, which is the thread that runs `pump`; the four reference-count callbacks may be called on any thread, so they only return constants. Every handler that receives a browser or frame address releases it with `rel` before returning, except `after_created`, which keeps its browser in `TABS`. Each tab is one off-screen browser; `TABS`, `TAB_IDS` and `TITLES` hold its browser address, CEF identifier and page title at the same index, `ACTIVE` is the index of the tab on screen and `BROWSER` its browser, or 0 before the first tab exists. `tab_of(browser)` returns the index whose identifier matches the one the browser function at `BR_ID` gives as an i32, or -1. `is_active(browser)` is whether `tab_of` gives `ACTIVE`. Every 4-byte integer write into CEF memory uses `poke4`, every read uses `peek4`, and pointer reads use `peek8`.
+
+`ref_add(obj)` does nothing. `ref_release(obj)` returns 0. `ref_one(obj)` returns 1. `none(obj)` returns 0 as an unsigned address; it stands in for every handler and getter this module does not implement.
+
+`base(b, size)` sizes the byte array to `size` zero bytes, writes `size` at offset 0 with `put8`, writes the addresses of `ref_add`, `ref_release`, `ref_one` and `ref_one` again at offsets 8, 16, 24 and 32, then fills every 8-byte slot from offset 40 up to the end with the address of `none`.
+
+`get_render(obj)`, `get_life(obj)`, `get_display(obj)` and `get_load(obj)` return the addresses of `RENDER`, `LIFE`, `DISPLAY` and `LOAD`.
+
+`view_rect(obj, browser, rect)` writes 0, 0, `VIEW_W` and `VIEW_H` as the four 4-byte integers at the rect address, releases the browser and returns nothing.
+
+`screen_info(obj, browser, info)` writes the bits of `SCALE` from `f32_bits` at offset 8, 24 at offset 12, 8 at offset 16, 0 at offset 20, then the rect 0, 0, `VIEW_W`, `VIEW_H` at offset 24 and again at offset 40, releases the browser and returns 1 as an i32.
+
+`popup_show(obj, browser, show)` sets `POP_SHOWN` to whether `show` is nonzero, marks `DIRTY` when it hides so the next view paint clears it, and releases the browser.
+
+`popup_size(obj, browser, rect)` reads the popup's x, y, width and height from the rect, stores them in device pixels by multiplying each by `SCALE` and rounding into `POP_X`, `POP_Y`, `POP_W` and `POP_H`, and releases the browser.
+
+`paint(obj, browser, kind, nrects, rects, buffer, width, height)` takes `kind`, `width` and `height` as i32 and the rest as unsigned addresses. It ignores paints from tabs that are not active, only releasing the browser. It counts the call in `PAINTS`. For kind 0 (the view) it resizes `PAGE` to width times height times 4 bytes when the size changed, records `PAGE_W` and `PAGE_H`, copies the buffer into `PAGE` with `ffi::read`, then draws the popup over it when `POP_SHOWN` and `POPUP` holds a popup image. For kind 1 (a popup such as an open select box) it copies the buffer into `POPUP`, sized width times height times 4, then draws it over `PAGE`. Drawing the popup copies it row by row into `PAGE` at `POP_X` and `POP_Y`, clipped to the page. Either kind sets `DIRTY`, and the browser is released.
+
+`after_created(obj, browser)` appends the browser to `TABS`, its identifier to `TAB_IDS` and an empty title to `TITLES`, then shows the new tab with `select`.
+
+`select(i)` shows tab `i` when it exists. When another tab is on screen it hides that one by calling the host function at `H_HIDDEN` with 1. It then sets `ACTIVE` and `BROWSER`, hides the popup, calls the host function at `H_HIDDEN` with 0, then `H_RESIZED`, then `H_INVALIDATE` with 0 so CEF paints the whole view, gives it keyboard focus with `focus(true)`, and copies the tab's title into `TITLE` with `TITLE_NEW` set. `cycle(step)` selects the tab `step` places after the active one when there are at least two tabs, wrapping around both ends: the index is `ACTIVE` plus `step` plus the tab count, modulo the tab count.
+
+`before_close(obj, browser)` counts the closed tab in `CLOSED_N`, sets `CLOSED` once every tab has closed, and releases the browser.
+
+`before_popup(obj, browser, frame, popup_id, target_url)` copies the target url with `read_str` into `PENDING` so `pump` opens it in this view, releases the browser and the frame, and returns 1 as an i32 so CEF opens no window of its own.
+
+`address_change(obj, browser, frame, url)` stores the url text in `URL` when the browser's tab is active and releases the browser and the frame.
+
+`title_change(obj, browser, title)` stores the title text in that tab's `TITLES` entry; when the tab is active it also copies it into `TITLE` and sets `TITLE_NEW`. It releases the browser.
+
+`loading_change(obj, browser, loading, back, forward)` records whether each of the three is nonzero in `LOADING`, `CAN_BACK` and `CAN_FORWARD` when the browser's tab is active and releases the browser.
+
+`read_str(p)` returns the UTF-8 text of the CEF string at address `p`: empty when `p` is 0; otherwise its UTF-16 data address is the 8 bytes at `p` and its length the 8 bytes after, converted with `cef_utf16_to_8` into a 24-byte `TMP` buffer whose first 8 bytes are then the UTF-8 address and the next 8 its length, copied out with `ffi::bytes` before `cef_utf8_clear` frees it.
+
+`exe_path()` returns this program's absolute path, read once with `c_readlink` of "/proc/self/exe" into a 4096-byte buffer and cached in `EXE`, falling back to argument 0.
+
+`fill_args()` builds the C argument list in `ARGS` (16 bytes: the count as a 4-byte integer at offset 0 and the address of `ARGV` at offset 8) where `ARGV` holds one 8-byte C string address from `cz` for each program argument followed by a zero address. `add_arg(s)` appends one more switch to it the same way, keeping the trailing zero and raising the count.
+
+`boot()` must be the first call of every process: it calls `cef_api_hash` with `API` and 0, fills the arguments, and runs `cef_execute_process` with no app; when that returns 0 or more this is one of CEF's helper processes, so it exits with that code through `c_exit`.
+
+`cef_dir()` is the environment variable "HELIUM_CEF_DIR" when set and not empty, else the home directory joined with ".cache/hc/cef-152-linux64". `profile_dir()` is "XDG_CACHE_HOME" (or the home directory joined with ".cache") joined with "amni-browse-helium", created when missing along with its parent.
+
+`start(url, width, height, scale)` starts CEF once and creates one off-screen browser; it returns whether CEF initialized and the browser request was sent. It stores `SCALE` and the view size in device-independent pixels, `VIEW_W` and `VIEW_H`, as the pixel size divided by the scale and rounded, at least 1. It adds the switches "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--no-zygote", "--ozone-platform=x11", "--disable-accelerated-video-decode" and "--disable-features=VaapiVideoDecoder,VaapiVideoDecodeLinuxGL,AcceleratedVideoDecodeLinuxGL,VaapiIgnoreDriverChecks" (video is always decoded on the CPU). It fills `SETTINGS` with `SET_SIZE` zero bytes and `SET_SIZE` at offset 0 as 8 bytes, then 1 at `SET_NO_SANDBOX`, 1 at `SET_WINDOWLESS`, 3 at `SET_LOG` and 0xFFFFFFFF at `SET_BG`, all as 4-byte integers, and the strings `exe_path()` at `SET_SUBPROC`, `profile_dir()` at `SET_ROOT_CACHE`, `cef_dir()` at `SET_RES` and `cef_dir()` joined with "locales" at `SET_LOC`, each written with `set_str` at the buffer's address plus the offset. It calls `cef_initialize` with the arguments, the settings and no app, returning false when that gives 0. It builds `RENDER` with `base` of `RH_SIZE` and the addresses of `view_rect`, `screen_info`, `popup_show`, `popup_size` and `paint` at their `RH_` offsets; `LIFE` with `LS_SIZE` and `before_popup`, `after_created` and `before_close`; `DISPLAY` with `DH_SIZE` and `address_change` and `title_change`; `LOAD` with `LH_SIZE` and `loading_change`; and `CLIENT` with `CLIENT_SIZE` and `get_display`, `get_life`, `get_load` and `get_render` at `CL_DISPLAY`, `CL_LIFE`, `CL_LOAD` and `CL_RENDER`. `WININFO` is `WIN_SIZE` zero bytes with `WIN_SIZE` at offset 0, 1 at `WIN_WINDOWLESS` and `STYLE_ALLOY` at `WIN_STYLE`. `BRSET` is `BRS_SIZE` zero bytes with `BRS_SIZE` at offset 0, 60 at `BRS_RATE` and 0xFFFFFFFF at `BRS_BG`. It sets `STARTED` and returns whether `open(url)` succeeded.
+
+`open(url)` asks CEF for one more tab showing the url and returns whether the request was sent: it writes the url into the 24-byte `URLSTR` string slot and calls `cef_create` with the window info, the client, the url slot, the browser settings and two zero addresses, succeeding when that gives a nonzero result. The tab appears through `after_created`.
+
+`pump()` does CEF's pending work once with `cef_do_message_loop_work` when `STARTED`, then, when `PENDING` holds a url and there is a browser, loads it with `load` and clears it.
+
+`host()` returns the browser's host from the function at `BR_HOST` in the browser, or 0 without a browser; whoever calls it releases the host with `rel`.
+
+`call_host(off)` runs the host function at that offset with only the host, for the ones that take nothing else.
+
+`mods(shift, ctrl, alt, gui, buttons)` returns CEF's event flags: 2 for shift, 4 for ctrl, 8 for alt and 128 for gui, plus 16, 32 and 64 when bits 1, 2 and 4 of `buttons` (left, middle, right) are set.
+
+`mouse_event(x, y, flags)` fills `EV` with 12 bytes, the x and y in device-independent pixels (the pixel position divided by `SCALE`, rounded down) and the flags, each as a 4-byte integer, and returns its address.
+
+`mouse_move(x, y, flags)` sends a move through the host function at `H_MOVE` with the event address and 0 for mouse-leave.
+
+`mouse_button(x, y, button, down, clicks, flags)` sends a click through `H_CLICK` with the event address, CEF's button type (0 left, 1 middle, 2 right for SDL buttons 1, 2 and 3; other buttons are ignored), 1 when released or 0 when pressed, and the click count.
+
+`wheel(x, y, dx, dy, flags)` sends the scroll through `H_WHEEL` with the event address and the two deltas, each the wheel amount times 120, rounded, as i32.
+
+`key(kind, vk, native, flags, ch)` fills a `KEY_SIZE`-byte key event with `KEY_SIZE` as 8 bytes at offset 0, the kind (0 raw key down, 2 key up, 3 character) at 8, the flags at 12, `vk` at 16, `native` at 20, 0 at 24, the character as 2 bytes at 28 and again at 30, and 0 at 32, and sends it through `H_KEY`.
+
+`focus(on)` calls the host function at `H_FOCUS` with 1 or 0.
+
+`resize(width, height, scale)` recomputes `VIEW_W` and `VIEW_H` like `start` does; when the scale changed it stores it and calls the host function at `H_SCREEN_CHANGED`; then it calls the one at `H_RESIZED`. Hidden tabs pick up the new size when `select` shows them.
+
+`load(url)` gets the browser's main frame from `BR_MAIN_FRAME`, writes the url into the 24-byte `URLSTR` slot with `set_str`, calls the frame function at `FR_LOAD_URL` with that slot, and releases the frame. `back()`, `forward()` and `reload()` call the browser functions at `BR_BACK`, `BR_FORWARD` and `BR_RELOAD` when there is a browser.
+
+`stop()` does nothing unless `STARTED`. It asks every tab's host to close through `H_CLOSE` with 1 to force it, pumps every 7 ms until `CLOSED` or 2 seconds pass, releases every tab's browser, empties `TABS`, `TAB_IDS` and `TITLES`, clears `BROWSER`, calls `cef_shutdown` and clears `STARTED`.
