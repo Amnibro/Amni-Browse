@@ -2416,26 +2416,25 @@ fn build_app(target: &EventLoopWindowTarget<()>, sd: &Seed, wk: u64, ephemeral: 
         let bd = a.backdrop.clone();
         a.canvas.connect_draw(move |_, cr| { if let Some((x, y, sf)) = bd.borrow().as_ref() { let _ = cr.set_source_surface(sf, *x, *y); let _ = cr.paint(); } gtk::glib::Propagation::Proceed });
     }
-    let (chrome_proto, kpush, wid) = (sd.protocol.clone(), a.pusher(), format!("w{}", wk));
+    let (chrome_proto, kpush, wid, chrome_bg) = (sd.protocol.clone(), a.pusher(), format!("w{}", wk), hex_rgba(&a.state().themes.active_theme().bg_primary).unwrap_or((8, 9, 11, 255)));
     let chrome = WebViewBuilder::new()
         .with_id(&wid)
         .with_url(&internal_url("chrome"))
         .with_bounds(a.chrome_rect())
         .with_devtools(true)
-        .with_transparent(true)
+        .with_transparent(cfg!(windows))
+        .with_background_color(chrome_bg)
         .with_initialization_script(&format!("{};{}", fetch_shim(), KEY_SCRIPT))
         .with_custom_protocol("amnibrowse".to_string(), move |id, req| chrome_proto(id, req))
         .with_ipc_handler(move |req| { if let Ok(v) = serde_json::from_str::<serde_json::Value>(req.body()) { if v.get("type").and_then(|t| t.as_str()) == Some("key") { kpush(Ev::Key(0, v.get("k").and_then(|k| k.as_str()).unwrap_or("").to_string(), v.get("shift").and_then(|s| s.as_i64()).unwrap_or(0) == 1, v.get("alt").and_then(|s| s.as_i64()).unwrap_or(0) == 1)); } } });
     let chrome = build_view(chrome, a.chrome_host()).expect("chrome webview");
     #[cfg(not(windows))]
     {
-        use webkit2gtk::WebViewExt;
         use wry::WebViewExtUnix;
         if let Some(settings) = webkit2gtk::WebViewExt::settings(&chrome.webview()) {
             use webkit2gtk::{HardwareAccelerationPolicy, SettingsExt};
             settings.set_hardware_acceleration_policy(HardwareAccelerationPolicy::Never);
         }
-        chrome.webview().set_background_color(&gtk::gdk::RGBA::new(8.0 / 255.0, 9.0 / 255.0, 11.0 / 255.0, 1.0));
     }
     #[cfg(windows)]
     if let Ok(cs) = unsafe { chrome.controller().CoreWebView2().and_then(|c| c.Settings()) } { unsafe { let _ = cs.SetIsStatusBarEnabled(BOOL(0)); let _ = cs.SetAreDefaultContextMenusEnabled(BOOL(0)); } }

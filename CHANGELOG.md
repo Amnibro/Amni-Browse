@@ -1,3 +1,7 @@
+## 0.16.3 - 2026-11-24 — Toolbar paints in full again
+
+- **Fixed a dark band across the top of the window.** With WebKitGTK 2.54 the toolbar only redrew the part that had just changed, such as the address bar. Tabs, the back and forward row and the quick links bar went blank and stayed blank, which looked like a dark strip over the page. The toolbar is now created with a solid background, so it always redraws in full. Menus and address suggestions still show the page behind them.
+
 ## 0.16.2 - 2026-11-17 — Distrust the compromised eMudhra root
 
 - **Browse no longer trusts "emSign ECC Root CA - G3".** eMudhra's key for that root was compromised. The bundled root list (webpki-roots and webpki-root-certs 1.0.10, with rustls-webpki 0.103.16) no longer includes it, so connections made through Browse's Rust networking reject certificates that chain to it.
